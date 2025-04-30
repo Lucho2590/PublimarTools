@@ -1,3 +1,5 @@
+import { Timestamp } from "firebase/firestore";
+
 export enum EProductCategory {
   NATIONAL_FLAG = "Bandera Nacional",
   CUSTOM_FLAG = "Bandera Personalizada",
@@ -9,11 +11,19 @@ export enum EProductStatus {
   INACTIVE = "inactive",
 }
 
+export type TProductCategory = {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type TProductVariant = {
   id: string;
-  size: string;
-  price: number;
-  stock: number;
+  size: string; // Ejemplo: "90x150"
+  price: string | number;
+  stock: string | number;
   sku?: string;
 };
 
@@ -21,13 +31,15 @@ export type TProduct = {
   id: string;
   name: string;
   description: string;
-  category: EProductCategory;
-  status: EProductStatus;
+  categories: string[]; // IDs de las categorías
   imageUrls: string[];
   hasVariants: boolean;
-  price?: number; // Si no tiene variantes
-  stock?: number; // Si no tiene variantes
-  sku?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  price: number | null;
+  stock: number | null;
+  sku: string;
+  taxRate: number; // Porcentaje de IVA
+  size: string;
+  variants: TProductVariant[];
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 };

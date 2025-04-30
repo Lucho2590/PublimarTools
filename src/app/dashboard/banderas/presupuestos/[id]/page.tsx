@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { useFirestore, useFirestoreDoc } from "reactfire";
-import { doc, updateDoc } from "firebase/firestore";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useFirestore, useFirestoreDoc, useSigninCheck, useFirestoreCollectionData } from "reactfire";
+import { doc, updateDoc, collection, query, where } from "firebase/firestore";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import {
@@ -26,21 +26,56 @@ export default function PresupuestoPage({
 }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDownload = searchParams.get("download") === "true";
   const firestore = useFirestore();
+  const { status: authStatus, data: signInCheckResult } = useSigninCheck();
+
+  // Verificar autenticación
+  if (authStatus === "loading") {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
+      </div>
+    );
+  }
+
+  if (!signInCheckResult.signedIn) {
+    router.push("/login");
+    return null;
+  }
 
   // Obtener el presupuesto
-  const quoteRef = doc(firestore, collections.QUOTES, params.id);
-  const { status, data } = useFirestoreDoc(quoteRef, {
-    idField: "id",
-  });
+  const { status, data } = useFirestoreCollectionData(
+    query(
+      collection(firestore, collections.QUOTES),
+      where("number", "==", params.id)
+    ),
+    { idField: "id" }
+  );
 
   // Convertir el data a TQuote
-  const quote = data as unknown as TQuote;
+  const quote = data && data.length > 0 ? (data[0] as TQuote) : null;
+
+  console.log("Número del presupuesto:", params.id);
+  console.log("Status de la consulta:", status);
+  console.log("Datos obtenidos:", data);
+  console.log("Presupuesto procesado:", quote);
 
   // Formatear fecha
-  const formatDate = (date: Date) => {
+  const formatDate = (date: any) => {
     if (!date) return "-";
-    return new Date(date).toLocaleDateString("es-AR");
+    try {
+      // Si es un timestamp de Firestore
+      if (typeof date === 'object' && 'seconds' in date) {
+        return new Date(date.seconds * 1000).toLocaleDateString("es-AR");
+      }
+      // Si es una fecha normal
+      return new Date(date).toLocaleDateString("es-AR");
+    } catch (error) {
+      console.error("Error al formatear fecha:", error);
+      return "-";
+    }
   };
 
   // Manejar compartir enlace
@@ -76,7 +111,7 @@ export default function PresupuestoPage({
         updateData.rejectedAt = new Date();
       }
 
-      await updateDoc(quoteRef, updateData);
+      await updateDoc(doc(firestore, collections.QUOTES, quote.id), updateData);
       toast.success(`Estado actualizado a ${newStatus}`);
     } catch (error) {
       console.error("Error al actualizar estado:", error);
@@ -102,7 +137,7 @@ export default function PresupuestoPage({
         </h2>
         <Button
           variant="outline"
-          onClick={() => router.push("/dashboard/presupuestos")}
+          onClick={() => router.push("/dashboard/banderas/presupuestos")}
         >
           Volver a presupuestos
         </Button>
@@ -111,17 +146,17 @@ export default function PresupuestoPage({
   }
 
   // Calcular montos
-  const subtotal = quote.subtotal;
-  const taxAmount = quote.taxAmount;
-  const total = quote.total;
+  const subtotal = quote.subtotal || 0;
+  const taxAmount = quote.taxAmount || 0;
+  const total = quote.total || 0;
 
   return (
-    <div className="print:bg-white print:p-0 print:max-w-full">
-      <div className="flex justify-between items-center mb-6 print:hidden">
+    <div className={`${isDownload ? "print:bg-white print:p-0 print:max-w-full" : ""}`}>
+      <div className={`flex justify-between items-center mb-6 ${isDownload ? "print:hidden" : ""}`}>
         <div className="flex items-center">
           <Button
             variant="outline"
-            onClick={() => router.push("/dashboard/presupuestos")}
+            onClick={() => router.push("/dashboard/banderas/presupuestos")}
             className="mr-4"
           >
             <ArrowLeft className="h-4 w-4 mr-2" /> Volver
@@ -129,20 +164,24 @@ export default function PresupuestoPage({
           <h1 className="text-2xl font-bold">Presupuesto #{quote.number}</h1>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handlePrint}>
-            <Printer className="h-4 w-4 mr-2" /> Imprimir
-          </Button>
-          <Button variant="outline" onClick={handleShareLink}>
-            <Share2 className="h-4 w-4 mr-2" /> Compartir
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() =>
-              router.push(`/dashboard/presupuestos/${params.id}/editar`)
-            }
-          >
-            Editar
-          </Button>
+          {!isDownload && (
+            <>
+              <Button variant="outline" onClick={handlePrint}>
+                <Printer className="h-4 w-4 mr-2" /> Imprimir
+              </Button>
+              <Button variant="outline" onClick={handleShareLink}>
+                <Share2 className="h-4 w-4 mr-2" /> Compartir
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  router.push(`/dashboard/banderas/presupuestos/${params.id}/editar`)
+                }
+              >
+                Editar
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -170,9 +209,9 @@ export default function PresupuestoPage({
                   Dirección: {quote.client.address}
                 </p>
               )}
-              {quote.client.taxId && (
+              {quote.client.cuit && (
                 <p className="text-slate-600">
-                  CUIT/CUIL: {quote.client.taxId}
+                  CUIT/CUIL: {quote.client.cuit}
                 </p>
               )}
             </CardContent>
@@ -242,7 +281,7 @@ export default function PresupuestoPage({
                         <p className="font-medium">{item.product.name}</p>
                         {item.variant && (
                           <p className="text-sm text-slate-500">
-                            Variante: {item.variant.size}
+                            Medida: {item.variant.size}
                           </p>
                         )}
                         {item.notes && (
@@ -304,17 +343,17 @@ export default function PresupuestoPage({
         </div>
 
         {/* Acciones de acuerdo al estado actual - solo visible en panel administrativo */}
-        <Card className="print:hidden">
+        <Card className="print:hidden ">
           <CardHeader>
             <CardTitle>Acciones</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 ">
               {quote.status === EQuoteStatus.DRAFT && (
                 <Button
                   onClick={() => handleStatusChange(EQuoteStatus.SENT)}
                   disabled={loading}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="text-center bg-blue-600 hover:bg-blue-700 "
                 >
                   Marcar como enviado
                 </Button>
@@ -364,6 +403,21 @@ export default function PresupuestoPage({
           </CardContent>
         </Card>
       </div>
+
+      {isDownload && (
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.onload = function() {
+                window.print();
+                setTimeout(function() {
+                  window.close();
+                }, 1000);
+              }
+            `,
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -20,12 +20,13 @@ export type TClient = {
   name: string;
   type: EClientType;
   status: EClientStatus;
+  businessName?: string; // Razón social para empresas
   email?: string;
   phone?: string;
   address?: string;
-  taxId?: string; // CUIT/CUIL
+  cuit?: string; // CUIT/CUIL
   notes?: string;
-  contacts: TClientContact[];
+  contacts?: TClientContact[];
   createdAt: Date;
   updatedAt: Date;
 };

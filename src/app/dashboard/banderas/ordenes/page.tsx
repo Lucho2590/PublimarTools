@@ -16,29 +16,29 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import collections from "~/lib/collections";
-import { EQuoteStatus, TQuote } from "~/types/quote";
+import { EOrderStatus, TOrder } from "~/types/order";
 
-export default function PresupuestosPage() {
+export default function PedidosPage() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<EQuoteStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<EOrderStatus | "all">("all");
   const firestore = useFirestore();
 
   // Consulta a Firestore
-  const quotesCollection = collection(firestore, collections.QUOTES);
-  const quotesQuery = query(quotesCollection, orderBy("createdAt", "desc"));
+  const ordersCollection = collection(firestore, collections.ORDERS);
+  const ordersQuery = query(ordersCollection, orderBy("createdAt", "desc"));
 
-  const { status, data: quotes } = useFirestoreCollectionData(quotesQuery, {
+  const { status, data: orders } = useFirestoreCollectionData(ordersQuery, {
     idField: "id",
   });
 
-  // Filtrar presupuestos según la búsqueda y estado
-  const filteredQuotes = quotes?.filter((quote: TQuote) => {
+  // Filtrar pedidos según la búsqueda y estado
+  const filteredOrders = orders?.filter((order: TOrder) => {
     const matchesSearch =
-      quote.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      quote.client.name.toLowerCase().includes(searchTerm.toLowerCase());
+      order.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.client.name.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus =
-      statusFilter === "all" || quote.status === statusFilter;
+      statusFilter === "all" || order.status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
@@ -52,10 +52,7 @@ export default function PresupuestosPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Presupuestos</h1>
-        <Button asChild>
-          <Link href="/dashboard/presupuestos/nuevo">Nuevo presupuesto</Link>
-        </Button>
+        <h1 className="text-2xl font-bold">Ordenes de trabajo</h1>
       </div>
 
       <Card className="mb-6">
@@ -73,14 +70,14 @@ export default function PresupuestosPage() {
                 className="w-full p-2 border border-slate-300 rounded-md"
                 value={statusFilter}
                 onChange={(e) =>
-                  setStatusFilter(e.target.value as EQuoteStatus | "all")
+                  setStatusFilter(e.target.value as EOrderStatus | "all")
                 }
               >
                 <option value="all">Todos los estados</option>
-                <option value={EQuoteStatus.DRAFT}>Borrador</option>
-                <option value={EQuoteStatus.SENT}>Enviado</option>
-                <option value={EQuoteStatus.CONFIRMED}>Confirmado</option>
-                <option value={EQuoteStatus.REJECTED}>Rechazado</option>
+                <option value={EOrderStatus.PENDING}>Pendiente</option>
+                <option value={EOrderStatus.IN_PROCESS}>En proceso</option>
+                <option value={EOrderStatus.COMPLETED}>Completado</option>
+                <option value={EOrderStatus.DELIVERED}>Entregado</option>
               </select>
             </div>
           </div>
@@ -100,54 +97,56 @@ export default function PresupuestosPage() {
                   <TableHead>Número</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Fecha</TableHead>
-                  <TableHead>Válido hasta</TableHead>
+                  <TableHead>Entrega estimada</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredQuotes && filteredQuotes.length > 0 ? (
-                  filteredQuotes.map((quote: TQuote) => (
-                    <TableRow key={quote.id}>
+                {filteredOrders && filteredOrders.length > 0 ? (
+                  filteredOrders.map((order: TOrder) => (
+                    <TableRow key={order.id}>
                       <TableCell className="font-medium">
-                        {quote.number}
+                        {order.number}
                       </TableCell>
-                      <TableCell>{quote.client.name}</TableCell>
-                      <TableCell>{formatDate(quote.createdAt)}</TableCell>
-                      <TableCell>{formatDate(quote.validUntil)}</TableCell>
-                      <TableCell>${quote.total.toFixed(2)}</TableCell>
+                      <TableCell>{order.client.name}</TableCell>
+                      <TableCell>{formatDate(order.createdAt)}</TableCell>
+                      <TableCell>
+                        {formatDate(order.estimatedDeliveryDate)}
+                      </TableCell>
+                      <TableCell>${order.total.toFixed(2)}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            quote.status === EQuoteStatus.DRAFT
-                              ? "bg-slate-100 text-slate-800"
-                              : quote.status === EQuoteStatus.SENT
+                            order.status === EOrderStatus.PENDING
                               ? "bg-blue-100 text-blue-800"
-                              : quote.status === EQuoteStatus.CONFIRMED
+                              : order.status === EOrderStatus.IN_PROCESS
+                              ? "bg-amber-100 text-amber-800"
+                              : order.status === EOrderStatus.COMPLETED
                               ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
+                              : "bg-slate-100 text-slate-800"
                           }`}
                         >
-                          {quote.status === EQuoteStatus.DRAFT
-                            ? "Borrador"
-                            : quote.status === EQuoteStatus.SENT
-                            ? "Enviado"
-                            : quote.status === EQuoteStatus.CONFIRMED
-                            ? "Confirmado"
-                            : "Rechazado"}
+                          {order.status === EOrderStatus.PENDING
+                            ? "Pendiente"
+                            : order.status === EOrderStatus.IN_PROCESS
+                            ? "En proceso"
+                            : order.status === EOrderStatus.COMPLETED
+                            ? "Completado"
+                            : "Entregado"}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" asChild>
-                            <Link href={`/dashboard/presupuestos/${quote.id}`}>
+                            <Link href={`/dashboard/pedidos/${order.id}`}>
                               Ver
                             </Link>
                           </Button>
                           <Button variant="outline" size="sm" asChild>
                             <Link
-                              href={`/dashboard/presupuestos/${quote.id}/editar`}
+                              href={`/dashboard/pedidos/${order.id}/editar`}
                             >
                               Editar
                             </Link>
@@ -163,8 +162,8 @@ export default function PresupuestosPage() {
                       className="text-center py-8 text-slate-500"
                     >
                       {searchTerm || statusFilter !== "all"
-                        ? "No se encontraron presupuestos con los filtros aplicados."
-                        : "No hay presupuestos disponibles. ¡Crea tu primer presupuesto!"}
+                        ? "No se encontraron pedidos con los filtros aplicados."
+                        : "No hay pedidos disponibles."}
                     </TableCell>
                   </TableRow>
                 )}

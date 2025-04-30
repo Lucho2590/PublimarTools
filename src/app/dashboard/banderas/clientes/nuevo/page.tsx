@@ -123,7 +123,8 @@ export default function NuevoClientePage() {
         <h1 className="text-2xl font-bold">Crear nuevo cliente</h1>
         <Button
           variant="outline"
-          onClick={() => router.push("/dashboard/clientes")}
+          onClick={() => router.push("/dashboard/banderas/clientes")}
+          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
         >
           Cancelar
         </Button>
@@ -241,6 +242,7 @@ export default function NuevoClientePage() {
               onClick={addContact}
               variant="outline"
               size="sm"
+              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
             >
               Añadir contacto
             </Button>
@@ -318,12 +320,13 @@ export default function NuevoClientePage() {
           <CardFooter className="flex justify-between pt-6">
             <Button
               variant="outline"
-              onClick={() => router.push("/dashboard/clientes")}
+              onClick={() => router.push("/dashboard/banderas/clientes")}
               disabled={loading}
+                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading} className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white">
               {loading ? "Guardando..." : "Guardar cliente"}
             </Button>
           </CardFooter>

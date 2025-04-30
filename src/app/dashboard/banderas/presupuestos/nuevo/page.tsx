@@ -1,16 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  useFirestore,
-  useFirestoreDoc,
-  useFirestoreCollectionData,
-} from "reactfire";
+import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import {
   collection,
-  doc,
-  updateDoc,
+  addDoc,
   serverTimestamp,
   DocumentData,
 } from "firebase/firestore";
@@ -44,11 +39,18 @@ import {
 } from "~/components/ui/dialog";
 import { Search, Plus, Trash2, Edit, ArrowLeft } from "lucide-react";
 import collections from "~/lib/collections";
-import { EQuoteStatus, TQuote, TQuoteItem } from "~/types/quote";
+import { EQuoteStatus } from "~/types/quote";
 import { TClient } from "~/types/client";
-import { TProduct, TProductVariant } from "~/types/product";
+import { TProduct, TProductVariant, TProductCategory } from "~/types/product";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 
-// Tipo para los items del presupuesto local
+// Tipo para los items del presupuesto
 type QuoteItem = {
   id: string;
   product: TProduct;
@@ -60,11 +62,7 @@ type QuoteItem = {
   notes: string;
 };
 
-export default function EditarPresupuestoPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default function NuevoPresupuestoPage() {
   const [loading, setLoading] = useState(false);
   const [selectedClient, setSelectedClient] = useState<TClient | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -73,24 +71,13 @@ export default function EditarPresupuestoPage({
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<TProduct | null>(null);
-  const [selectedVariant, setSelectedVariant] =
-    useState<TProductVariant | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<TProductVariant | null>(null);
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
   const [itemNotes, setItemNotes] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
 
   const router = useRouter();
   const firestore = useFirestore();
-
-  // Obtener el presupuesto a editar
-  const quoteRef = doc(firestore, collections.QUOTES, params.id);
-  const { status: quoteStatus, data } = useFirestoreDoc(quoteRef, {
-    idField: "id",
-  });
-
-  // Convertir el data a TQuote
-  const quote = data as unknown as TQuote;
 
   // Fetch clients
   const clientsCollection = collection(firestore, collections.CLIENTS);
@@ -110,45 +97,24 @@ export default function EditarPresupuestoPage({
     }
   );
 
+  // Fetch categories
+  const categoriesCollection = collection(firestore, collections.products.CATEGORIES);
+  const { status: categoriesStatus, data: categories } = useFirestoreCollectionData(
+    categoriesCollection,
+    {
+      idField: "id",
+    }
+  );
+
   // Basic quote info
   const [formData, setFormData] = useState({
     number: "", // Will be auto-generated
     notes: "",
-    validUntil: new Date().toISOString().split("T")[0],
+    validUntil: new Date(new Date().setDate(new Date().getDate() + 30))
+      .toISOString()
+      .split("T")[0], // 30 days from now
     taxRate: 21, // Default tax rate
   });
-
-  // Cargar datos del presupuesto cuando esté disponible
-  useEffect(() => {
-    if (quoteStatus === "success" && quote) {
-      // Configurar cliente seleccionado
-      setSelectedClient(quote.client);
-
-      // Configurar items
-      const mappedItems: QuoteItem[] = quote.items.map((item: TQuoteItem) => ({
-        id: item.id,
-        product: item.product,
-        variant: item.variant || undefined,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        discount: item.discount || 0,
-        subtotal: item.subtotal,
-        notes: item.notes || "",
-      }));
-
-      setItems(mappedItems);
-
-      // Configurar datos básicos
-      setFormData({
-        number: quote.number,
-        notes: quote.notes || "",
-        validUntil: new Date(quote.validUntil).toISOString().split("T")[0],
-        taxRate: quote.taxRate,
-      });
-
-      setIsLoading(false);
-    }
-  }, [quoteStatus, quote]);
 
   // Filter clients based on search
   const filteredClients = clients?.filter((client: DocumentData) => {
@@ -176,10 +142,31 @@ export default function EditarPresupuestoPage({
   const taxAmount = subtotal * (Number(formData.taxRate) / 100);
   const total = subtotal + taxAmount;
 
+  // Calcular precio con IVA
+  const calculatePriceWithTax = (price: number, taxRate: number) => {
+    return price * (1 + taxRate / 100);
+  };
+
+  // Obtener nombres de categorías
+  const getCategoryNames = (categoryIds: string[] | undefined) => {
+    if (!categoryIds || !Array.isArray(categoryIds)) {
+      return "-";
+    }
+    return (
+      categoryIds
+        .map((id) => {
+          const category = categories?.find(
+            (c) => (c as unknown as TProductCategory).id === id
+          );
+          return category ? (category as unknown as TProductCategory).name : "";
+        })
+        .filter(Boolean)
+        .join(", ") || "-"
+    );
+  };
+
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -191,9 +178,9 @@ export default function EditarPresupuestoPage({
   const addItemToQuote = () => {
     if (!selectedProduct) return;
 
-    const price = selectedVariant
+    const price = Number(selectedVariant
       ? selectedVariant.price
-      : selectedProduct.price || 0;
+      : selectedProduct.price || 0);
     const discountAmount = (price * itemDiscount) / 100;
     const priceAfterDiscount = price - discountAmount;
     const subtotal = priceAfterDiscount * itemQuantity;
@@ -260,6 +247,11 @@ export default function EditarPresupuestoPage({
     setLoading(true);
 
     try {
+      // Generate quote number (formato: Q-YYYY-XXXX)
+      const quoteNumber = `P-${new Date().getFullYear()}-${Math.floor(
+        1000 + Math.random() * 9000
+      )}`;
+
       // Ensure all required fields have values and sanitize data for Firestore
       const sanitizedItems = items.map((item) => ({
         id: item.id,
@@ -267,13 +259,14 @@ export default function EditarPresupuestoPage({
           id: item.product.id,
           name: item.product.name,
           description: item.product.description || "",
-          category: item.product.category,
-          status: item.product.status,
+          categories: item.product.categories || [],
           imageUrls: item.product.imageUrls || [],
           hasVariants: item.product.hasVariants || false,
           price: item.product.price || 0,
           stock: item.product.stock || 0,
           sku: item.product.sku || "",
+          taxRate: item.product.taxRate || 21,
+          variants: item.product.variants || [],
           createdAt: item.product.createdAt,
           updatedAt: item.product.updatedAt,
         },
@@ -294,8 +287,7 @@ export default function EditarPresupuestoPage({
       }));
 
       const quoteData = {
-        // Conservar el número y demás datos originales
-        number: formData.number,
+        number: quoteNumber,
         client: {
           id: selectedClient.id,
           name: selectedClient.name,
@@ -304,13 +296,13 @@ export default function EditarPresupuestoPage({
           email: selectedClient.email || "",
           phone: selectedClient.phone || "",
           address: selectedClient.address || "",
-          taxId: selectedClient.taxId || "",
+          taxId: selectedClient.cuit || "",
           notes: selectedClient.notes || "",
           contacts: selectedClient.contacts || [],
           createdAt: selectedClient.createdAt,
           updatedAt: selectedClient.updatedAt,
         },
-        status: quote.status, // Mantener el estado actual
+        status: EQuoteStatus.DRAFT,
         items: sanitizedItems,
         subtotal: subtotal,
         taxRate: parseFloat(formData.taxRate.toString()),
@@ -318,17 +310,22 @@ export default function EditarPresupuestoPage({
         total: total,
         validUntil: new Date(formData.validUntil),
         notes: formData.notes || "",
-        updatedAt: serverTimestamp(),
+        comments: [],
+        publicUrl: `${window.location.origin}/presupuestos/${quoteNumber}`,
+        createdBy: "admin", // Would come from auth in a real app
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
 
-      await updateDoc(quoteRef, quoteData);
+      const quotesCollection = collection(firestore, collections.QUOTES);
+      await addDoc(quotesCollection, quoteData);
 
-      toast.success("Presupuesto actualizado exitosamente");
-      router.push(`/dashboard/presupuestos/${params.id}`);
+      toast.success("Presupuesto creado exitosamente");
+      router.push("/dashboard/banderas/presupuestos");
     } catch (error) {
-      console.error("Error al actualizar presupuesto:", error);
+      console.error("Error al crear presupuesto:", error);
       toast.error(
-        `Ocurrió un error al actualizar el presupuesto: ${
+        `Ocurrió un error al crear el presupuesto: ${
           error instanceof Error ? error.message : "Error desconocido"
         }`
       );
@@ -342,13 +339,9 @@ export default function EditarPresupuestoPage({
     setSearchTerm("");
   };
 
-  const handleProductSelect = (product: TProduct) => {
+  const handleProductSelect = (product: TProduct, variant?: TProductVariant) => {
     setSelectedProduct(product);
-
-    // Si no tiene variantes, establecer el precio directamente
-    if (!product.hasVariants) {
-      setSelectedVariant(null);
-    }
+    setSelectedVariant(variant || null);
   };
 
   const handleVariantSelect = (variant: TProductVariant) => {
@@ -363,21 +356,16 @@ export default function EditarPresupuestoPage({
     setItemNotes("");
   };
 
-  if (isLoading || quoteStatus === "loading") {
-    return (
-      <div className="flex justify-center items-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
-      </div>
-    );
-  }
-
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Editar presupuesto</h1>
+        <h1 className="text-2xl font-bold">Crear nuevo presupuesto</h1>
         <Button
           variant="outline"
-          onClick={() => router.push(`/dashboard/presupuestos/${params.id}`)}
+          onClick={() => router.push("/dashboard/banderas/presupuestos")}
+          disabled={loading}
+          type="button"
+          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
         >
           Cancelar
         </Button>
@@ -415,7 +403,6 @@ export default function EditarPresupuestoPage({
               </div>
             ) : (
               <div>
-                {/* Búsqueda de clientes */}
                 <div className="mb-4 relative">
                   <Search
                     className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
@@ -437,7 +424,7 @@ export default function EditarPresupuestoPage({
                           <TableHead>Nombre</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead>Teléfono</TableHead>
-                          <TableHead></TableHead>
+                          {/* <TableHead></TableHead> */}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -563,8 +550,11 @@ export default function EditarPresupuestoPage({
                           <TableHeader>
                             <TableRow>
                               <TableHead>Nombre</TableHead>
-                              <TableHead>Descripción</TableHead>
-                              <TableHead>Precio</TableHead>
+                              {/* <TableHead>Categorías</TableHead> */}
+                              {/* <TableHead>Medida</TableHead> */}
+                              <TableHead className="text-right">Stock</TableHead>
+                              {/* <TableHead className="text-right">Precio</TableHead>
+                              <TableHead className="text-right">+ IVA</TableHead> */}
                               <TableHead>Acción</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -572,42 +562,101 @@ export default function EditarPresupuestoPage({
                             {productsStatus === "loading" ? (
                               <TableRow>
                                 <TableCell
-                                  colSpan={4}
+                                  colSpan={7}
                                   className="text-center py-4"
                                 >
                                   Cargando productos...
                                 </TableCell>
                               </TableRow>
-                            ) : filteredProducts &&
-                              filteredProducts.length > 0 ? (
-                              filteredProducts.map((product: DocumentData) => (
-                                <TableRow key={product.id}>
-                                  <TableCell>{product.name}</TableCell>
-                                  <TableCell className="truncate max-w-[200px]">
-                                    {product.description || "-"}
-                                  </TableCell>
-                                  <TableCell>
-                                    {product.hasVariants
-                                      ? "Múltiples precios"
-                                      : `$${product.price?.toFixed(2) || "-"}`}
-                                  </TableCell>
-                                  <TableCell>
-                                    <Button
-                                      size="sm"
-                                      onClick={() =>
-                                        handleProductSelect(product as TProduct)
-                                      }
-                                      type="button"
-                                    >
-                                      Seleccionar
-                                    </Button>
-                                  </TableCell>
-                                </TableRow>
-                              ))
+                            ) : filteredProducts && filteredProducts.length > 0 ? (
+                              filteredProducts.map((product: DocumentData) => {
+                                const typedProduct = product as unknown as TProduct;
+                                const selectedVariant = typedProduct.variants?.[0];
+                                return (
+                                  <TableRow key={product.id}>
+                                    <TableCell>{product.name}</TableCell>
+                                    {/* <TableCell>
+                                      {getCategoryNames(typedProduct.categories)}
+                                    </TableCell> */}
+                                    {/* <TableCell>
+                                      {typedProduct.variants && typedProduct.variants.length > 0 ? (
+                                        <Select
+                                          value={selectedVariant?.size || ""}
+                                          onValueChange={(value) => {
+                                            const variant = typedProduct.variants.find(v => v.size === value);
+                                            if (variant) {
+                                              handleProductSelect(typedProduct, variant);
+                                            }
+                                          }}
+                                        >
+                                          <SelectTrigger className="w-[150px]">
+                                            <SelectValue placeholder="Seleccionar medida" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            {typedProduct.variants.map((variant) => (
+                                              <SelectItem
+                                                key={variant.id}
+                                                value={variant.size}
+                                              >
+                                                {variant.size}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectContent>
+                                        </Select>
+                                      ) : (
+                                        "-"
+                                      )}
+                                    </TableCell> */}
+                                    <TableCell className="text-right">
+                                      {selectedVariant ? (
+                                        <span
+                                          className={`${
+                                            Number(selectedVariant.stock) < 5 ? "text-red-500" : ""
+                                          }`}
+                                        >
+                                          {selectedVariant.stock}
+                                        </span>
+                                      ) : (
+                                        "-"
+                                      )}
+                                    </TableCell>
+                                    {/* <TableCell className="text-right">
+                                      {selectedVariant ? (
+                                        <span>${Number(selectedVariant.price).toFixed(2)}</span>
+                                      ) : (
+                                        "-"
+                                      )}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {selectedVariant ? (
+                                        <span>
+                                          $
+                                          {calculatePriceWithTax(
+                                            Number(selectedVariant.price),
+                                            Number(typedProduct.taxRate)
+                                          ).toFixed(2)}
+                                        </span>
+                                      ) : (
+                                        "-"
+                                      )}
+                                    </TableCell> */}
+                                    <TableCell>
+                                      <Button
+                                        size="sm"
+                                        onClick={() => handleProductSelect(typedProduct, selectedVariant)}
+                                        type="button"
+                                        className="bg-blue-900 hover:bg-blue-700 text-white"
+                                      >
+                                        Seleccionar
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })
                             ) : (
                               <TableRow>
                                 <TableCell
-                                  colSpan={4}
+                                  colSpan={7}
                                   className="text-center py-4"
                                 >
                                   {productSearchTerm
@@ -622,7 +671,140 @@ export default function EditarPresupuestoPage({
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      {/* Detalles del producto seleccionado */}
+                      <div className="flex justify-between items-center mb-4">
+                        <div>
+                          <h3 className="text-lg font-semibold">
+                            {selectedProduct.name}
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            {selectedProduct.description}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleResetProductSelection}
+                          className="flex items-center"
+                        >
+                          <ArrowLeft className="mr-2 h-4 w-4" /> Volver a
+                          productos
+                        </Button>
+                      </div>
+
+                      {selectedProduct.hasVariants && (
+                        <div className="space-y-2">
+                          <Label>Selecciona una variante</Label>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {products
+                              ?.find((p) => p.id === selectedProduct.id)
+                              ?.variants?.map((variant: TProductVariant) => (
+                                <div
+                                  key={variant.id}
+                                  className={`cursor-pointer border rounded-md p-3 transition-all ${
+                                    selectedVariant?.id === variant.id
+                                      ? "border-slate-800 bg-slate-50"
+                                      : "hover:border-slate-400"
+                                  }`}
+                                  onClick={() => handleVariantSelect(variant)}
+                                >
+                                  <div className="flex justify-between">
+                                    <span className="font-medium">
+                                      {variant.size}
+                                    </span>
+                                    <span className="text-slate-700">
+                                      ${Number(variant.price).toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="text-sm text-slate-500 mt-1">
+                                    Stock: {variant.stock} unidades
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="quantity">Cantidad</Label>
+                          <Input
+                            id="quantity"
+                            type="number"
+                            min="1"
+                            value={itemQuantity}
+                            onChange={(e) =>
+                              setItemQuantity(parseInt(e.target.value) || 1)
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="discount">Descuento (%)</Label>
+                          <Input
+                            id="discount"
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={itemDiscount}
+                            onChange={(e) =>
+                              setItemDiscount(parseInt(e.target.value) || 0)
+                            }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="notes">Notas del producto</Label>
+                        <Textarea
+                          id="notes"
+                          value={itemNotes}
+                          onChange={(e) => setItemNotes(e.target.value)}
+                          placeholder="Añade notas específicas para este producto..."
+                          rows={2}
+                        />
+                      </div>
+
+                      <div className="bg-slate-50 p-4 rounded-md">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-sm">
+                              Precio unitario: $
+                              {selectedVariant
+                                ? Number(selectedVariant.price).toFixed(2)
+                                : Number(selectedProduct.price || 0).toFixed(2)}
+                            </p>
+                            {itemDiscount > 0 && (
+                              <p className="text-sm">
+                                Descuento: {itemDiscount}% ($
+                                {(
+                                  ((selectedVariant
+                                    ? Number(selectedVariant.price)
+                                    : Number(selectedProduct.price || 0)) *
+                                    itemDiscount) /
+                                  100
+                                ).toFixed(2)}
+                                )
+                              </p>
+                            )}
+                            <p className="text-sm">Cantidad: {itemQuantity}</p>
+                          </div>
+                          <div>
+                            <p className="text-lg font-semibold">
+                              Subtotal: $
+                              {(
+                                itemQuantity *
+                                ((selectedVariant
+                                  ? Number(selectedVariant.price)
+                                  : Number(selectedProduct.price || 0)) -
+                                  ((selectedVariant
+                                    ? Number(selectedVariant.price)
+                                    : Number(selectedProduct.price || 0)) *
+                                    itemDiscount) /
+                                    100)
+                              ).toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -671,6 +853,7 @@ export default function EditarPresupuestoPage({
                   size="sm"
                   onClick={() => setIsAddingProduct(true)}
                   disabled={!selectedClient}
+                  className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                 >
                   <Plus className="mr-2 h-4 w-4" /> Agregar producto
                 </Button>
@@ -721,6 +904,7 @@ export default function EditarPresupuestoPage({
                               size="icon"
                               onClick={() => startEditItem(item)}
                               title="Editar"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
@@ -769,11 +953,10 @@ export default function EditarPresupuestoPage({
           <CardFooter className="flex justify-between pt-6">
             <Button
               variant="outline"
-              onClick={() =>
-                router.push(`/dashboard/presupuestos/${params.id}`)
-              }
+              onClick={() => router.push("/dashboard/banderas/presupuestos")}
               disabled={loading}
               type="button"
+              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
             >
               Cancelar
             </Button>
@@ -782,8 +965,9 @@ export default function EditarPresupuestoPage({
                 type="submit"
                 disabled={loading || !selectedClient}
                 variant="default"
+                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
               >
-                {loading ? "Guardando..." : "Guardar cambios"}
+                {loading ? "Guardando..." : "Guardar como borrador"}
               </Button>
             </div>
           </CardFooter>
@@ -791,4 +975,4 @@ export default function EditarPresupuestoPage({
       </form>
     </div>
   );
-}
+} 

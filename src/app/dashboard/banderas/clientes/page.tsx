@@ -17,6 +17,7 @@ import {
 } from "~/components/ui/table";
 import collections from "~/lib/collections";
 import { EClientType, EClientStatus, TClient } from "~/types/client";
+import { Edit, Eye, View } from "lucide-react";
 
 export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -31,7 +32,7 @@ export default function ClientesPage() {
   });
 
   // Filtrar clientes según la búsqueda
-  const filteredClients = clients?.filter((client: TClient) => {
+  const filteredClients = clients?.filter((client) => {
     return (
       client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -43,8 +44,11 @@ export default function ClientesPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Clientes</h1>
-        <Button asChild>
-          <Link href="/dashboard/clientes/nuevo">Nuevo cliente</Link>
+        <Button
+          asChild
+          className="bg-blue-900 hover:bg-blue-900 hover:text-white"
+        >
+          <Link href="/dashboard/banderas/clientes/nuevo">Nuevo cliente</Link>
         </Button>
       </div>
 
@@ -72,55 +76,57 @@ export default function ClientesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Teléfono</TableHead>
-                  <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  <TableHead className="text-left">Nombre</TableHead>
+                  <TableHead className="text-left">Tipo</TableHead>
+                  <TableHead className="text-left">Email</TableHead>
+                  <TableHead className="text-left">Teléfono</TableHead>
+                  <TableHead className="text-center">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredClients && filteredClients.length > 0 ? (
-                  filteredClients.map((client: TClient) => (
+                  filteredClients.map((client) => (
                     <TableRow key={client.id}>
                       <TableCell className="font-medium">
                         {client.name}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-left">
                         {client.type === EClientType.COMPANY
                           ? "Empresa"
                           : "Individual"}
                       </TableCell>
-                      <TableCell>{client.email || "-"}</TableCell>
-                      <TableCell>{client.phone || "-"}</TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            client.status === EClientStatus.ACTIVE
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {client.status === EClientStatus.ACTIVE
-                            ? "Activo"
-                            : "Inactivo"}
-                        </span>
+                      <TableCell className="text-left">
+                        {client.email || "-"}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" asChild>
-                            <Link href={`/dashboard/clientes/${client.id}`}>
-                              Ver
-                            </Link>
-                          </Button>
-                          <Button variant="outline" size="sm" asChild>
-                            <Link
-                              href={`/dashboard/clientes/${client.id}/editar`}
+                      <TableCell className="text-left">
+                        {client.phone || "-"}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <div className="flex justify-center gap-2">
+                          <Link
+                            href={`/dashboard/banderas/clientes/${client.id}`}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Ver"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                             >
-                              Editar
-                            </Link>
-                          </Button>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Link
+                            href={`/dashboard/banderas/clientes/${client.id}/editar`}
+                          >
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Editar"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </Link>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -129,7 +135,7 @@ export default function ClientesPage() {
                   <TableRow>
                     <TableCell
                       colSpan={6}
-                      className="text-center py-8 text-slate-500"
+                      className="text-center py-6 text-slate-500"
                     >
                       {searchTerm
                         ? "No se encontraron clientes con los términos de búsqueda."
