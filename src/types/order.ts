@@ -1,14 +1,21 @@
 import { TClient } from "./client";
 import { TQuoteItem } from "./quote";
+import { EPaymentMethod } from "./sale";
 
 export enum EOrderStatus {
-  PENDING = "pending",
   IN_PROCESS = "in_process",
   COMPLETED = "completed",
-  DELIVERED = "delivered",
+  CANCELLED = "cancelled",
 }
 
 export type TOrderItem = TQuoteItem;
+
+export type TPaymentHistory = {
+  amount: number;
+  date: Date;
+  method: EPaymentMethod;
+  notes?: string;
+};
 
 export type TOrder = {
   id: string;
@@ -31,4 +38,12 @@ export type TOrder = {
   startedAt?: Date; // Cuando pasa a 'in_process'
   completedAt?: Date; // Cuando pasa a 'completed'
   deliveredAt?: Date; // Cuando pasa a 'delivered'
+  cancelledAt?: Date; // Cuando pasa a 'cancelled'
+  paymentMethod?: EPaymentMethod;
+  isInvoiced?: boolean;
+  invoiceNumber?: string;
+  downPayment?: number;
+  balance?: number;
+  publicUrl?: string;
+  paymentHistory?: TPaymentHistory[];
 };

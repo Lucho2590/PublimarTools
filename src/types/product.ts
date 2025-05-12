@@ -19,27 +19,27 @@ export type TProductCategory = {
   updatedAt: Date;
 };
 
-export type TProductVariant = {
+export interface TProductVariant {
   id: string;
-  size: string; // Ejemplo: "90x150"
-  price: string | number;
-  stock: string | number;
+  size: string;
+  price: number | string;
+  stock: number | string;
   sku?: string;
-};
+}
 
-export type TProduct = {
+export interface TProduct {
   id: string;
   name: string;
-  description: string;
-  categories: string[]; // IDs de las categorías
-  imageUrls: string[];
-  hasVariants: boolean;
-  price: number | null;
-  stock: number | null;
-  sku: string;
-  taxRate: number; // Porcentaje de IVA
-  size: string;
+  description?: string;
   variants: TProductVariant[];
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-};
+  categories: string[];
+  taxRate: number;
+  price: number | string;
+  stock: number | string;
+  category?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+  imageUrls: never[];
+  hasVariants: boolean;
+  sku: string;
+}

@@ -41,7 +41,7 @@ export default function LoginPage() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       toast.success("Inicio de sesión exitoso");
-      router.push("/dashboard");
+      router.push("/publimar");
     } catch (error) {
       toast.error("Error al iniciar sesión. Verifica tus credenciales.");
       console.error(error);
@@ -57,7 +57,7 @@ export default function LoginPage() {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
       toast.success("Inicio de sesión con Google exitoso");
-      router.push("/dashboard");
+      router.push("/publimar");
     } catch (error) {
       toast.error("Error al iniciar sesión con Google");
       console.error(error);

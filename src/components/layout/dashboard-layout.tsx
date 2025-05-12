@@ -14,12 +14,17 @@ interface IDashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children }: IDashboardLayoutProps) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = usePathname();
   const auth = useAuth();
   const { status, data: signInCheckResult } = useSigninCheck();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -41,7 +46,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
     }
   };
 
-  if (status === "loading") {
+  if (!mounted || status === "loading") {
     return (
       <div className="flex items-center justify-center h-screen">
         Cargando...
@@ -64,8 +69,8 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
 
   const navItems = [
     {
-      name: "Dashboard",
-      href: "/dashboard",
+      name: "publimar",
+      href: "/publimar",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -79,7 +84,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
     },
     {
       name: "Banderas",
-      href: "#",
+      href: "/publimar/banderas",
       icon: (
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -99,7 +104,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
       subItems: [
         {
           name: "Productos",
-          href: "/dashboard/banderas/productos",
+          href: "/publimar/banderas/productos",
           icon: (
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -118,7 +123,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
         },
         {
           name: "Clientes",
-          href: "/dashboard/banderas/clientes",
+          href: "/publimar/banderas/clientes",
           icon: (
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -132,7 +137,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
         },
         {
           name: "Presupuestos",
-          href: "/dashboard/banderas/presupuestos",
+          href: "/publimar/banderas/presupuestos",
           icon: (
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -150,7 +155,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
         },
         {
           name: "Ordenes",
-          href: "/dashboard/banderas/ordenes",
+          href: "/publimar/banderas/ordenes",
           icon: (
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -163,6 +168,46 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                 fillRule="evenodd"
                 d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"
                 clipRule="evenodd"
+              />
+            </svg>
+          ),
+        },
+        {
+          name: "Ventas",
+          href: "/publimar/banderas/ventas",
+          icon: (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              className="size-6"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z"
+              />
+            </svg>
+          ),
+        },
+        {
+          name: "Compras",
+          href: "/publimar/banderas/compras",
+          icon: (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
+              stroke="currentColor"
+              className="size-6"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"
               />
             </svg>
           ),
@@ -181,7 +226,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
       >
         <div className="p-4 flex items-center justify-between">
           {isSidebarOpen ? (
-            <h2 className="text-xl font-bold">Publimar Tools</h2>
+            <h2 className="text-xl font-bold">PublimarTools</h2>
           ) : (
             <h2 className="text-xl font-bold">PT</h2>
           )}
@@ -235,12 +280,15 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                           ? "bg-blue-700 text-white"
                           : "text-blue-300 hover:bg-blue-900 hover:text-white"
                       }`}
-                      onClick={() => toggleItem(item.name)}
+                      onClick={() => {
+                        toggleItem(item.name);
+                        router.push(item.href);
+                      }}
                     >
                       {item.icon}
                       {isSidebarOpen && (
                         <>
-                          <span className="ml-3">{item.name}</span>
+                          <span className="ml-3" >{item.name}</span>
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             className={`h-4 w-4 ml-auto transition-transform ${
@@ -319,15 +367,12 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
               stroke-width="1.5"
               stroke="currentColor"
               className="size-6"
-
             >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15m-3 0-3-3m0 0 3-3m-3 3H15"
               />
-
-
             </svg>
             {isSidebarOpen && "Cerrar sesión"}
           </Button>

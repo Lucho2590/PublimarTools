@@ -14,6 +14,10 @@ const collections = {
   orders: {
     ITEMS: "items",
   },
+  SALES: "sales",
+  sales: {
+    ITEMS: "items",
+  },
   USERS: "users",
 };
 
