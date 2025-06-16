@@ -21,12 +21,21 @@ import { redirect, useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Edit, Eye } from "lucide-react";
+import OrderDetailsModal from "./modalOrdenes/orderDetailsModal";
 
 export default function PedidosPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<EOrderStatus | "all">("all");
+  const [showModal, setShowModal] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const firestore = useFirestore();
   const router = useRouter();
+
+  // Función para manejar la vista de orden en modal
+  const handleViewOrder = (orderId: string) => {
+    setSelectedOrderId(orderId);
+    setShowModal(true);
+  };
 
   // Consulta a Firestore
   const ordersCollection = collection(firestore, collections.ORDERS);
@@ -156,32 +165,15 @@ export default function PedidosPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-2 ">
-                          <Link
-                               href={`/publimar/banderas/ordenes/${order.id}`}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Ver orden"
+                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                                onClick={() => handleViewOrder(order.id)}
                               >
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  title="Ver"
-                                  className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </Link>
-
-                              <Link
-                               href={`/publimar/banderas/ordenes/${order.id}/editar`}
-                              >
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  title="Editar"
-                                  className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                              </Link>
-                  
+                                <Eye className="h-4 w-4" />
+                              </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -204,6 +196,13 @@ export default function PedidosPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de detalles de orden */}
+      <OrderDetailsModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        orderId={selectedOrderId}
+      />
     </div>
   );
 }
