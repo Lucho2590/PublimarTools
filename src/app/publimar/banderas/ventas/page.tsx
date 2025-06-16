@@ -25,8 +25,7 @@ import { EPaymentMethod, TSale } from "@/types/sale";
 import { useRouter } from "next/navigation";
 import { formatearPrecio } from "@/lib/utils";
 import { NuevaVentaModal } from "./modalVentas/newSaleModal";
-import { ViewSaleModal } from "./modalVentas/viewSaleModal";
-import { EditSaleModal } from "./modalVentas/editSaleModal";
+import { SaleDetailsModal } from "./modalVentas/saleDetailsModal";
 import { Edit, Eye, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -43,8 +42,7 @@ export default function VentasPage() {
   const [endDate, setEndDate] = useState<string>(today);
   const [selectedBank, setSelectedBank] = useState<string>("all");
   const [showNewSaleModal, setShowNewSaleModal] = useState(false);
-  const [showViewSaleModal, setShowViewSaleModal] = useState(false);
-  const [showEditSaleModal, setShowEditSaleModal] = useState(false);
+  const [showSaleDetailsModal, setShowSaleDetailsModal] = useState(false);
   const [selectedVentaId, setSelectedVentaId] = useState<string | null>(null);
   const router = useRouter();
   const firestore = useFirestore();
@@ -194,6 +192,8 @@ export default function VentasPage() {
     }
 
     const filteredSales = sales.filter((sale) => {
+      if (!sale.createdAt) return false;
+      
       const saleDate = sale.createdAt instanceof Date 
         ? sale.createdAt 
         : new Date(sale.createdAt.seconds * 1000);
@@ -242,6 +242,11 @@ export default function VentasPage() {
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
+  const handleViewSale = (saleId: string) => {
+    setSelectedVentaId(saleId);
+    setShowSaleDetailsModal(true);
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -254,29 +259,21 @@ export default function VentasPage() {
         </Button>
       </div>
 
-      {/* Modal de nueva venta */}
       <NuevaVentaModal
         open={showNewSaleModal}
         onOpenChange={setShowNewSaleModal}
         onSuccess={() => {
-          window.location.reload();
+          setShowNewSaleModal(false);
         }}
       />
 
-      {/* Modal de ver venta */}
-      <ViewSaleModal
-        open={showViewSaleModal}
-        onOpenChange={setShowViewSaleModal}
-        saleId={selectedVentaId}
-      />
-
-      {/* Modal de editar venta */}
-      <EditSaleModal
-        open={showEditSaleModal}
-        onOpenChange={setShowEditSaleModal}
+      <SaleDetailsModal
+        open={showSaleDetailsModal}
+        onOpenChange={setShowSaleDetailsModal}
         saleId={selectedVentaId}
         onSuccess={() => {
-          window.location.reload();
+          setShowSaleDetailsModal(false);
+          setSelectedVentaId(null);
         }}
       />
       
@@ -553,29 +550,12 @@ export default function VentasPage() {
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex justify-center gap-2">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Ver"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                onClick={() => {
-                                  setSelectedVentaId(typedSale.id ?? null);
-                                  setShowViewSaleModal(true);
-                                }}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
                               <Button
                                 variant="ghost"
-                                size="icon"
-                                title="Editar"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                onClick={() => {
-                                  setSelectedVentaId(typedSale.id ?? null);
-                                  setShowEditSaleModal(true);
-                                }}
+                                size="sm"
+                                onClick={() => typedSale.id && handleViewSale(typedSale.id)}
                               >
-                                <Edit className="h-4 w-4" />
+                                <Eye className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
