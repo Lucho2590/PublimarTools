@@ -552,7 +552,9 @@ export default function VentasPage() {
                             <div className="flex justify-center gap-2">
                               <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
+                                title="Ver"
+                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                                 onClick={() => typedSale.id && handleViewSale(typedSale.id)}
                               >
                                 <Eye className="h-4 w-4" />

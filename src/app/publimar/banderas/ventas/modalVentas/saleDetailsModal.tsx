@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import { useFirestore, useFirestoreDocData } from "reactfire";
 import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
 import {
@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { TProduct, TProductCategory } from "@/types/product";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { formatearPrecio } from "@/lib/utils";
 import {
   Table,
@@ -29,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Edit, Save, X, Search, Filter } from "lucide-react";
+import { Edit, Save, X, Search, Filter, Trash2 } from "lucide-react";
 
 const BANCOS = ["Galicia", "Frances"];
 
@@ -40,7 +42,12 @@ interface SaleDetailsModalProps {
   onSuccess: () => void;
 }
 
-export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: SaleDetailsModalProps) {
+export function SaleDetailsModal({
+  open,
+  onOpenChange,
+  saleId,
+  onSuccess,
+}: SaleDetailsModalProps) {
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -50,19 +57,29 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
   const [quantity, setQuantity] = useState<number>(1);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [items, setItems] = useState<TSaleItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<EPaymentMethod | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<EPaymentMethod | null>(
+    null
+  );
   const [isInvoiced, setIsInvoiced] = useState<boolean | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBank, setSelectedBank] = useState<string>("");
   const [total, setTotal] = useState(0);
+  const [subtotal, setSubtotal] = useState(0);
+  const [taxAmount, setTaxAmount] = useState(0);
+  const [applyIVA, setApplyIVA] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [categories, setCategories] = useState<Record<string, TProductCategory>>({});
+  const [categories, setCategories] = useState<
+    Record<string, TProductCategory>
+  >({});
 
   const saleRef = saleId ? doc(firestore, collections.SALES, saleId) : null;
-  const { data: sale } = useFirestoreDocData(saleRef ?? doc(firestore, collections.SALES, "dummy"), {
-    idField: "id",
-  });
+  const { data: sale } = useFirestoreDocData(
+    saleRef ?? doc(firestore, collections.SALES, "dummy"),
+    {
+      idField: "id",
+    }
+  );
 
   const typedSale = sale as unknown as TSale;
 
@@ -72,7 +89,18 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
       loadCategories();
       if (typedSale?.items) {
         setItems(typedSale.items);
-        setTotal(calculateTotal(typedSale.items));
+        const initialSubtotal = calculateSubtotal(typedSale.items);
+        // Determinar si el total original incluía IVA comparando con subtotal
+        const originalTotal = typedSale.total || 0;
+        const calculatedTotalWithIVA = initialSubtotal * 1.21;
+        const hasIVA = Math.abs(originalTotal - calculatedTotalWithIVA) < Math.abs(originalTotal - initialSubtotal);
+        
+        setApplyIVA(hasIVA);
+        const initialTaxAmount = calculateTaxAmount(initialSubtotal, hasIVA);
+        const initialTotal = initialSubtotal + initialTaxAmount;
+        setSubtotal(initialSubtotal);
+        setTaxAmount(initialTaxAmount);
+        setTotal(initialTotal);
       }
       if (typedSale?.paymentMethod) {
         setPaymentMethod(typedSale.paymentMethod);
@@ -106,7 +134,10 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
 
   const loadCategories = async () => {
     try {
-      const categoriesCollection = collection(firestore, collections.products.CATEGORIES);
+      const categoriesCollection = collection(
+        firestore,
+        collections.products.CATEGORIES
+      );
       const categoriesSnapshot = await getDocs(categoriesCollection);
       const categoriesMap: Record<string, TProductCategory> = {};
       categoriesSnapshot.forEach((doc) => {
@@ -119,12 +150,24 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
     }
   };
 
-  const calculateTotal = (itemsToCalculate: TSaleItem[]) => {
+  const calculateSubtotal = (itemsToCalculate: TSaleItem[]) => {
     return itemsToCalculate.reduce((sum, item) => sum + item.total, 0);
   };
 
+  const calculateTaxAmount = (subtotal: number, shouldApplyIVA: boolean = applyIVA) => {
+    const taxRate = 21; // IVA del 21%
+    return shouldApplyIVA ? subtotal * (taxRate / 100) : 0;
+  };
+
+  const calculateTotal = (itemsToCalculate: TSaleItem[], shouldApplyIVA: boolean = applyIVA) => {
+    const subtotal = calculateSubtotal(itemsToCalculate);
+    const taxAmount = calculateTaxAmount(subtotal, shouldApplyIVA);
+    return subtotal + taxAmount;
+  };
+
   const handleAddItem = () => {
-    if (!selectedProduct || !selectedVariant || quantity <= 0 || unitPrice <= 0) return;
+    if (!selectedProduct || !selectedVariant || quantity <= 0 || unitPrice <= 0)
+      return;
 
     const newItem: TSaleItem = {
       productId: selectedProduct,
@@ -135,8 +178,14 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
     };
 
     const newItems = [...items, newItem];
+    const newSubtotal = calculateSubtotal(newItems);
+    const newTaxAmount = calculateTaxAmount(newSubtotal, applyIVA);
+    const newTotal = newSubtotal + newTaxAmount;
+    
     setItems(newItems);
-    setTotal(calculateTotal(newItems));
+    setSubtotal(newSubtotal);
+    setTaxAmount(newTaxAmount);
+    setTotal(newTotal);
     setSelectedProduct("");
     setSelectedVariant("");
     setQuantity(1);
@@ -146,8 +195,25 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
   const handleRemoveItem = (index: number) => {
     const newItems = [...items];
     newItems.splice(index, 1);
+    const newSubtotal = calculateSubtotal(newItems);
+    const newTaxAmount = calculateTaxAmount(newSubtotal, applyIVA);
+    const newTotal = newSubtotal + newTaxAmount;
+    
     setItems(newItems);
-    setTotal(calculateTotal(newItems));
+    setSubtotal(newSubtotal);
+    setTaxAmount(newTaxAmount);
+    setTotal(newTotal);
+  };
+
+  const handleIVAChange = (checked: boolean) => {
+    setApplyIVA(checked);
+    const newSubtotal = calculateSubtotal(items);
+    const newTaxAmount = calculateTaxAmount(newSubtotal, checked);
+    const newTotal = newSubtotal + newTaxAmount;
+    
+    setSubtotal(newSubtotal);
+    setTaxAmount(newTaxAmount);
+    setTotal(newTotal);
   };
 
   const handleSave = async () => {
@@ -186,7 +252,7 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
     setSelectedVariant(variantId);
     if (selectedProduct && variantId) {
       const product = products[selectedProduct];
-      const variant = product?.variants.find(v => v.id === variantId);
+      const variant = product?.variants.find((v) => v.id === variantId);
       if (variant?.price) {
         setUnitPrice(Number(variant.price));
       }
@@ -196,7 +262,7 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
   const formatDate = (timestamp: any) => {
     if (!timestamp) return "-";
     try {
-      if (typeof timestamp === 'object' && 'seconds' in timestamp) {
+      if (typeof timestamp === "object" && "seconds" in timestamp) {
         return new Date(timestamp.seconds * 1000).toLocaleDateString();
       }
       return new Date(timestamp).toLocaleDateString();
@@ -226,7 +292,7 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
   const getVariantName = (productId: string, variantId: string) => {
     const product = products[productId];
     if (!product) return "Variante no encontrada";
-    const variant = product.variants.find(v => v.id === variantId);
+    const variant = product.variants.find((v) => v.id === variantId);
     return variant ? `${variant.size}` : "Variante no encontrada";
   };
 
@@ -234,7 +300,9 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
   const filteredProducts = Object.entries(products).filter(([_, product]) => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = product.name.toLowerCase().includes(searchLower);
-    const matchesCategory = selectedCategory === "all" || product.categories.includes(selectedCategory);
+    const matchesCategory =
+      selectedCategory === "all" ||
+      product.categories.includes(selectedCategory);
     return matchesSearch && matchesCategory;
   });
 
@@ -256,7 +324,7 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
               variant="outline"
               size="sm"
               onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
             >
               <Edit className="h-4 w-4" />
               Editar
@@ -267,16 +335,18 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                 variant="outline"
                 size="sm"
                 onClick={() => setIsEditing(false)}
-                className="flex items-center gap-2"
+                className="bg-red-500 hover:bg-red-600 text-white"
               >
-                <X className="h-4 w-4" />
+                {/* <X className="h-4 w-4" /> */}
                 Cancelar
               </Button>
               <Button
+                type="submit"
+                form="edit-quote-form"
+                disabled={isLoading}
+                className="bg-green-600 hover:bg-green-700 text-white"
                 size="sm"
                 onClick={handleSave}
-                disabled={isLoading}
-                className="flex items-center gap-2"
               >
                 <Save className="h-4 w-4" />
                 Guardar
@@ -291,14 +361,21 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
               <h3 className="font-semibold mb-4">Información General</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p><span className="font-medium">Fecha:</span> {formatDate(typedSale?.createdAt)}</p>
+                  <p>
+                    <span className="font-medium">Fecha:</span>{" "}
+                    {formatDate(typedSale?.createdAt)}
+                  </p>
                   {isEditing ? (
                     <div className="mt-2 space-y-2">
                       <div>
-                        <label className="text-sm font-medium">Método de Pago</label>
+                        <label className="text-sm font-medium">
+                          Método de Pago
+                        </label>
                         <Select
                           value={paymentMethod || ""}
-                          onValueChange={(value) => setPaymentMethod(value as EPaymentMethod)}
+                          onValueChange={(value) =>
+                            setPaymentMethod(value as EPaymentMethod)
+                          }
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Seleccionar método de pago" />
@@ -335,10 +412,17 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                     </div>
                   ) : (
                     <>
-                      <p><span className="font-medium">Método de Pago:</span> {formatPaymentMethod(typedSale?.paymentMethod)}</p>
-                      {typedSale?.paymentMethod === EPaymentMethod.TRANSFER && typedSale?.bank && (
-                        <p><span className="font-medium">Banco:</span> {typedSale.bank}</p>
-                      )}
+                      <p>
+                        <span className="font-medium">Método de Pago:</span>{" "}
+                        {formatPaymentMethod(typedSale?.paymentMethod)}
+                      </p>
+                      {typedSale?.paymentMethod === EPaymentMethod.TRANSFER &&
+                        typedSale?.bank && (
+                          <p>
+                            <span className="font-medium">Banco:</span>{" "}
+                            {typedSale.bank}
+                          </p>
+                        )}
                     </>
                   )}
                 </div>
@@ -356,7 +440,9 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                       </div>
                       {isInvoiced && (
                         <div>
-                          <label className="text-sm font-medium">Número de Factura</label>
+                          <label className="text-sm font-medium">
+                            Número de Factura
+                          </label>
                           <Input
                             value={invoiceNumber}
                             onChange={(e) => setInvoiceNumber(e.target.value)}
@@ -367,13 +453,49 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                     </div>
                   ) : (
                     <>
-                      <p><span className="font-medium">Facturado:</span> {typedSale?.isInvoiced ? "Sí" : "No"}</p>
+                      <p>
+                        <span className="font-medium">Facturado:</span>{" "}
+                        {typedSale?.isInvoiced ? "Sí" : "No"}
+                      </p>
                       {typedSale?.invoiceNumber && (
-                        <p><span className="font-medium">Número de Factura:</span> {typedSale.invoiceNumber}</p>
+                        <p>
+                          <span className="font-medium">
+                            Número de Factura:
+                          </span>{" "}
+                          {typedSale.invoiceNumber}
+                        </p>
                       )}
                     </>
                   )}
-                  <p><span className="font-medium">Total:</span> {formatearPrecio(total)}</p>
+                  <div className="space-y-1">
+                    <p>
+                      <span className="font-medium">Subtotal:</span>{" "}
+                      {formatearPrecio(subtotal)}
+                    </p>
+                    {isEditing ? (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id="applyIVA"
+                            checked={applyIVA}
+                            onCheckedChange={handleIVAChange}
+                            className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
+                          />
+                          <Label htmlFor="applyIVA" className="font-medium">IVA (21%)</Label>
+                        </div>
+                        <span>{formatearPrecio(taxAmount)}</span>
+                      </div>
+                    ) : (
+                      <p>
+                        <span className="font-medium">IVA (21%):</span>{" "}
+                        {formatearPrecio(taxAmount)}
+                      </p>
+                    )}
+                    <p className="text-lg font-semibold">
+                      <span className="font-medium">Total:</span>{" "}
+                      {formatearPrecio(total)}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -385,7 +507,9 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                   <h4 className="font-medium mb-2">Agregar Producto</h4>
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
-                      <label className="text-sm font-medium mb-2 block">Filtrar por categoría</label>
+                      <label className="text-sm font-medium mb-2 block">
+                        Filtrar por categoría
+                      </label>
                       <Select
                         value={selectedCategory}
                         onValueChange={setSelectedCategory}
@@ -394,7 +518,9 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                           <SelectValue placeholder="Todas las categorías" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="all">Todas las categorías</SelectItem>
+                          <SelectItem value="all">
+                            Todas las categorías
+                          </SelectItem>
                           {Object.entries(categories).map(([id, category]) => (
                             <SelectItem key={id} value={id}>
                               {category.name}
@@ -404,7 +530,9 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                       </Select>
                     </div>
                     <div className="relative">
-                      <label className="text-sm font-medium mb-2 block">Buscar productos</label>
+                      <label className="text-sm font-medium mb-2 block">
+                        Buscar productos
+                      </label>
                       <Search className="absolute left-2 top-8 h-4 w-4 text-muted-foreground" />
                       <Input
                         placeholder="Buscar por nombre..."
@@ -426,18 +554,29 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                         </SelectTrigger>
                         <SelectContent>
                           {filteredProducts.map(([id, product]) => {
-                            const hasStock = product?.variants?.some(variant => Number(variant.stock) > 0) ?? false;
+                            const hasStock =
+                              product?.variants?.some(
+                                (variant) => Number(variant.stock) > 0
+                              ) ?? false;
                             return (
-                              <SelectItem 
-                                key={id} 
+                              <SelectItem
+                                key={id}
                                 value={id}
                                 disabled={!hasStock}
-                                className={!hasStock ? "opacity-50 cursor-not-allowed" : ""}
+                                className={
+                                  !hasStock
+                                    ? "opacity-50 cursor-not-allowed"
+                                    : ""
+                                }
                               >
                                 <div className="flex flex-col">
-                                  <span>{product?.name || "Producto sin nombre"}</span>
+                                  <span>
+                                    {product?.name || "Producto sin nombre"}
+                                  </span>
                                   <span className="text-xs text-muted-foreground">
-                                    {product?.categories?.map(catId => getCategoryName(catId)).join(", ") || "Sin categoría"}
+                                    {product?.categories
+                                      ?.map((catId) => getCategoryName(catId))
+                                      .join(", ") || "Sin categoría"}
                                   </span>
                                 </div>
                               </SelectItem>
@@ -457,16 +596,24 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                           <SelectValue placeholder="Seleccionar variante" />
                         </SelectTrigger>
                         <SelectContent>
-                          {selectedProduct && products[selectedProduct]?.variants.map((variant) => (
-                            <SelectItem 
-                              key={variant.id} 
-                              value={variant.id}
-                              disabled={Number(variant.stock) <= 0}
-                              className={Number(variant.stock) <= 0 ? "opacity-50 cursor-not-allowed" : ""}
-                            >
-                              {variant.size} {Number(variant.stock) <= 0 && "(Sin stock)"}
-                            </SelectItem>
-                          ))}
+                          {selectedProduct &&
+                            products[selectedProduct]?.variants.map(
+                              (variant) => (
+                                <SelectItem
+                                  key={variant.id}
+                                  value={variant.id}
+                                  disabled={Number(variant.stock) <= 0}
+                                  className={
+                                    Number(variant.stock) <= 0
+                                      ? "opacity-50 cursor-not-allowed"
+                                      : ""
+                                  }
+                                >
+                                  {variant.size}{" "}
+                                  {Number(variant.stock) <= 0 && "(Sin stock)"}
+                                </SelectItem>
+                              )
+                            )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -480,7 +627,9 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium">Precio Unitario</label>
+                      <label className="text-sm font-medium">
+                        Precio Unitario
+                      </label>
                       <Input
                         type="number"
                         min="0"
@@ -493,7 +642,12 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                   <Button
                     onClick={handleAddItem}
                     className="mt-4"
-                    disabled={!selectedProduct || !selectedVariant || quantity <= 0 || unitPrice <= 0}
+                    disabled={
+                      !selectedProduct ||
+                      !selectedVariant ||
+                      quantity <= 0 ||
+                      unitPrice <= 0
+                    }
                   >
                     Agregar Producto
                   </Button>
@@ -508,43 +662,70 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                       <TableHead>Categoría</TableHead>
                       <TableHead>Medida</TableHead>
                       <TableHead className="text-right">Cantidad</TableHead>
-                      <TableHead className="text-right">Precio Unitario</TableHead>
+                      <TableHead className="text-right">
+                        Precio Unitario
+                      </TableHead>
                       <TableHead className="text-right">Total</TableHead>
-                      {isEditing && <TableHead className="text-right">Acciones</TableHead>}
+                      {isEditing && (
+                        <TableHead className="text-right">Acciones</TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={isEditing ? 7 : 6} className="text-center py-4">
+                        <TableCell
+                          colSpan={isEditing ? 7 : 6}
+                          className="text-center py-4"
+                        >
                           Cargando productos...
                         </TableCell>
                       </TableRow>
                     ) : items.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={isEditing ? 7 : 6} className="text-center py-4">
+                        <TableCell
+                          colSpan={isEditing ? 7 : 6}
+                          className="text-center py-4"
+                        >
                           No hay productos en esta venta
                         </TableCell>
                       </TableRow>
                     ) : (
                       items.map((item, index) => (
                         <TableRow key={index}>
-                          <TableCell>{products[item.productId]?.name || "Producto no encontrado"}</TableCell>
                           <TableCell>
-                            {products[item.productId]?.categories?.map(catId => getCategoryName(catId)).join(", ") || "Sin categoría"}
+                            {products[item.productId]?.name ||
+                              "Producto no encontrado"}
                           </TableCell>
-                          <TableCell>{getVariantName(item.productId, item.variantId)}</TableCell>
-                          <TableCell className="text-right">{item.quantity}</TableCell>
-                          <TableCell className="text-right">{formatearPrecio(item.unitPrice)}</TableCell>
-                          <TableCell className="text-right">{formatearPrecio(item.total)}</TableCell>
+                          <TableCell>
+                            {products[item.productId]?.categories
+                              ?.map((catId) => getCategoryName(catId))
+                              .join(", ") || "Sin categoría"}
+                          </TableCell>
+                          <TableCell>
+                            {getVariantName(item.productId, item.variantId)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {item.quantity}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatearPrecio(item.unitPrice)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatearPrecio(item.total)}
+                          </TableCell>
                           {isEditing && (
                             <TableCell className="text-right">
                               <Button
                                 variant="ghost"
-                                size="sm"
+                                size="icon"
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                title="Eliminar"
+                                type="button"
                                 onClick={() => handleRemoveItem(index)}
                               >
-                                <X className="h-4 w-4" />
+                                {/* <X className="h-4 w-4" /> */}
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </TableCell>
                           )}
@@ -553,6 +734,35 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
                     )}
                   </TableBody>
                 </Table>
+                
+                {/* {isEditing && items.length > 0 && (
+                  <div className="p-4 border-t bg-slate-50">
+                    <div className="flex justify-end">
+                      <div className="space-y-2 text-right min-w-[200px]">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">Subtotal:</span>
+                          <span>{formatearPrecio(subtotal)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              id="applyIVATable"
+                              checked={applyIVA}
+                              onCheckedChange={handleIVAChange}
+                              className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
+                            />
+                            <Label htmlFor="applyIVATable" className="font-medium">IVA (21%)</Label>
+                          </div>
+                          <span>{formatearPrecio(taxAmount)}</span>
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t">
+                          <span className="text-lg font-semibold">Total:</span>
+                          <span className="text-lg font-semibold">{formatearPrecio(total)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )} */}
               </div>
             </div>
           </div>
@@ -560,4 +770,4 @@ export function SaleDetailsModal({ open, onOpenChange, saleId, onSuccess }: Sale
       </DialogContent>
     </Dialog>
   );
-} 
+}

@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import {
@@ -35,7 +35,7 @@ import {
 } from "@/types/client";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Edit, Save, Trash2 } from "lucide-react";
 
 interface ClientDetailsModalProps {
   isOpen: boolean;
@@ -88,7 +88,9 @@ export default function ClientDetailsModal({
   }, []);
 
   // Get client data
-  const clientRef = clientId ? doc(firestore, collections.CLIENTS, clientId) : null;
+  const clientRef = clientId
+    ? doc(firestore, collections.CLIENTS, clientId)
+    : null;
   const { status, data: client } = useFirestoreDocData(
     clientRef || doc(firestore, collections.CLIENTS, "dummy"),
     {
@@ -103,7 +105,10 @@ export default function ClientDetailsModal({
           collection(firestore, collections.QUOTES),
           where("client.id", "==", clientId)
         )
-      : query(collection(firestore, collections.QUOTES), where("__name__", "==", "nonexistent")),
+      : query(
+          collection(firestore, collections.QUOTES),
+          where("__name__", "==", "nonexistent")
+        ),
     { idField: "id" }
   );
 
@@ -233,28 +238,31 @@ export default function ClientDetailsModal({
               {!isEditing ? (
                 <>
                   <Button
-                    className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
+                    className="bg-blue-900 hover:bg-blue-600 text-white"
                     onClick={handleEdit}
                   >
+                    <Edit className="h-4 w-4 mr-2" />
                     Editar
                   </Button>
-                  <Button
-                    className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
+                  {/* <Button
+                    className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                     variant="outline"
                     onClick={onClose}
                   >
                     Cerrar
-                  </Button>
+                  </Button> */}
                 </>
               ) : (
                 <>
-                  <Button
-                    className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
+           
+                  <Button 
+                     className="bg-red-500 hover:bg-red-600 text-white"
                     onClick={handleCancelEdit}
                     variant="outline"
                   >
                     Cancelar
                   </Button>
+            
                 </>
               )}
             </div>
@@ -300,15 +308,21 @@ export default function ClientDetailsModal({
                       )}
                     <div>
                       <h3 className="font-semibold text-slate-700">Email</h3>
-                      <p className="text-slate-900">{typedClient.email || "-"}</p>
+                      <p className="text-slate-900">
+                        {typedClient.email || "-"}
+                      </p>
                     </div>
                     <div>
                       <h3 className="font-semibold text-slate-700">Teléfono</h3>
-                      <p className="text-slate-900">{typedClient.phone || "-"}</p>
+                      <p className="text-slate-900">
+                        {typedClient.phone || "-"}
+                      </p>
                     </div>
                     {typedClient.address && (
                       <div className="md:col-span-2">
-                        <h3 className="font-semibold text-slate-700">Dirección</h3>
+                        <h3 className="font-semibold text-slate-700">
+                          Dirección
+                        </h3>
                         <p className="text-slate-900">{typedClient.address}</p>
                       </div>
                     )}
@@ -324,48 +338,55 @@ export default function ClientDetailsModal({
                         <p className="text-slate-900">{typedClient.notes}</p>
                       </div>
                     )}
-                    {typedClient.contacts && typedClient.contacts.length > 0 && (
-                      <div className="md:col-span-2">
-                        <h3 className="font-semibold text-slate-700 mb-2">
-                          Personas de Contacto
-                        </h3>
-                        <div className="space-y-4">
-                          {typedClient.contacts.map((contact: TClientContact, index: number) => (
-                            <div
-                              key={index}
-                              className="border rounded-lg p-4 bg-slate-50"
-                            >
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                  <h4 className="font-medium text-slate-900">
-                                    {contact.name}
-                                  </h4>
-                                  {contact.position && (
-                                    <p className="text-sm text-slate-600">
-                                      {contact.position}
-                                    </p>
-                                  )}
+                    {typedClient.contacts &&
+                      typedClient.contacts.length > 0 && (
+                        <div className="md:col-span-2">
+                          <h3 className="font-semibold text-slate-700 mb-2">
+                            Personas de Contacto
+                          </h3>
+                          <div className="space-y-4">
+                            {typedClient.contacts.map(
+                              (contact: TClientContact, index: number) => (
+                                <div
+                                  key={index}
+                                  className="border rounded-lg p-4 bg-slate-50"
+                                >
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                      <h4 className="font-medium text-slate-900">
+                                        {contact.name}
+                                      </h4>
+                                      {contact.position && (
+                                        <p className="text-sm text-slate-600">
+                                          {contact.position}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <div className="space-y-1">
+                                      {contact.email && (
+                                        <p className="text-sm text-slate-600">
+                                          <span className="font-medium">
+                                            Email:
+                                          </span>{" "}
+                                          {contact.email}
+                                        </p>
+                                      )}
+                                      {contact.phone && (
+                                        <p className="text-sm text-slate-600">
+                                          <span className="font-medium">
+                                            Teléfono:
+                                          </span>{" "}
+                                          {contact.phone}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="space-y-1">
-                                  {contact.email && (
-                                    <p className="text-sm text-slate-600">
-                                      <span className="font-medium">Email:</span>{" "}
-                                      {contact.email}
-                                    </p>
-                                  )}
-                                  {contact.phone && (
-                                    <p className="text-sm text-slate-600">
-                                      <span className="font-medium">Teléfono:</span>{" "}
-                                      {contact.phone}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                              )
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                   </div>
                 </CardContent>
               </Card>
@@ -406,7 +427,10 @@ export default function ClientDetailsModal({
                                 size="sm"
                                 onClick={() => {
                                   // Here we could trigger the quote modal if needed
-                                  window.open(`/publimar/banderas/presupuestos/${quote.id}`, '_blank');
+                                  window.open(
+                                    `/publimar/banderas/presupuestos/${quote.id}`,
+                                    "_blank"
+                                  );
                                 }}
                               >
                                 Ver
@@ -481,7 +505,9 @@ export default function ClientDetailsModal({
                         <SelectItem value={EClientType.INDIVIDUAL}>
                           Individual
                         </SelectItem>
-                        <SelectItem value={EClientType.COMPANY}>Empresa</SelectItem>
+                        <SelectItem value={EClientType.COMPANY}>
+                          Empresa
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -493,7 +519,10 @@ export default function ClientDetailsModal({
                         id="businessName"
                         value={formData.businessName}
                         onChange={(e) =>
-                          setFormData({ ...formData, businessName: e.target.value })
+                          setFormData({
+                            ...formData,
+                            businessName: e.target.value,
+                          })
                         }
                       />
                     </div>
@@ -577,7 +606,10 @@ export default function ClientDetailsModal({
                           {contacts.length > 1 && (
                             <Button
                               type="button"
-                              variant="destructive"
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              title="Eliminar"
                               onClick={() => removeContact(index)}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -586,23 +618,35 @@ export default function ClientDetailsModal({
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <div className="space-y-2">
-                            <Label htmlFor={`contact-name-${index}`}>Nombre</Label>
+                            <Label htmlFor={`contact-name-${index}`}>
+                              Nombre
+                            </Label>
                             <Input
                               id={`contact-name-${index}`}
                               value={contact.name}
                               onChange={(e) =>
-                                handleContactChange(index, "name", e.target.value)
+                                handleContactChange(
+                                  index,
+                                  "name",
+                                  e.target.value
+                                )
                               }
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor={`contact-email-${index}`}>Email</Label>
+                            <Label htmlFor={`contact-email-${index}`}>
+                              Email
+                            </Label>
                             <Input
                               id={`contact-email-${index}`}
                               type="email"
                               value={contact.email}
                               onChange={(e) =>
-                                handleContactChange(index, "email", e.target.value)
+                                handleContactChange(
+                                  index,
+                                  "email",
+                                  e.target.value
+                                )
                               }
                             />
                           </div>
@@ -614,7 +658,11 @@ export default function ClientDetailsModal({
                               id={`contact-phone-${index}`}
                               value={contact.phone}
                               onChange={(e) =>
-                                handleContactChange(index, "phone", e.target.value)
+                                handleContactChange(
+                                  index,
+                                  "phone",
+                                  e.target.value
+                                )
                               }
                             />
                           </div>
@@ -643,21 +691,23 @@ export default function ClientDetailsModal({
                 </Card>
 
                 <div className="flex justify-end gap-2 pt-4">
+                <Button
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    type="submit"
+                    disabled={isLoading}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    {isLoading ? "Guardando..." : "Guardar cambios"}
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={handleCancelEdit}
-                    className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
+                    className="bg-red-500 hover:bg-red-600 text-white"
                   >
                     Cancelar
                   </Button>
-                  <Button
-                    className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
-                    type="submit"
-                    disabled={isLoading}
-                  >
-                    {isLoading ? "Guardando..." : "Guardar cambios"}
-                  </Button>
+              
                 </div>
               </CardContent>
             </Card>

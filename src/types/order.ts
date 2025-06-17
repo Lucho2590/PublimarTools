@@ -1,6 +1,8 @@
 
+import { TProduct,  TProductCategory, TProductVariant } from "./product";
 import { TQuoteItem } from "./quote";
 import { EPaymentMethod } from "./sale";
+import { TClient } from "./client";
 
 export enum EOrderStatus {
   PENDING = "pending",
@@ -9,7 +11,10 @@ export enum EOrderStatus {
   CANCELLED = "cancelled",
 }
 
+// Heredar de TQuoteItem para mantener consistencia
 export type TOrderItem = TQuoteItem;
+
+
 
 export type TPaymentHistory = {
   amount: number;
@@ -22,20 +27,9 @@ export type TOrder = {
   id: string;
   number: string; // Número de orden para mostrar al cliente
   quoteId: string;
-  client: {
-    contacts: boolean;
-    id: string;
-    name: string;
-  };
+  client: TClient;
   status: EOrderStatus;
-  items: Array<{
-    product: {
-      id: string;
-      name: string;
-    };
-    quantity: number;
-    price: number;
-  }>;
+  items: TOrderItem[];
   subtotal: number;
   taxRate: number;
   taxAmount: number;

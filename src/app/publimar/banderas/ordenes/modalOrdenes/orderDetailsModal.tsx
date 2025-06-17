@@ -1,8 +1,23 @@
-'use client';
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useFirestore, useFirestoreDocData } from "reactfire";
-import { doc, updateDoc, collection, query, where, orderBy, limit, getDocs, addDoc } from "firebase/firestore";
+import {
+  useFirestore,
+  useFirestoreDocData,
+  useFirestoreCollectionData,
+} from "reactfire";
+import {
+  doc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  addDoc,
+  DocumentData,
+} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,10 +45,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Edit, Save, X, Plus, Trash2 } from "lucide-react";
+import { Edit, Save, X, Plus, Trash2, Search } from "lucide-react";
 import collections from "@/lib/collections";
-import { EOrderStatus, TOrder, TOrderItem, TPaymentHistory } from "@/types/order";
+import {
+  EOrderStatus,
+  TOrder,
+  TOrderItem,
+  TPaymentHistory,
+} from "@/types/order";
 import { EPaymentMethod } from "@/types/sale";
+import { TProduct, TProductVariant } from "@/types/product";
+import { TClient } from "@/types/client";
 import { formatDate, formatearPrecio } from "@/lib/utils";
 
 interface OrderDetailsModalProps {
@@ -52,28 +74,84 @@ export default function OrderDetailsModal({
   const [loadingPago, setLoadingPago] = useState(false);
   const [items, setItems] = useState<TOrderItem[]>([]);
   const [pagoParcial, setPagoParcial] = useState("");
-  const [metodoPago, setMetodoPago] = useState<EPaymentMethod>(EPaymentMethod.CASH);
+  const [metodoPago, setMetodoPago] = useState<EPaymentMethod>(
+    EPaymentMethod.CASH
+  );
   const [banco, setBanco] = useState<string>("");
+
+  // Estados para agregar productos
+  const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [productSearchTerm, setProductSearchTerm] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<TProduct | null>(null);
+  const [selectedVariant, setSelectedVariant] =
+    useState<TProductVariant | null>(null);
+  const [itemQuantity, setItemQuantity] = useState(1);
+  const [itemDiscount, setItemDiscount] = useState(0);
+  const [itemNotes, setItemNotes] = useState("");
+
   const firestore = useFirestore();
 
   // Obtener la orden - crear un doc dummy si no hay orderId
-  const orderDoc = orderId && firestore 
-    ? doc(firestore, collections.ORDERS, orderId) 
-    : firestore 
-    ? doc(firestore, collections.ORDERS, "dummy") 
-    : null;
-    
-  const { status, data } = useFirestoreDocData(
-    orderDoc!, 
-    { idField: "id" }
-  );
+  const orderDoc =
+    orderId && firestore
+      ? doc(firestore, collections.ORDERS, orderId)
+      : firestore
+      ? doc(firestore, collections.ORDERS, "dummy")
+      : null;
+
+  const { status, data } = useFirestoreDocData(orderDoc!, { idField: "id" });
 
   const order = data as TOrder | null;
+
+  // Fetch clients
+  const clientsCollection = collection(
+    firestore || ({} as any),
+    collections.CLIENTS
+  );
+  const { data: clients } = useFirestoreCollectionData(clientsCollection, {
+    idField: "id",
+  });
+
+  // Fetch products
+  const productsCollection = collection(
+    firestore || ({} as any),
+    collections.PRODUCTS
+  );
+  const { data: products } = useFirestoreCollectionData(productsCollection, {
+    idField: "id",
+  });
+
+  // Helper function para manejar datos legacy de client
+  const getClientContact = (client: any, field: "name" | "email" | "phone") => {
+    // Si contacts es un array, usar el primer contacto
+    if (Array.isArray(client?.contacts) && client.contacts.length > 0) {
+      return client.contacts[0][field] || client[field] || "";
+    }
+    // Si no hay contacts o es legacy data, usar datos directos del cliente
+    return client?.[field] || "";
+  };
 
   // Inicializar items cuando se carga la orden
   useEffect(() => {
     if (order?.items) {
-      setItems(order.items as unknown as TOrderItem[]);
+      // Transformar los datos para que coincidan con TOrderItem
+      const transformedItems: TOrderItem[] = order.items.map((item: any) => ({
+        id: item.id || crypto.randomUUID(),
+        product: item.product,
+        variant: item.variant,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice || item.price || 0,
+        discount: item.discount || 0,
+        subtotal:
+          item.subtotal || item.quantity * (item.unitPrice || item.price || 0),
+        tax: item.tax || 0,
+        taxAmount: item.taxAmount || 0,
+        description: item.description || "",
+        categories: item.categories || [],
+        notes: item.notes || "",
+      }));
+      setItems(transformedItems);
     }
   }, [order]);
 
@@ -83,6 +161,14 @@ export default function OrderDetailsModal({
     setItems([]);
     setPagoParcial("");
     setBanco("");
+    setIsAddingProduct(false);
+    setEditingItemId(null);
+    setProductSearchTerm("");
+    setSelectedProduct(null);
+    setSelectedVariant(null);
+    setItemQuantity(1);
+    setItemDiscount(0);
+    setItemNotes("");
   }, []);
 
   // Reset al cerrar modal
@@ -232,7 +318,7 @@ export default function OrderDetailsModal({
         status: formData.get("status") as EOrderStatus,
         paymentMethod: formData.get("paymentMethod") as EPaymentMethod,
         notes: formData.get("notes") as string,
-        items: items as unknown as TOrderItem[],
+        items: items,
         downPayment: Number(formData.get("downPayment")) || 0,
         balance: Number(formData.get("balance")) || 0,
         updatedAt: new Date(),
@@ -249,48 +335,90 @@ export default function OrderDetailsModal({
     }
   };
 
-  // Manejar cambios en items
-  const handleItemChange = (
-    index: number,
-    field: keyof TOrderItem,
-    value: any
+  // Filter products based on search
+  const filteredProducts = products?.filter((product: DocumentData) => {
+    if (!product) return false;
+    return (
+      product.name?.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
+      product.description
+        ?.toLowerCase()
+        .includes(productSearchTerm.toLowerCase())
+    );
+  });
+
+  const handleProductSelect = (
+    product: TProduct,
+    variant?: TProductVariant
   ) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
-    setItems(newItems);
+    setSelectedProduct(product);
+    setSelectedVariant(variant || null);
+    setProductSearchTerm("");
   };
 
-  // Agregar nuevo item
-  const handleAddItem = () => {
+  const handleVariantSelect = (variant: TProductVariant) => {
+    setSelectedVariant(variant);
+  };
+
+  const handleResetProductSelection = () => {
+    setSelectedProduct(null);
+    setSelectedVariant(null);
+    setItemQuantity(1);
+    setItemDiscount(0);
+    setItemNotes("");
+    setProductSearchTerm("");
+    setIsAddingProduct(false);
+    setEditingItemId(null);
+  };
+
+  const addItemToOrder = () => {
+    if (!selectedProduct) return;
+
+    const price = selectedVariant?.price
+      ? Number(selectedVariant.price)
+      : Number(selectedProduct.price);
+
+    const subtotal = price * itemQuantity * (1 - itemDiscount / 100);
+    const taxAmount = subtotal * 0.21; // 21% IVA
+
     const newItem: TOrderItem = {
-      id: crypto.randomUUID(),
-      product: {
-        id: "",
-        name: "",
-        price: 0,
-        variants: [],
-        categories: [],
-        taxRate: 0,
-        stock: 0,
-        imageUrls: [],
-        hasVariants: false,
-        sku: "",
-      },
-      quantity: 1,
-      unitPrice: 0,
-      subtotal: 0,
-      tax: 0,
-      taxAmount: 0,
-      description: "",
+      id: editingItemId || Date.now().toString(),
+      product: selectedProduct,
+      variant: selectedVariant || undefined,
+      quantity: itemQuantity,
+      unitPrice: price,
+      discount: itemDiscount,
+      subtotal: subtotal,
+      tax: taxAmount,
+      taxAmount: taxAmount,
+      description: selectedProduct.description || "",
       categories: [],
+      notes: itemNotes,
     };
-    setItems([...items, newItem]);
+
+    if (editingItemId) {
+      setItems((prev) =>
+        prev.map((item) => (item.id === editingItemId ? newItem : item))
+      );
+      setEditingItemId(null);
+    } else {
+      setItems((prev) => [...prev, newItem]);
+    }
+
+    handleResetProductSelection();
   };
 
-  // Eliminar item
-  const handleRemoveItem = (index: number) => {
-    const newItems = items.filter((_, i) => i !== index);
-    setItems(newItems);
+  const startEditItem = (item: TOrderItem) => {
+    setSelectedProduct(item.product);
+    setSelectedVariant(item.variant || null);
+    setItemQuantity(item.quantity);
+    setItemDiscount(item.discount || 0);
+    setItemNotes(item.notes || "");
+    setEditingItemId(item.id);
+    setIsAddingProduct(true);
+  };
+
+  const removeItem = (itemId: string) => {
+    setItems((prev) => prev.filter((item) => item.id !== itemId));
   };
 
   if (status === "loading") {
@@ -382,7 +510,7 @@ export default function OrderDetailsModal({
                       <Label htmlFor="clientContact">Persona de contacto</Label>
                       <Input
                         id="clientContact"
-                        defaultValue={order.client.contacts?.[0]?.name || ""}
+                        defaultValue={getClientContact(order.client, "name")}
                         disabled
                       />
                     </div>
@@ -391,9 +519,7 @@ export default function OrderDetailsModal({
                         <Label htmlFor="clientEmail">Email</Label>
                         <Input
                           id="clientEmail"
-                          defaultValue={
-                            order.client.contacts?.[0]?.email || order.client.email
-                          }
+                          defaultValue={getClientContact(order.client, "email")}
                           disabled
                         />
                       </div>
@@ -403,9 +529,7 @@ export default function OrderDetailsModal({
                         <Label htmlFor="clientPhone">Teléfono</Label>
                         <Input
                           id="clientPhone"
-                          defaultValue={
-                            order.client.contacts?.[0]?.phone || order.client.phone
-                          }
+                          defaultValue={getClientContact(order.client, "phone")}
                           disabled
                         />
                       </div>
@@ -437,25 +561,46 @@ export default function OrderDetailsModal({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={EOrderStatus.PENDING}>Pendiente</SelectItem>
-                          <SelectItem value={EOrderStatus.IN_PROCESS}>En Proceso</SelectItem>
-                          <SelectItem value={EOrderStatus.COMPLETED}>Entregada</SelectItem>
-                          <SelectItem value={EOrderStatus.CANCELLED}>Cancelada</SelectItem>
+                          <SelectItem value={EOrderStatus.PENDING}>
+                            Pendiente
+                          </SelectItem>
+                          <SelectItem value={EOrderStatus.IN_PROCESS}>
+                            En Proceso
+                          </SelectItem>
+                          <SelectItem value={EOrderStatus.COMPLETED}>
+                            Entregada
+                          </SelectItem>
+                          <SelectItem value={EOrderStatus.CANCELLED}>
+                            Cancelada
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
                       <Label htmlFor="paymentMethod">Método de pago</Label>
-                      <Select name="paymentMethod" defaultValue={order.paymentMethod}>
+                      <Select
+                        name="paymentMethod"
+                        defaultValue={order.paymentMethod}
+                      >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={EPaymentMethod.CASH}>Efectivo</SelectItem>
-                          <SelectItem value={EPaymentMethod.CREDIT_CARD}>Tarjeta de crédito</SelectItem>
-                          <SelectItem value={EPaymentMethod.DEBIT_CARD}>Tarjeta de débito</SelectItem>
-                          <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
-                          <SelectItem value={EPaymentMethod.MERCADOPAGO}>Mercado Pago</SelectItem>
+                          <SelectItem value={EPaymentMethod.CASH}>
+                            Efectivo
+                          </SelectItem>
+                          <SelectItem value={EPaymentMethod.CREDIT_CARD}>
+                            Tarjeta de crédito
+                          </SelectItem>
+                          <SelectItem value={EPaymentMethod.DEBIT_CARD}>
+                            Tarjeta de débito
+                          </SelectItem>
+                          <SelectItem value={EPaymentMethod.TRANSFER}>
+                            Transferencia
+                          </SelectItem>
+                          <SelectItem value={EPaymentMethod.MERCADOPAGO}>
+                            Mercado Pago
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -484,22 +629,158 @@ export default function OrderDetailsModal({
               </Card>
             </div>
 
+            {/* Sección de productos en modo edición */}
             <Card className="mt-6">
               <CardHeader>
                 <CardTitle className="flex justify-between items-center">
-                  Items
+                  Productos
                   <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddItem}
+                         className="bg-blue-900 hover:bg-blue-700 text-white"
+                         type="button"
+                         variant="outline"
+                         size="sm"
+                    onClick={() => setIsAddingProduct(true)}
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Agregar Item
+                    Agregar Producto
                   </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                {/* Formulario para agregar/editar productos */}
+                {isAddingProduct && (
+                  <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="product-search">Buscar Producto</Label>
+                        <div className="relative">
+                          <Input
+                            id="product-search"
+                            type="text"
+                            placeholder="Buscar producto..."
+                            value={productSearchTerm}
+                            onChange={(e) =>
+                              setProductSearchTerm(e.target.value)
+                            }
+                            className="pl-10"
+                          />
+                          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                        </div>
+                        {productSearchTerm && filteredProducts && (
+                          <div className="mt-2 border rounded-md max-h-40 overflow-y-auto bg-white">
+                            {filteredProducts.map((product: any) => (
+                              <div
+                                key={product.id}
+                                className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                                onClick={() => handleProductSelect(product)}
+                              >
+                                <div className="font-medium">
+                                  {product.name}
+                                </div>
+                                {product.description && (
+                                  <div className="text-sm text-gray-600">
+                                    {product.description}
+                                  </div>
+                                )}
+                                <div className="text-sm text-blue-600">
+                                  {formatearPrecio(Number(product.price))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {selectedProduct && (
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                          <div>
+                            <Label htmlFor="quantity">Cantidad</Label>
+                            <Input
+                              id="quantity"
+                              type="number"
+                              min="1"
+                              value={itemQuantity}
+                              onChange={(e) =>
+                                setItemQuantity(Number(e.target.value))
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="discount">Descuento (%)</Label>
+                            <Input
+                              id="discount"
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={itemDiscount}
+                              onChange={(e) =>
+                                setItemDiscount(Number(e.target.value))
+                              }
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <Label htmlFor="item-notes">
+                              Notas del producto
+                            </Label>
+                            <Input
+                              id="item-notes"
+                              value={itemNotes}
+                              onChange={(e) => setItemNotes(e.target.value)}
+                              placeholder="Notas adicionales..."
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedProduct &&
+                        selectedProduct.variants &&
+                        selectedProduct.variants.length > 0 && (
+                          <div>
+                            <Label>Variantes</Label>
+                            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mt-2">
+                              {selectedProduct.variants.map((variant) => (
+                                <Button
+                                  key={variant.id}
+                                  type="button"
+                                  variant={
+                                    selectedVariant?.id === variant.id
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  size="sm"
+                                  onClick={() => handleVariantSelect(variant)}
+                                >
+                                  {variant.size} 
+                                  {/* {formatearPrecio(Number(variant.price))} */}
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          onClick={addItemToOrder}
+                          disabled={!selectedProduct}
+                          className="bg-blue-900 hover:bg-blue-700"
+                        >
+                          {editingItemId ? "Actualizar" : "Agregar"} Producto
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleResetProductSelection}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Tabla de productos */}
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -512,60 +793,67 @@ export default function OrderDetailsModal({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {items.map((item, index) => (
+                    {items.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>
-                          <Input
-                            value={item.product.name}
-                            onChange={(e) =>
-                              handleItemChange(index, "product", {
-                                ...item.product,
-                                name: e.target.value,
-                              })
-                            }
-                          />
+                          <div>
+                            <p className="font-medium">{item.product.name}</p>
+                            {item.variant && (
+                              <p className="text-sm text-slate-500">
+                                Medida: {item.variant.size}
+                              </p>
+                            )}
+                            {item.notes && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                Nota: {item.notes}
+                              </p>
+                            )}
+                          </div>
                         </TableCell>
+                        <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
+                        <TableCell>{item.quantity}</TableCell>
                         <TableCell>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={item.unitPrice}
-                            onChange={(e) =>
-                              handleItemChange(index, "unitPrice", Number(e.target.value))
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              handleItemChange(index, "quantity", Number(e.target.value))
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            value={item.discount || 0}
-                            onChange={(e) =>
-                              handleItemChange(index, "discount", Number(e.target.value))
-                            }
-                          />
+                          {item.discount && item.discount > 0
+                            ? `${item.discount}%`
+                            : "-"}
                         </TableCell>
                         <TableCell>{formatearPrecio(item.subtotal)}</TableCell>
                         <TableCell>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRemoveItem(index)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Editar"
+                              type="button"
+                              className="text-blue-700 hover:text-blue-900 hover:bg-blue-50"
+                              onClick={() => startEditItem(item)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              title="Eliminar"
+                              type="button"
+                              onClick={() => removeItem(item.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
+                    {items.length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center py-8 text-slate-500"
+                        >
+                          No hay productos agregados
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -594,36 +882,45 @@ export default function OrderDetailsModal({
                 </CardHeader>
                 <CardContent>
                   <h3 className="font-medium text-lg">{order.client.name}</h3>
-                  {order.client.contacts && order.client.contacts.length > 0 && (
-                    <>
+                  {Array.isArray(order.client.contacts) &&
+                    order.client.contacts.length > 0 && (
+                      <>
+                        <p className="text-slate-600">
+                          Contacto: {order.client.contacts[0].name}
+                        </p>
+                        {order.client.contacts[0].email && (
+                          <p className="text-slate-600">
+                            Email: {order.client.contacts[0].email}
+                          </p>
+                        )}
+                        {order.client.contacts[0].phone && (
+                          <p className="text-slate-600">
+                            Teléfono: {order.client.contacts[0].phone}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  {order.client.email &&
+                    !getClientContact(order.client, "email") && (
                       <p className="text-slate-600">
-                        Contacto: {order.client.contacts[0].name}
+                        Email: {order.client.email}
                       </p>
-                      {order.client.contacts[0].email && (
-                        <p className="text-slate-600">
-                          Email: {order.client.contacts[0].email}
-                        </p>
-                      )}
-                      {order.client.contacts[0].phone && (
-                        <p className="text-slate-600">
-                          Teléfono: {order.client.contacts[0].phone}
-                        </p>
-                      )}
-                    </>
-                  )}
-                  {order.client.email && !order.client.contacts?.[0]?.email && (
-                    <p className="text-slate-600">Email: {order.client.email}</p>
-                  )}
-                  {order.client.phone && !order.client.contacts?.[0]?.phone && (
-                    <p className="text-slate-600">Teléfono: {order.client.phone}</p>
-                  )}
+                    )}
+                  {order.client.phone &&
+                    !getClientContact(order.client, "phone") && (
+                      <p className="text-slate-600">
+                        Teléfono: {order.client.phone}
+                      </p>
+                    )}
                   {order.client.address && (
                     <p className="text-slate-600">
                       Dirección: {order.client.address}
                     </p>
                   )}
                   {order.client.cuit && (
-                    <p className="text-slate-600">CUIT/CUIL: {order.client.cuit}</p>
+                    <p className="text-slate-600">
+                      CUIT/CUIL: {order.client.cuit}
+                    </p>
                   )}
                 </CardContent>
               </Card>
@@ -814,16 +1111,31 @@ export default function OrderDetailsModal({
                         </div>
                         <div>
                           <Label htmlFor="metodoPago">Método</Label>
-                          <Select value={metodoPago} onValueChange={(value) => setMetodoPago(value as EPaymentMethod)}>
+                          <Select
+                            value={metodoPago}
+                            onValueChange={(value) =>
+                              setMetodoPago(value as EPaymentMethod)
+                            }
+                          >
                             <SelectTrigger>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value={EPaymentMethod.CASH}>Efectivo</SelectItem>
-                              <SelectItem value={EPaymentMethod.CREDIT_CARD}>Tarjeta de crédito</SelectItem>
-                              <SelectItem value={EPaymentMethod.DEBIT_CARD}>Tarjeta de débito</SelectItem>
-                              <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
-                              <SelectItem value={EPaymentMethod.MERCADOPAGO}>Mercado Pago</SelectItem>
+                              <SelectItem value={EPaymentMethod.CASH}>
+                                Efectivo
+                              </SelectItem>
+                              <SelectItem value={EPaymentMethod.CREDIT_CARD}>
+                                Tarjeta de crédito
+                              </SelectItem>
+                              <SelectItem value={EPaymentMethod.DEBIT_CARD}>
+                                Tarjeta de débito
+                              </SelectItem>
+                              <SelectItem value={EPaymentMethod.TRANSFER}>
+                                Transferencia
+                              </SelectItem>
+                              <SelectItem value={EPaymentMethod.MERCADOPAGO}>
+                                Mercado Pago
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -866,17 +1178,21 @@ export default function OrderDetailsModal({
                           {order.paymentHistory.map((payment, index) => (
                             <TableRow key={index}>
                               <TableCell>{formatDate(payment.date)}</TableCell>
-                              <TableCell>{formatearPrecio(payment.amount)}</TableCell>
+                              <TableCell>
+                                {formatearPrecio(payment.amount)}
+                              </TableCell>
                               <TableCell>
                                 {payment.method === EPaymentMethod.CASH
                                   ? "Efectivo"
-                                  : payment.method === EPaymentMethod.CREDIT_CARD
+                                  : payment.method ===
+                                    EPaymentMethod.CREDIT_CARD
                                   ? "Tarjeta de crédito"
                                   : payment.method === EPaymentMethod.DEBIT_CARD
                                   ? "Tarjeta de débito"
                                   : payment.method === EPaymentMethod.TRANSFER
                                   ? "Transferencia"
-                                  : payment.method === EPaymentMethod.MERCADOPAGO
+                                  : payment.method ===
+                                    EPaymentMethod.MERCADOPAGO
                                   ? "Mercado Pago"
                                   : "Otro"}
                               </TableCell>
@@ -895,4 +1211,4 @@ export default function OrderDetailsModal({
       </DialogContent>
     </Dialog>
   );
-} 
+}

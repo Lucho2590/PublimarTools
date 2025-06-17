@@ -46,6 +46,15 @@ export default function PresupuestosPage() {
     setShowModal(true);
   };
 
+  // Función para cerrar el modal y limpiar el estado
+  const handleCloseModal = () => {
+    setShowModal(false);
+    // Delay para permitir que la animación de cierre termine antes de limpiar el ID
+    setTimeout(() => {
+      setSelectedQuoteId(null);
+    }, 150);
+  };
+
   // Consulta a Firestore
   const quotesCollection = collection(firestore, collections.QUOTES);
   const quotesQuery = query(quotesCollection, orderBy("createdAt", "desc"));
@@ -452,7 +461,7 @@ export default function PresupuestosPage() {
       {/* Modal de detalles de presupuesto */}
       <QuoteDetailsModal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={handleCloseModal}
         quoteId={selectedQuoteId}
       />
     </div>

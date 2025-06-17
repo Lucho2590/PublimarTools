@@ -262,7 +262,7 @@ export default function ProductEditModal({
             <span>Editar producto: {formData.name}</span>
             <div className="flex gap-2">
               <Button
-                className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
+                className="bg-red-500 hover:bg-red-600 text-white"
                 variant="outline"
                 onClick={onClose}
               >
@@ -458,21 +458,22 @@ export default function ProductEditModal({
           </Card>
 
           <div className="flex justify-end gap-2 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
-            >
-              Cancelar
-            </Button>
-            <Button
-              className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
+          <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
               type="submit"
               disabled={loading}
             >
               {loading ? "Guardando..." : "Guardar cambios"}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
+              Cancelar
+            </Button>
+        
           </div>
         </form>
       </DialogContent>

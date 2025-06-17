@@ -1,13 +1,30 @@
-'use client';
+"use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useFirestore, useFirestoreDocData, useFirestoreCollectionData } from "reactfire";
-import { doc, updateDoc, getDoc, collection, DocumentData } from "firebase/firestore";
+import {
+  useFirestore,
+  useFirestoreDocData,
+  useFirestoreCollectionData,
+} from "reactfire";
+import {
+  doc,
+  updateDoc,
+  getDoc,
+  collection,
+  DocumentData,
+} from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -64,7 +81,8 @@ export default function QuoteDetailsModal({
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<TProduct | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState<TProductVariant | null>(null);
+  const [selectedVariant, setSelectedVariant] =
+    useState<TProductVariant | null>(null);
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
   const [itemNotes, setItemNotes] = useState("");
@@ -76,27 +94,36 @@ export default function QuoteDetailsModal({
     notes: "",
     validUntil: new Date().toISOString().split("T")[0],
     taxRate: 21,
+    status: EQuoteStatus.DRAFT,
   });
 
   // Obtener el presupuesto - crear un doc dummy si no hay quoteId
-  const quoteDoc = quoteId && firestore 
-    ? doc(firestore, collections.QUOTES, quoteId) 
-    : firestore 
-    ? doc(firestore, collections.QUOTES, "dummy") 
-    : null;
-    
-  const { status, data } = useFirestoreDocData(
-    quoteDoc!, 
-    { idField: "id" }
-  );
+  const quoteDoc =
+    quoteId && firestore
+      ? doc(firestore, collections.QUOTES, quoteId)
+      : firestore
+      ? doc(firestore, collections.QUOTES, "dummy")
+      : null;
+
+  const { status, data } = useFirestoreDocData(quoteDoc!, { idField: "id" });
 
   // Fetch clients
-  const clientsCollection = collection(firestore || {} as any, collections.CLIENTS);
-  const { data: clients } = useFirestoreCollectionData(clientsCollection, { idField: "id" });
+  const clientsCollection = collection(
+    firestore || ({} as any),
+    collections.CLIENTS
+  );
+  const { data: clients } = useFirestoreCollectionData(clientsCollection, {
+    idField: "id",
+  });
 
   // Fetch products
-  const productsCollection = collection(firestore || {} as any, collections.PRODUCTS);
-  const { data: products } = useFirestoreCollectionData(productsCollection, { idField: "id" });
+  const productsCollection = collection(
+    firestore || ({} as any),
+    collections.PRODUCTS
+  );
+  const { data: products } = useFirestoreCollectionData(productsCollection, {
+    idField: "id",
+  });
 
   // Función de reset para el modal
   const resetModalStates = useCallback(() => {
@@ -119,6 +146,7 @@ export default function QuoteDetailsModal({
       notes: "",
       validUntil: new Date().toISOString().split("T")[0],
       taxRate: 21,
+      status: EQuoteStatus.DRAFT,
     });
   }, []);
 
@@ -131,23 +159,25 @@ export default function QuoteDetailsModal({
 
   // Cargar datos del presupuesto cuando cambian los datos
   useEffect(() => {
-    if (data && quoteId) {
+    if (data && quoteId && isOpen) {
       const quoteData = data as TQuote;
       setQuote(quoteData);
       setSelectedClient(quoteData.client);
 
       if (quoteData.items && Array.isArray(quoteData.items)) {
-        const mappedItems: QuoteItem[] = quoteData.items.map((item: TQuoteItem) => ({
-          id: item.id,
-          product: item.product,
-          variant: item.variant || undefined,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          discount: item.discount || 0,
-          subtotal: item.subtotal,
-          taxAmount: item.taxAmount || 0,
-          notes: item.notes || "",
-        }));
+        const mappedItems: QuoteItem[] = quoteData.items.map(
+          (item: TQuoteItem) => ({
+            id: item.id,
+            product: item.product,
+            variant: item.variant || undefined,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            discount: item.discount || 0,
+            subtotal: item.subtotal,
+            taxAmount: item.taxAmount || 0,
+            notes: item.notes || "",
+          })
+        );
         setItems(mappedItems);
       }
 
@@ -166,9 +196,10 @@ export default function QuoteDetailsModal({
                 .split("T")[0]
             : new Date().toISOString().split("T")[0],
         taxRate: quoteData.taxRate || 21,
+        status: quoteData.status || EQuoteStatus.DRAFT,
       });
     }
-  }, [data, quoteId]);
+  }, [data, quoteId, isOpen]);
 
   // Recalcular taxAmount cuando cambie la tasa de impuesto
   useEffect(() => {
@@ -181,8 +212,13 @@ export default function QuoteDetailsModal({
     }
   }, [formData.taxRate, items]);
 
-  // Si no tenemos firestore o quoteId, mostrar loading
-  if (!firestore || !quoteId) {
+  // No renderizar nada si el modal no está abierto o no hay quoteId
+  if (!isOpen || !quoteId) {
+    return null;
+  }
+
+  // Si no tenemos firestore, mostrar loading
+  if (!firestore) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -209,12 +245,16 @@ export default function QuoteDetailsModal({
     if (!product) return false;
     return (
       product.name?.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-      product.description?.toLowerCase().includes(productSearchTerm.toLowerCase())
+      product.description
+        ?.toLowerCase()
+        .includes(productSearchTerm.toLowerCase())
     );
   });
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
   ) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -305,6 +345,7 @@ export default function QuoteDetailsModal({
         taxAmount: tax,
         total: total,
         notes: formData.notes,
+        status: formData.status,
         validUntil: new Date(formData.validUntil),
         updatedAt: new Date(),
       };
@@ -325,7 +366,10 @@ export default function QuoteDetailsModal({
     setSearchTerm("");
   };
 
-  const handleProductSelect = (product: TProduct, variant?: TProductVariant) => {
+  const handleProductSelect = (
+    product: TProduct,
+    variant?: TProductVariant
+  ) => {
     setSelectedProduct(product);
     setSelectedVariant(variant || null);
     setProductSearchTerm("");
@@ -408,8 +452,9 @@ export default function QuoteDetailsModal({
                   variant="outline"
                   onClick={() => setIsEditing(false)}
                   disabled={loading}
+                  className="bg-red-500 hover:bg-red-600 text-white"
                 >
-                  <X className="h-4 w-4 mr-2" />
+                  {/* <X className="h-4 w-4 mr-2" /> */}
                   Cancelar
                 </Button>
               </div>
@@ -450,10 +495,14 @@ export default function QuoteDetailsModal({
                             >
                               <div className="font-medium">{client.name}</div>
                               {client.email && (
-                                <div className="text-sm text-gray-600">{client.email}</div>
+                                <div className="text-sm text-gray-600">
+                                  {client.email}
+                                </div>
                               )}
                               {client.phone && (
-                                <div className="text-sm text-gray-600">{client.phone}</div>
+                                <div className="text-sm text-gray-600">
+                                  {client.phone}
+                                </div>
                               )}
                             </div>
                           ))}
@@ -464,13 +513,19 @@ export default function QuoteDetailsModal({
                       <div className="p-3 bg-blue-50 rounded-md">
                         <div className="font-medium">{selectedClient.name}</div>
                         {selectedClient.email && (
-                          <div className="text-sm text-gray-600">{selectedClient.email}</div>
+                          <div className="text-sm text-gray-600">
+                            {selectedClient.email}
+                          </div>
                         )}
                         {selectedClient.phone && (
-                          <div className="text-sm text-gray-600">{selectedClient.phone}</div>
+                          <div className="text-sm text-gray-600">
+                            {selectedClient.phone}
+                          </div>
                         )}
                         {selectedClient.address && (
-                          <div className="text-sm text-gray-600">{selectedClient.address}</div>
+                          <div className="text-sm text-gray-600">
+                            {selectedClient.address}
+                          </div>
                         )}
                       </div>
                     )}
@@ -515,6 +570,37 @@ export default function QuoteDetailsModal({
                         onChange={handleChange}
                       />
                     </div>
+                    <div>
+                      <Label htmlFor="status">Estado</Label>
+                      <Select
+                        name="status"
+                        value={formData.status}
+                        onValueChange={(value) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            status: value as EQuoteStatus,
+                          }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={EQuoteStatus.DRAFT}>
+                            Borrador
+                          </SelectItem>
+                          <SelectItem value={EQuoteStatus.SENT}>
+                            Enviado
+                          </SelectItem>
+                          <SelectItem value={EQuoteStatus.CONFIRMED}>
+                            Confirmado
+                          </SelectItem>
+                          <SelectItem value={EQuoteStatus.REJECTED}>
+                            Rechazado
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -526,6 +612,7 @@ export default function QuoteDetailsModal({
                 <CardTitle className="flex justify-between items-center">
                   Productos
                   <Button
+                    className="bg-blue-900 hover:bg-blue-700 text-white"
                     type="button"
                     variant="outline"
                     size="sm"
@@ -549,7 +636,9 @@ export default function QuoteDetailsModal({
                             type="text"
                             placeholder="Buscar producto..."
                             value={productSearchTerm}
-                            onChange={(e) => setProductSearchTerm(e.target.value)}
+                            onChange={(e) =>
+                              setProductSearchTerm(e.target.value)
+                            }
                             className="pl-10"
                           />
                           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -562,9 +651,13 @@ export default function QuoteDetailsModal({
                                 className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
                                 onClick={() => handleProductSelect(product)}
                               >
-                                <div className="font-medium">{product.name}</div>
+                                <div className="font-medium">
+                                  {product.name}
+                                </div>
                                 {product.description && (
-                                  <div className="text-sm text-gray-600">{product.description}</div>
+                                  <div className="text-sm text-gray-600">
+                                    {product.description}
+                                  </div>
                                 )}
                                 <div className="text-sm text-blue-600">
                                   {formatearPrecio(Number(product.price))}
@@ -584,7 +677,9 @@ export default function QuoteDetailsModal({
                               type="number"
                               min="1"
                               value={itemQuantity}
-                              onChange={(e) => setItemQuantity(Number(e.target.value))}
+                              onChange={(e) =>
+                                setItemQuantity(Number(e.target.value))
+                              }
                             />
                           </div>
                           <div>
@@ -596,11 +691,15 @@ export default function QuoteDetailsModal({
                               max="100"
                               step="0.01"
                               value={itemDiscount}
-                              onChange={(e) => setItemDiscount(Number(e.target.value))}
+                              onChange={(e) =>
+                                setItemDiscount(Number(e.target.value))
+                              }
                             />
                           </div>
                           <div className="md:col-span-2">
-                            <Label htmlFor="item-notes">Notas del producto</Label>
+                            <Label htmlFor="item-notes">
+                              Notas del producto
+                            </Label>
                             <Input
                               id="item-notes"
                               value={itemNotes}
@@ -611,24 +710,31 @@ export default function QuoteDetailsModal({
                         </div>
                       )}
 
-                      {selectedProduct && selectedProduct.variants && selectedProduct.variants.length > 0 && (
-                        <div>
-                          <Label>Variantes</Label>
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
-                            {selectedProduct.variants.map((variant) => (
-                              <Button
-                                key={variant.id}
-                                type="button"
-                                variant={selectedVariant?.id === variant.id ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => handleVariantSelect(variant)}
-                              >
-                                {variant.size} - {formatearPrecio(Number(variant.price))}
-                              </Button>
-                            ))}
+                      {selectedProduct &&
+                        selectedProduct.variants &&
+                        selectedProduct.variants.length > 0 && (
+                          <div>
+                            <Label>Variantes</Label>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2">
+                              {selectedProduct.variants.map((variant) => (
+                                <Button
+                                  key={variant.id}
+                                  type="button"
+                                  variant={
+                                    selectedVariant?.id === variant.id
+                                      ? "default"
+                                      : "outline"
+                                  }
+                                  size="sm"
+                                  onClick={() => handleVariantSelect(variant)}
+                                >
+                                  {variant.size} -{" "}
+                                  {formatearPrecio(Number(variant.price))}
+                                </Button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
                       <div className="flex gap-2">
                         <Button
@@ -690,17 +796,21 @@ export default function QuoteDetailsModal({
                         <TableCell>
                           <div className="flex gap-2">
                             <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Editar"
                               type="button"
-                              variant="outline"
-                              size="sm"
+                              className="text-blue-700 hover:text-blue-900 hover:bg-blue-50"
                               onClick={() => startEditItem(item)}
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              title="Eliminar"
                               type="button"
-                              variant="outline"
-                              size="sm"
                               onClick={() => removeItem(item.id)}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -763,16 +873,24 @@ export default function QuoteDetailsModal({
                 <CardContent>
                   <h3 className="font-medium text-lg">{quote.client.name}</h3>
                   {quote.client.email && (
-                    <p className="text-slate-600">Email: {quote.client.email}</p>
+                    <p className="text-slate-600">
+                      Email: {quote.client.email}
+                    </p>
                   )}
                   {quote.client.phone && (
-                    <p className="text-slate-600">Teléfono: {quote.client.phone}</p>
+                    <p className="text-slate-600">
+                      Teléfono: {quote.client.phone}
+                    </p>
                   )}
                   {quote.client.address && (
-                    <p className="text-slate-600">Dirección: {quote.client.address}</p>
+                    <p className="text-slate-600">
+                      Dirección: {quote.client.address}
+                    </p>
                   )}
                   {quote.client.cuit && (
-                    <p className="text-slate-600">CUIT/CUIL: {quote.client.cuit}</p>
+                    <p className="text-slate-600">
+                      CUIT/CUIL: {quote.client.cuit}
+                    </p>
                   )}
                 </CardContent>
               </Card>
@@ -858,7 +976,9 @@ export default function QuoteDetailsModal({
                         <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>
-                          {item.discount && item.discount > 0 ? `${item.discount}%` : "-"}
+                          {item.discount && item.discount > 0
+                            ? `${item.discount}%`
+                            : "-"}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatearPrecio(item.subtotal)}
@@ -907,4 +1027,4 @@ export default function QuoteDetailsModal({
       </DialogContent>
     </Dialog>
   );
-} 
+}

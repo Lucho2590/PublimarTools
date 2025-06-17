@@ -467,6 +467,7 @@ export default function ProductosPage() {
                             variant="ghost"
                             size="icon"
                             title="Editar"
+                            type="button" 
                             className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                             onClick={() => handleEditProduct(typedProduct.id)}
                           >
