@@ -45,7 +45,7 @@ export default function PedidosPage() {
     idField: "id",
   });
 
-  console.log(orders);
+  // console.log(orders);
 
   // Filtrar pedidos según la búsqueda y estado
   const filteredOrders = orders?.filter((order) => {

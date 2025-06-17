@@ -55,7 +55,7 @@ export default function VentasPage() {
   const { status, data: sales } = useFirestoreCollectionData(salesQuery, {
     idField: "id",
   });
- console.log(sales)
+//  console.log(sales)
 
 
   // Obtener productos para acceder a sus categorías
@@ -70,7 +70,7 @@ export default function VentasPage() {
     idField: "id",
   });
 
-  console.log('Categorías:', categories);
+  // console.log('Categorías:', categories);
 
   // Función para obtener el nombre de la categoría
   const getCategoryName = (categoryId: string) => {
@@ -203,7 +203,7 @@ export default function VentasPage() {
     // Agrupar ventas por categoría
     const categorySales = new Map<string, number>();
     
-    console.log(filteredSales)
+    // console.log(filteredSales)
     filteredSales.forEach((sale) => {
       const typedSale = sale as unknown as TSale;
       typedSale.items?.forEach((item) => {

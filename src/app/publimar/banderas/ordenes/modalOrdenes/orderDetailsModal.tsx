@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useFirestore, useFirestoreDocData } from "reactfire";
 import { doc, updateDoc, collection, query, where, orderBy, limit, getDocs, addDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -77,15 +77,20 @@ export default function OrderDetailsModal({
     }
   }, [order]);
 
+  // Reset function (stable reference)
+  const resetModalState = useCallback(() => {
+    setIsEditing(false);
+    setItems([]);
+    setPagoParcial("");
+    setBanco("");
+  }, []);
+
   // Reset al cerrar modal
   useEffect(() => {
     if (!isOpen) {
-      setIsEditing(false);
-      setItems([]);
-      setPagoParcial("");
-      setBanco("");
+      resetModalState();
     }
-  }, [isOpen]);
+  }, [isOpen, resetModalState]);
 
   // Si no tenemos firestore o orderId, mostrar loading
   if (!firestore || !orderId) {

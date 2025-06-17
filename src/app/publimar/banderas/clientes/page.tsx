@@ -18,9 +18,12 @@ import {
 import collections from "@/lib/collections";
 import { EClientType, EClientStatus } from "@/types/client";
 import { Edit, Eye } from "lucide-react";
+import ClientDetailsModal from "./modalClientes/clientDetailsModal";
 
 export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const firestore = useFirestore();
 
   // Consulta a Firestore - Temporalmente sin el filtro de status
@@ -30,6 +33,16 @@ export default function ClientesPage() {
   const { status, data: clients } = useFirestoreCollectionData(clientsQuery, {
     idField: "id",
   });
+
+  const handleViewClient = (clientId: string) => {
+    setSelectedClientId(clientId);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedClientId(null);
+  };
 
   // Filtrar clientes según la búsqueda y status
   const filteredClients = clients?.filter((client) => {
@@ -117,30 +130,24 @@ export default function ClientesPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-2">
-                            <Link
-                              href={`/publimar/banderas/clientes/${client.id}`}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Ver"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                              onClick={() => handleViewClient(client.id)}
                             >
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Ver"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </Link>
-                            <Link
-                              href={`/publimar/banderas/clientes/${client.id}/editar`}
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {/* <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Editar"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                              onClick={() => handleViewClient(client.id)}
                             >
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Editar"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </Link>
+                              <Edit className="h-4 w-4" />
+                            </Button> */}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -163,6 +170,15 @@ export default function ClientesPage() {
           </CardContent>
         </Card>
       )}
+
+      <ClientDetailsModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        clientId={selectedClientId}
+        onClientUpdated={() => {
+          // The real-time data will automatically update the list
+        }}
+      />
     </div>
   );
 }

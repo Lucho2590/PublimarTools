@@ -38,6 +38,7 @@ import { Edit } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
 import { formatearPrecio } from "@/lib/utils";
+import ProductEditModal from "./modalProductos/productEditModal";
 
 export default function ProductosPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -50,6 +51,8 @@ export default function ProductosPage() {
   const [isApplyingIncrease, setIsApplyingIncrease] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const firestore = useFirestore();
 
   // Consulta a Firestore para productos
@@ -190,6 +193,16 @@ export default function ProductosPage() {
     } else {
       setSelectedProducts(filteredProducts?.map(p => (p as unknown as TProduct).id) || []);
     }
+  };
+
+  const handleEditProduct = (productId: string) => {
+    setSelectedProductId(productId);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    setIsModalOpen(false);
+    setSelectedProductId(null);
   };
 
   const handleApplyIncrease = async () => {
@@ -450,18 +463,15 @@ export default function ProductosPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-center">
-                          <Link
-                            href={`/publimar/banderas/productos/${typedProduct.id}/editar`}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Editar"
+                            className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                            onClick={() => handleEditProduct(typedProduct.id)}
                           >
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Editar"
-                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </Link>
+                            <Edit className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );
@@ -519,6 +529,15 @@ export default function ProductosPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ProductEditModal
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
+        productId={selectedProductId}
+        onProductUpdated={() => {
+          // The real-time data will automatically update the list
+        }}
+      />
     </div>
   );
 }
