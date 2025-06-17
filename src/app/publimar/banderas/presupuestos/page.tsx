@@ -30,12 +30,21 @@ import html2canvas from "html2canvas";
 import { toast } from "sonner";
 import { DocumentData } from "firebase/firestore";
 import { formatearPrecio } from "@/lib/utils";
+import QuoteDetailsModal from "./modalPresupuestos/quoteDetailsModal";
 
 export default function PresupuestosPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<EQuoteStatus | "all">("all");
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const firestore = useFirestore();
+
+  // Función para manejar la vista de presupuesto en modal
+  const handleViewQuote = (quoteId: string) => {
+    setSelectedQuoteId(quoteId);
+    setShowModal(true);
+  };
 
   // Consulta a Firestore
   const quotesCollection = collection(firestore, collections.QUOTES);
@@ -391,31 +400,15 @@ export default function PresupuestosPage() {
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex justify-center gap-2">
-                              <Link
-                                href={`/publimar/banderas/presupuestos/${quote.id}`}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Ver presupuesto"
+                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                                onClick={() => handleViewQuote(quote.id)}
                               >
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  title="Ver"
-                                  className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </Link>
-
-                              <Link
-                                href={`/publimar/banderas/presupuestos/${quote.id}/editar`}
-                              >
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  title="Editar"
-                                  className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                              </Link>
+                                <Eye className="h-4 w-4" />
+                              </Button>
 
                               <Button
                                 variant="ghost"
@@ -455,6 +448,13 @@ export default function PresupuestosPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Modal de detalles de presupuesto */}
+      <QuoteDetailsModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        quoteId={selectedQuoteId}
+      />
     </div>
   );
 }
