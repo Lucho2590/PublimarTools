@@ -10,13 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { TProvider } from "@/types/provider";
-import Link from "next/link";
+import { Edit } from "lucide-react";
+import ProviderEditModal from "./modalProveedores/providerEditModal";
 
 export default function ProveedoresPage() {
   const firestore = useFirestore();
   const [form, setForm] = useState<Partial<TProvider>>({});
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // Obtener proveedores ordenados por nombre
   const providersCollection = collection(firestore, "providers");
@@ -43,6 +46,16 @@ export default function ProveedoresPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleEditProvider = (providerId: string) => {
+    setSelectedProviderId(providerId);
+    setIsEditModalOpen(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setIsEditModalOpen(false);
+    setSelectedProviderId(null);
   };
 
   return (
@@ -139,7 +152,15 @@ export default function ProveedoresPage() {
                         <TableCell>{prov.contactPerson}</TableCell>
                         <TableCell>{prov.notes}</TableCell>
                         <TableCell className="text-center">
-                          <Link href={`/publimar/proveedores/${prov.id}`} className="text-blue-700 hover:underline">Editar</Link>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Editar"
+                            className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                            onClick={() => handleEditProvider(prov.id)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))
@@ -154,6 +175,15 @@ export default function ProveedoresPage() {
           )}
         </CardContent>
       </Card>
+
+      <ProviderEditModal
+        isOpen={isEditModalOpen}
+        onClose={handleCloseEditModal}
+        providerId={selectedProviderId}
+        onProviderUpdated={() => {
+          // Los datos se actualizan automáticamente con reactfire
+        }}
+      />
     </div>
   );
 }

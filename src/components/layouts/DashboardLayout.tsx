@@ -2,6 +2,7 @@
 
 import React, { ReactNode, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { redirect, usePathname } from "next/navigation";
 import { useSigninCheck } from "reactfire";
 import { Button } from "@/components/ui/button";
@@ -301,14 +302,29 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
       {/* Sidebar */}
       <div
         className={`${
-          isSidebarOpen ? "w-64" : "w-20"
+          isSidebarOpen ? "w-64" : "w-25"
         } bg-blue-950 text-white transition-all duration-300 ease-in-out flex flex-col`}
       >
         <div className="p-4 flex items-center justify-between">
           {isSidebarOpen ? (
+            <>
             <h2 className="text-xl font-bold">PublimarTools</h2>
+            <Image 
+              src="/imagenes/favicon-publimar-tools.png" 
+              alt="PublimarTools" 
+              width={30} 
+              height={30} 
+              className="rounded"
+            />
+            </>
           ) : (
-            <h2 className="text-xl font-bold">PT</h2>
+            <Image 
+              src="/imagenes/favicon-publimar-tools.png" 
+              alt="PublimarTools" 
+              width={45} 
+              height={45} 
+              className="rounded"
+            />
           )}
           <button
             onClick={toggleSidebar}

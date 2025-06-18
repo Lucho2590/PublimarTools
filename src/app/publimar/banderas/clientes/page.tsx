@@ -48,11 +48,10 @@ export default function ClientesPage() {
   const filteredClients = clients?.filter((client) => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = 
-      client.name.toLowerCase().includes(searchLower) ||
+      client.name?.toLowerCase().includes(searchLower) ||
       client.email?.toLowerCase().includes(searchLower) ||
       client.phone?.includes(searchTerm) ||
-      client.businessName?.toLowerCase().includes(searchLower) ||
-      client.cuit?.includes(searchTerm);
+      client.taxId?.includes(searchTerm);
     
     // Filtrar por status en el cliente
     const isActive = client.status === EClientStatus.ACTIVE;
@@ -110,9 +109,7 @@ export default function ClientesPage() {
                     filteredClients.map((client) => (
                       <TableRow key={client.id}>
                         <TableCell className="font-medium">
-                          {client.type === EClientType.COMPANY
-                            ? client.businessName
-                            : client.name}
+                          {client.name || "-"}
                         </TableCell>
                         <TableCell className="text-left">
                           {client.type === EClientType.COMPANY
@@ -120,7 +117,7 @@ export default function ClientesPage() {
                             : "Individual"}
                         </TableCell>
                         <TableCell className="text-left">
-                          {client.cuit || "-"}
+                          {client.taxId || "-"}
                         </TableCell>
                         <TableCell className="text-left">
                           {client.email || "-"}

@@ -113,9 +113,9 @@ export default function NuevoClientePage() {
         updatedBy: doc(firestore, `users/${user.uid}`),
       };
 
-      // Eliminar campos vacíos
+      // Eliminar campos vacíos, excepto los campos requeridos
       Object.keys(clientData).forEach((key) => {
-        if (clientData[key] === "") {
+        if (clientData[key] === "" && key !== "name") {
           delete clientData[key];
         }
       });

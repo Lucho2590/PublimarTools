@@ -71,16 +71,16 @@ export default function OrdenPage({ params }: { params: { id: string } }) {
   //   );
   // }
 
-  if (!signInCheckResult.signedIn) {
-    redirect("/login");
-    return null;
-  }
-
   // Obtener la orden
   const { status, data } = useFirestoreDocData(
     doc(firestore, collections.ORDERS, params.id),
     { idField: "id" }
   );
+
+  if (!signInCheckResult.signedIn) {
+    redirect("/login");
+    return null;
+  }
 
   // Convertir el data a TOrder
   const order = data as TOrder | null;
