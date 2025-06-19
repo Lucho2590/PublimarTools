@@ -53,6 +53,8 @@ import collections from "@/lib/collections";
 // import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 // import { Textarea } from "@/components/ui/textarea";
+import QuoteDetailsModal from "./presupuestos/modalPresupuestos/quoteDetailsModal";
+import OrderDetailsModal from "./ordenes/modalOrdenes/orderDetailsModal";
 
 export default function DashboardPage() {
   const firestore = useFirestore();
@@ -69,6 +71,10 @@ export default function DashboardPage() {
     description: "",
     time: "",
   });
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   // Consulta presupuestos próximos a vencer (7 días)
   const quotesCollection = collection(firestore, collections.QUOTES);
@@ -190,6 +196,30 @@ export default function DashboardPage() {
       console.error("Error al crear evento:", error);
       toast.error("Error al crear el evento");
     }
+  };
+
+  const handleViewQuote = (quoteId: string) => {
+    setSelectedQuoteId(quoteId);
+    setShowQuoteModal(true);
+  };
+
+  const handleCloseQuoteModal = () => {
+    setShowQuoteModal(false);
+    setTimeout(() => {
+      setSelectedQuoteId(null);
+    }, 150);
+  };
+
+  const handleViewOrder = (orderId: string) => {
+    setSelectedOrderId(orderId);
+    setShowOrderModal(true);
+  };
+
+  const handleCloseOrderModal = () => {
+    setShowOrderModal(false);
+    setTimeout(() => {
+      setSelectedOrderId(null);
+    }, 150);
   };
 
   return (
@@ -461,11 +491,14 @@ export default function DashboardPage() {
                       <TableCell>{formatDate(quote.validUntil)}</TableCell>
                       <TableCell>{formatearPrecio(quote.total)}</TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/publimar/banderas/presupuestos/${quote.number}`}>
-                          <Button variant="ghost" size="icon">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleViewQuote(quote.id)}
+                          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -511,11 +544,14 @@ export default function DashboardPage() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link href={`/publimar/banderas/ordenes/${order.number}`}>
-                          <Button variant="ghost" size="icon">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleViewOrder(order.id)}
+                          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -584,6 +620,20 @@ export default function DashboardPage() {
           </div>
         </DialogContent>
       </Dialog> */}
+
+      {/* Modal de detalles de presupuesto */}
+      <QuoteDetailsModal
+        isOpen={showQuoteModal}
+        onClose={handleCloseQuoteModal}
+        quoteId={selectedQuoteId}
+      />
+
+      {/* Modal de detalles de orden */}
+      <OrderDetailsModal
+        isOpen={showOrderModal}
+        onClose={handleCloseOrderModal}
+        orderId={selectedOrderId}
+      />
     </div>
   );
 }

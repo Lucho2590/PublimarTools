@@ -11,6 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { TPurchase } from "@/types/purchase";
 // import { TProvider } from "@/types/provider";
 
@@ -42,6 +51,9 @@ export default function ComprasPage() {
   const [form, setForm] = useState<Partial<TPurchase>>({ date: new Date().toISOString().split("T")[0] });
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Obtener proveedores para el select
   const providersCollection = collection(firestore, "providers");
@@ -51,6 +63,58 @@ export default function ComprasPage() {
   const purchasesCollection = collection(firestore, "purchases");
   const purchasesQuery = query(purchasesCollection, orderBy("date", "desc"));
   const { status: purStatus, data: purchases } = useFirestoreCollectionData(purchasesQuery, { idField: "id" });
+
+  // Filtrar compras según la búsqueda
+  const filteredPurchases = purchases?.filter((purchase: any) => {
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      purchase.providerName?.toLowerCase().includes(searchLower) ||
+      purchase.description?.toLowerCase().includes(searchLower) ||
+      purchase.amount?.toString().includes(searchTerm)
+    );
+  });
+
+  // Calcular índices para la paginación
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredPurchases?.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil((filteredPurchases?.length || 0) / itemsPerPage);
+
+  // Generar números de página para mostrar
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    const maxPagesToShow = 5;
+    
+    if (totalPages <= maxPagesToShow) {
+      for (let i = 1; i <= totalPages; i++) {
+        pageNumbers.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pageNumbers.push(i);
+        }
+        pageNumbers.push(-1); // -1 representa elipsis
+        pageNumbers.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pageNumbers.push(1);
+        pageNumbers.push(-1);
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pageNumbers.push(i);
+        }
+      } else {
+        pageNumbers.push(1);
+        pageNumbers.push(-1);
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pageNumbers.push(i);
+        }
+        pageNumbers.push(-1);
+        pageNumbers.push(totalPages);
+      }
+    }
+    
+    return pageNumbers;
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -141,14 +205,56 @@ export default function ComprasPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Historial de Compras</CardTitle>
+          <div className="flex justify-between items-center">
+            <CardTitle>Historial de Compras</CardTitle>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Buscar por proveedor, descripción o monto..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1); // Reset a la primera página cuando se busca
+                }}
+                className="w-64"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {purStatus === "loading" ? (
-            <p>Cargando compras...</p>
+            <div className="flex justify-center my-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Mostrar</span>
+                  <Select
+                    value={itemsPerPage.toString()}
+                    onValueChange={(value) => {
+                      setItemsPerPage(Number(value));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-[100px]">
+                      <SelectValue placeholder="10" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="15">15</SelectItem>
+                      <SelectItem value="25">25</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-gray-500">por página</span>
+                </div>
+                <div className="text-sm text-gray-500">
+                  Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredPurchases?.length || 0)} de {filteredPurchases?.length || 0} compras
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Fecha</TableHead>
@@ -158,8 +264,8 @@ export default function ComprasPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {purchases && purchases.length > 0 ? (
-                    purchases.map((compra: any) => (
+                  {currentItems && currentItems.length > 0 ? (
+                    currentItems.map((compra: any) => (
                       <TableRow key={compra.id}>
                         <TableCell>{formatDate(compra.date)}</TableCell>
                         <TableCell>{compra.providerName || "-"}</TableCell>
@@ -169,11 +275,54 @@ export default function ComprasPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-slate-500 p-4">No hay compras registradas</TableCell>
+                      <TableCell colSpan={4} className="text-center text-slate-500 p-4">
+                        {searchTerm 
+                          ? "No se encontraron compras con los términos de búsqueda."
+                          : "No hay compras registradas"}
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="mt-4">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                      
+                      {getPageNumbers().map((pageNumber, index) => (
+                        <PaginationItem key={index}>
+                          {pageNumber === -1 ? (
+                            <PaginationEllipsis />
+                          ) : (
+                            <PaginationLink
+                              onClick={() => setCurrentPage(pageNumber)}
+                              isActive={currentPage === pageNumber}
+                              className={currentPage === pageNumber ? "bg-blue-900 text-white" : ""}
+                            >
+                              {pageNumber}
+                            </PaginationLink>
+                          )}
+                        </PaginationItem>
+                      ))}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

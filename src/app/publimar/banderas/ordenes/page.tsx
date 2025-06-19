@@ -20,6 +20,15 @@ import { EOrderStatus, TOrder } from "@/types/order";
 import { redirect, useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { Edit, Eye } from "lucide-react";
 import OrderDetailsModal from "./modalOrdenes/orderDetailsModal";
 
@@ -28,6 +37,8 @@ export default function PedidosPage() {
   const [statusFilter, setStatusFilter] = useState<EOrderStatus | "all">("all");
   const [showModal, setShowModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const firestore = useFirestore();
   const router = useRouter();
 
@@ -58,6 +69,48 @@ export default function PedidosPage() {
 
     return matchesSearch && matchesStatus;
   });
+
+  // Calcular índices para la paginación
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredOrders?.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil((filteredOrders?.length || 0) / itemsPerPage);
+
+  // Generar números de página para mostrar
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    const maxPagesToShow = 5;
+    
+    if (totalPages <= maxPagesToShow) {
+      for (let i = 1; i <= totalPages; i++) {
+        pageNumbers.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pageNumbers.push(i);
+        }
+        pageNumbers.push(-1); // -1 representa elipsis
+        pageNumbers.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pageNumbers.push(1);
+        pageNumbers.push(-1);
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pageNumbers.push(i);
+        }
+      } else {
+        pageNumbers.push(1);
+        pageNumbers.push(-1);
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pageNumbers.push(i);
+        }
+        pageNumbers.push(-1);
+        pageNumbers.push(totalPages);
+      }
+    }
+    
+    return pageNumbers;
+  };
 
   // Formatear fecha
   const formatDate = (timestamp: any) => {
@@ -90,13 +143,19 @@ export default function PedidosPage() {
               <Input
                 placeholder="Buscar por número o cliente..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1); // Reset a la primera página cuando se busca
+                }}
               />
             </div>
             <div>
               <Select
                 value={statusFilter}
-                onValueChange={(value) => setStatusFilter(value as EOrderStatus | "all")}
+                onValueChange={(value) => {
+                  setStatusFilter(value as EOrderStatus | "all");
+                  setCurrentPage(1); // Reset a la primera página cuando se filtra
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Filtrar por estado" />
@@ -120,7 +179,33 @@ export default function PedidosPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto px-6">
+            <div className="p-4 overflow-x-auto">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Mostrar</span>
+                  <Select
+                    value={itemsPerPage.toString()}
+                    onValueChange={(value) => {
+                      setItemsPerPage(Number(value));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-[100px]">
+                      <SelectValue placeholder="10" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="15">15</SelectItem>
+                      <SelectItem value="25">25</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-gray-500">por página</span>
+                </div>
+                <div className="text-sm text-gray-500">
+                  Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredOrders?.length || 0)} de {filteredOrders?.length || 0} órdenes
+                </div>
+              </div>
+
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -134,8 +219,8 @@ export default function PedidosPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredOrders && filteredOrders.length > 0 ? (
-                    filteredOrders.map((order) => (
+                  {currentItems && currentItems.length > 0 ? (
+                    currentItems.map((order) => (
                       <TableRow key={order.id}>
                         <TableCell className="font-medium">
                           {order.number}
@@ -192,6 +277,44 @@ export default function PedidosPage() {
                   )}
                 </TableBody>
               </Table>
+
+              {totalPages > 1 && (
+                <div className="mt-4">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                      
+                      {getPageNumbers().map((pageNumber, index) => (
+                        <PaginationItem key={index}>
+                          {pageNumber === -1 ? (
+                            <PaginationEllipsis />
+                          ) : (
+                            <PaginationLink
+                              onClick={() => setCurrentPage(pageNumber)}
+                              isActive={currentPage === pageNumber}
+                              className={currentPage === pageNumber ? "bg-blue-900 text-white" : ""}
+                            >
+                              {pageNumber}
+                            </PaginationLink>
+                          )}
+                        </PaginationItem>
+                      ))}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
