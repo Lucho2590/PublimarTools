@@ -36,6 +36,7 @@ import {
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { Edit, Save, Trash2 } from "lucide-react";
+import QuoteDetailsModal from "../../presupuestos/modalPresupuestos/quoteDetailsModal";
 
 interface ClientDetailsModalProps {
   isOpen: boolean;
@@ -52,6 +53,8 @@ export default function ClientDetailsModal({
 }: ClientDetailsModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const firestore = useFirestore();
 
   const [formData, setFormData] = useState<Partial<TClient>>({
@@ -68,6 +71,12 @@ export default function ClientDetailsModal({
   });
 
   const [contacts, setContacts] = useState<TClientContact[]>([]);
+
+  // Función para manejar la vista de presupuesto en modal
+  const handleViewQuote = (quoteId: string) => {
+    setSelectedQuoteId(quoteId);
+    setShowQuoteModal(true);
+  };
 
   // Reset function (stable reference)
   const resetModalState = useCallback(() => {
@@ -425,13 +434,7 @@ export default function ClientDetailsModal({
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => {
-                                  // Here we could trigger the quote modal if needed
-                                  window.open(
-                                    `/publimar/banderas/presupuestos/${quote.id}`,
-                                    "_blank"
-                                  );
-                                }}
+                                onClick={() => handleViewQuote(quote.id)}
                               >
                                 Ver
                               </Button>
@@ -714,6 +717,13 @@ export default function ClientDetailsModal({
           </form>
         )}
       </DialogContent>
+
+      {/* Modal de detalles de presupuesto */}
+      <QuoteDetailsModal
+        isOpen={showQuoteModal}
+        onClose={() => setShowQuoteModal(false)}
+        quoteId={selectedQuoteId}
+      />
     </Dialog>
   );
 }
