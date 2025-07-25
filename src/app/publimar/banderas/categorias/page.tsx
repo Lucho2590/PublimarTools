@@ -179,17 +179,19 @@ export default function CategoriasPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                <TableHead className="pl-10">Nombre</TableHead>
+                <TableHead className="pr-10 text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {categories?.map((category) => {
+              {categories
+                ?.sort((a, b) => a.name.localeCompare(b.name))
+                ?.map((category) => {
                 const typedCategory = category as unknown as TProductCategory;
                 return (
                   <TableRow key={typedCategory.id}>
-                    <TableCell>{typedCategory.name}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="pl-10">{typedCategory.name}</TableCell>
+                    <TableCell className="pr-8 text-right">
                       <Button
                         onClick={() =>
                           setEditingCategory({

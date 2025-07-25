@@ -114,7 +114,7 @@ export default function DashboardPage() {
 
   // Filtrar productos con bajo stock en el cliente
   const lowStockProducts = allProducts?.filter((product) =>
-    product.variants?.some((variant: { stock: number }) => variant.stock <= 10)
+    product.variants?.some((variant: { stock: number }) => variant.stock <= 5)
   );
 
   // Consulta últimas órdenes de trabajo
@@ -316,15 +316,19 @@ export default function DashboardPage() {
                 <Package className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{lowStockProducts?.length || 0}</div>
+                <div className="text-2xl font-bold">
+                  {lowStockProducts?.reduce((count, product) => 
+                    count + (product.variants?.filter((variant: any) => variant.stock <= 5).length || 0), 0
+                  ) || 0}
+                </div>
               </CardContent>
             </Card>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
+          <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>Productos con Bajo Stock</DialogTitle>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+            <div className="overflow-y-auto flex-1 py-4">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -336,22 +340,21 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {lowStockProducts?.map((product: any) =>
-                    product.variants?.map(
-                      (variant: any) =>
-                        variant.stock <= 10 && (
-                          <TableRow key={`${product.id}-${variant.id}`}>
-                            <TableCell>{product.name}</TableCell>
-                            <TableCell>{variant.size}</TableCell>
-                            <TableCell>{variant.stock}</TableCell>
-                            <TableCell className="text-right">
-                              <Link href={`/publimar/banderas/productos/${product.id}/editar`}>
-                                <Button variant="outline" size="sm">
-                                  Reponer
-                                </Button>
-                              </Link>
-                            </TableCell>
-                          </TableRow>
-                        )
+                    product.variants?.filter((variant: any) => variant.stock <= 5).map(
+                      (variant: any) => (
+                        <TableRow key={`${product.id}-${variant.id}`}>
+                          <TableCell>{product.name}</TableCell>
+                          <TableCell>{variant.size}</TableCell>
+                          <TableCell>{variant.stock}</TableCell>
+                          <TableCell className="text-right">
+                            <Link href={`/publimar/banderas/productos/${product.id}/editar`}>
+                              <Button variant="outline" size="sm">
+                                Reponer
+                              </Button>
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                      )
                     )
                   )}
                 </TableBody>
