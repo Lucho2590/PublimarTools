@@ -41,7 +41,7 @@ import {
 import { Search, Plus, Trash2, Edit, ArrowLeft } from "lucide-react";
 import collections from "@/lib/collections";
 import { EQuoteStatus } from "@/types/quote";
-import { TClient } from "@/types/client";
+import { TClient, EClientType, EClientStatus } from "@/types/client";
 import { TProduct, TProductVariant, TProductCategory } from "@/types/product";
 import {
   Select,
@@ -71,6 +71,17 @@ export default function NuevoPresupuestoPage() {
   const [selectedClient, setSelectedClient] = useState<TClient | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [productSearchTerm, setProductSearchTerm] = useState("");
+  const [isManualClientEntry, setIsManualClientEntry] = useState(false);
+  const [manualClientData, setManualClientData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+    cuit: "",
+    type: "individual" as "individual" | "company",
+  });
+  const [showSaveClientDialog, setShowSaveClientDialog] = useState(false);
+  const [tempClientForSave, setTempClientForSave] = useState<any>(null);
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -336,6 +347,108 @@ export default function NuevoPresupuestoPage() {
     setSearchTerm("");
   };
 
+  const handleManualClientChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target;
+    setManualClientData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const checkIfClientExists = (email: string, cuit: string) => {
+    if (!clients) return null;
+    return clients.find((client: any) => 
+      (email && client.email === email) || 
+      (cuit && client.cuit === cuit)
+    );
+  };
+
+  const handleUseManualClient = async () => {
+    if (!manualClientData.name.trim()) {
+      toast.error("El nombre del cliente es requerido");
+      return;
+    }
+
+    // Verificar si el cliente ya existe
+    const existingClient = checkIfClientExists(manualClientData.email, manualClientData.cuit);
+    
+    if (existingClient) {
+      const shouldUseExisting = window.confirm(
+        `Ya existe un cliente con ${existingClient.email === manualClientData.email ? 'este email' : 'este CUIT'}. ¿Quieres usar el cliente existente?`
+      );
+      
+      if (shouldUseExisting) {
+        setSelectedClient(existingClient as TClient);
+        setIsManualClientEntry(false);
+        return;
+      }
+    }
+
+    // Crear cliente temporal para el presupuesto
+    const tempClient = {
+      id: `temp_${Date.now()}`,
+      name: manualClientData.name,
+      type: manualClientData.type === "company" ? "company" as const : "individual" as const,
+      status: "active" as const,
+      email: manualClientData.email || undefined,
+      phone: manualClientData.phone || undefined,
+      address: manualClientData.address || undefined,
+      cuit: manualClientData.cuit || undefined,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    setSelectedClient(tempClient as TClient);
+    setTempClientForSave(tempClient);
+    setShowSaveClientDialog(true);
+  };
+
+  const handleSaveClientToDB = async () => {
+    if (!tempClientForSave) return;
+
+    try {
+      const clientData = {
+        name: tempClientForSave.name,
+        type: tempClientForSave.type,
+        status: tempClientForSave.status,
+        email: tempClientForSave.email || "",
+        phone: tempClientForSave.phone || "",
+        address: tempClientForSave.address || "",
+        cuit: tempClientForSave.cuit || "",
+        notes: "",
+        contacts: [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      const clientRef = await addDoc(collection(firestore, collections.CLIENTS), clientData);
+      
+      // Actualizar el cliente seleccionado con el ID real
+      const updatedClient = {
+        ...tempClientForSave,
+        id: clientRef.id,
+      };
+      
+      setSelectedClient(updatedClient);
+      toast.success("Cliente guardado en la base de datos");
+      
+    } catch (error) {
+      console.error("Error al guardar cliente:", error);
+      toast.error("Error al guardar el cliente");
+    }
+    
+    setShowSaveClientDialog(false);
+    setTempClientForSave(null);
+  };
+
+  const handleSkipSaveClient = () => {
+    setShowSaveClientDialog(false);
+    setTempClientForSave(null);
+    toast.success("Cliente configurado solo para este presupuesto");
+  };
+
   const handleProductSelect = (product: TProduct, variant?: TProductVariant) => {
     setSelectedProduct(product);
     setSelectedVariant(variant || null);
@@ -398,7 +511,31 @@ export default function NuevoPresupuestoPage() {
       <form onSubmit={handleSubmit}>
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Cliente</CardTitle>
+            <div className="flex justify-between items-center">
+              <CardTitle>Cliente</CardTitle>
+              {!selectedClient && (
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={!isManualClientEntry ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setIsManualClientEntry(false)}
+                    className={!isManualClientEntry ? "bg-blue-900 text-white" : ""}
+                  >
+                    Buscar existente
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={isManualClientEntry ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setIsManualClientEntry(true)}
+                    className={isManualClientEntry ? "bg-blue-900 text-white" : ""}
+                  >
+                    Ingresar manualmente
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {selectedClient ? (
@@ -415,13 +552,118 @@ export default function NuevoPresupuestoPage() {
                     {selectedClient.address && (
                       <p className="text-slate-500">{selectedClient.address}</p>
                     )}
+                    {selectedClient.cuit && (
+                      <p className="text-slate-500">CUIT: {selectedClient.cuit}</p>
+                    )}
                   </div>
                   <Button
                     variant="ghost"
-                    onClick={() => setSelectedClient(null)}
+                    onClick={() => {
+                      setSelectedClient(null);
+                      setIsManualClientEntry(false);
+                      setManualClientData({
+                        name: "",
+                        email: "",
+                        phone: "",
+                        address: "",
+                        cuit: "",
+                        type: "individual",
+                      });
+                    }}
                     type="button"
                   >
                     Cambiar
+                  </Button>
+                </div>
+              </div>
+            ) : isManualClientEntry ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="clientName">Nombre / Razón Social *</Label>
+                    <Input
+                      id="clientName"
+                      name="name"
+                      value={manualClientData.name}
+                      onChange={handleManualClientChange}
+                      placeholder="Nombre del cliente"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientType">Tipo de Cliente</Label>
+                    <Select
+                      value={manualClientData.type}
+                      onValueChange={(value) =>
+                        setManualClientData((prev) => ({
+                          ...prev,
+                          type: value as "individual" | "company",
+                        }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="individual">Persona Física</SelectItem>
+                        <SelectItem value="company">Empresa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="clientEmail">Email</Label>
+                    <Input
+                      id="clientEmail"
+                      name="email"
+                      type="email"
+                      value={manualClientData.email}
+                      onChange={handleManualClientChange}
+                      placeholder="email@ejemplo.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientPhone">Teléfono</Label>
+                    <Input
+                      id="clientPhone"
+                      name="phone"
+                      value={manualClientData.phone}
+                      onChange={handleManualClientChange}
+                      placeholder="11-1234-5678"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="clientCuit">CUIT/CUIL</Label>
+                    <Input
+                      id="clientCuit"
+                      name="cuit"
+                      value={manualClientData.cuit}
+                      onChange={handleManualClientChange}
+                      placeholder="20-12345678-9"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="clientAddress">Dirección</Label>
+                    <Input
+                      id="clientAddress"
+                      name="address"
+                      value={manualClientData.address}
+                      onChange={handleManualClientChange}
+                      placeholder="Calle y número, Ciudad"
+                    />
+                  </div>
+                </div>
+                <div className="pt-4">
+                  <Button
+                    type="button"
+                    onClick={handleUseManualClient}
+                    disabled={!manualClientData.name.trim()}
+                    className="bg-blue-900 hover:bg-blue-700 text-white"
+                  >
+                    Usar este cliente
                   </Button>
                 </div>
               </div>
@@ -448,7 +690,7 @@ export default function NuevoPresupuestoPage() {
                           <TableHead>Nombre</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead>Teléfono</TableHead>
-                          {/* <TableHead></TableHead> */}
+                          <TableHead></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -930,6 +1172,50 @@ export default function NuevoPresupuestoPage() {
           </CardFooter>
         </Card>
       </form>
+
+      {/* Modal para guardar cliente en la BD */}
+      <Dialog open={showSaveClientDialog} onOpenChange={setShowSaveClientDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>¿Guardar cliente en la base de datos?</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-slate-600 mb-4">
+              Has ingresado los datos de un cliente nuevo. ¿Te gustaría guardarlo en la base de datos para futuras consultas?
+            </p>
+            {tempClientForSave && (
+              <div className="bg-slate-50 p-3 rounded-md space-y-1">
+                <p><strong>Nombre:</strong> {tempClientForSave.name}</p>
+                {tempClientForSave.email && (
+                  <p><strong>Email:</strong> {tempClientForSave.email}</p>
+                )}
+                {tempClientForSave.phone && (
+                  <p><strong>Teléfono:</strong> {tempClientForSave.phone}</p>
+                )}
+                {tempClientForSave.cuit && (
+                  <p><strong>CUIT:</strong> {tempClientForSave.cuit}</p>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="space-x-2">
+            <Button
+              variant="outline"
+              onClick={handleSkipSaveClient}
+              type="button"
+            >
+              Omitir
+            </Button>
+            <Button
+              onClick={handleSaveClientToDB}
+              className="bg-blue-900 hover:bg-blue-700 text-white"
+              type="button"
+            >
+              Agregar cliente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
