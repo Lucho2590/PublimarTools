@@ -300,7 +300,7 @@ export default function ProductosPage() {
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Filtrar por categoría" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-48 overflow-y-auto">
                 <SelectItem value="all">Todas las categorías</SelectItem>
                 {categories?.map((category) => {
                   const typedCategory = category as unknown as TProductCategory;
