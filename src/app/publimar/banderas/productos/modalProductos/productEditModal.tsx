@@ -361,6 +361,7 @@ export default function ProductEditModal({
                     size: "",
                     price: "",
                     stock: "",
+                    sku: "-",
                   };
                   setFormData((prev) => ({
                     ...prev,
@@ -377,6 +378,25 @@ export default function ProductEditModal({
               <div className="space-y-4">
                 {formData.variants.map((variant, index) => (
                   <div key={variant.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      {/* <Label className="text-sm font-medium text-gray-700">SKU</Label> */}
+                      <Input
+                        value={variant.sku || "-"}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index] = {
+                            ...variant,
+                            sku: e.target.value,
+                          };
+                          setFormData((prev) => ({
+                            ...prev,
+                            variants: newVariants,
+                          }));
+                        }}
+                        placeholder="SKU único (ej: BAN-001)"
+                        required
+                      />
+                    </div>
                     <div className="flex-1">
                       <Input
                         value={variant.size}
