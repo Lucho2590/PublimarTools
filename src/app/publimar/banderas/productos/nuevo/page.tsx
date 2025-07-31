@@ -47,6 +47,7 @@ export default function NuevoProductoPage() {
       size: "",
       price: "",
       stock: "",
+      sku: "-",
     }] as TProductVariant[],
   });
 
@@ -83,6 +84,20 @@ export default function NuevoProductoPage() {
       toast.error("El nombre del producto es requerido");
       return;
     }
+    
+    // Validar variantes
+    const hasEmptyVariants = formData.variants.some(variant => 
+      !variant.size.trim() || 
+      !variant.price || 
+      !variant.stock || 
+      (!variant.sku?.trim() || variant.sku.trim() === "")
+    );
+    
+    if (hasEmptyVariants) {
+      toast.error("Todas las variantes deben tener medida, precio y stock completos");
+      return;
+    }
+    
     if (!user) {
       toast.error("Debes estar logueado para crear un producto");
       return;
@@ -225,6 +240,7 @@ export default function NuevoProductoPage() {
                   size: "",
                   price: "",
                   stock: "",
+                  sku: "-",
                 };
                 setFormData((prev) => ({
                   ...prev,
@@ -240,79 +256,109 @@ export default function NuevoProductoPage() {
           <CardContent className="space-y-4">
             <div className="space-y-4">
               {formData.variants.map((variant, index) => (
-                <div key={variant.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <Input
-                      value={variant.size}
-                      onChange={(e) => {
-                        const newVariants = [...formData.variants];
-                        newVariants[index] = {
-                          ...variant,
-                          size: e.target.value,
-                        };
-                        setFormData((prev) => ({
-                          ...prev,
-                          variants: newVariants,
-                        }));
-                      }}
-                      placeholder="Medida (Ej: 1.5m x 1m)"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-500">
-                        $
-                      </span>
+                <div key={variant.id} className="space-y-3 p-4 bg-gray-50 rounded-lg">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">SKU</Label>
                       <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={variant.price}
+                        value={variant.sku || ""}
                         onChange={(e) => {
                           const newVariants = [...formData.variants];
                           newVariants[index] = {
                             ...variant,
-                            price: e.target.value,
+                            sku: e.target.value,
                           };
                           setFormData((prev) => ({
                             ...prev,
                             variants: newVariants,
                           }));
                         }}
-                        className="pl-8"
-                        placeholder="Precio"
+                        placeholder="SKU único (ej: BAN-001)"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Medida</Label>
+                      <Input
+                        value={variant.size}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index] = {
+                            ...variant,
+                            size: e.target.value,
+                          };
+                          setFormData((prev) => ({
+                            ...prev,
+                            variants: newVariants,
+                          }));
+                        }}
+                        placeholder="Ej: 1.5m x 1m"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Precio</Label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-500">
+                          $
+                        </span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={variant.price}
+                          onChange={(e) => {
+                            const newVariants = [...formData.variants];
+                            newVariants[index] = {
+                              ...variant,
+                              price: e.target.value,
+                            };
+                            setFormData((prev) => ({
+                              ...prev,
+                              variants: newVariants,
+                            }));
+                          }}
+                          className="pl-8"
+                          placeholder="0.00"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">Stock</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={variant.stock}
+                        onChange={(e) => {
+                          const newVariants = [...formData.variants];
+                          newVariants[index] = {
+                            ...variant,
+                            stock: e.target.value,
+                          };
+                          setFormData((prev) => ({
+                            ...prev,
+                            variants: newVariants,
+                          }));
+                        }}
+                        placeholder="0"
+                        required
                       />
                     </div>
                   </div>
-                  <div className="flex-1">
-                    <Input
-                      type="number"
-                      min="0"
-                      value={variant.stock}
-                      onChange={(e) => {
-                        const newVariants = [...formData.variants];
-                        newVariants[index] = {
-                          ...variant,
-                          stock: e.target.value,
-                        };
-                        setFormData((prev) => ({
-                          ...prev,
-                          variants: newVariants,
-                        }));
-                      }}
-                      placeholder="Stock"
-                    />
-                  </div>
                   {formData.variants.length > 1 && (
-                    <Button
-                    onClick={() => handleRemoveVariant(variant.id)}
-                    variant="ghost"
-                    size="icon"
-                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                    title="Eliminar"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex justify-end">
+                      <Button
+                        onClick={() => handleRemoveVariant(variant.id)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        title="Eliminar variante"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Eliminar
+                      </Button>
+                    </div>
                   )}
                 </div>
               ))}
