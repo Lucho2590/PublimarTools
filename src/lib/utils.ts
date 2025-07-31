@@ -24,3 +24,28 @@ export const formatDate = (timestamp: any) => {
   }
   return new Date(timestamp).toLocaleDateString("es-AR");
 };
+
+/**
+ * Redondea un número hacia arriba a la decena más cercana
+ * @param num - El número a redondear
+ * @returns El número redondeado hacia arriba a la decena más cercana
+ * @example
+ * redondearADecena(122968.15) // 122970
+ * redondearADecena(1205) // 1210
+ * redondearADecena(100) // 100
+ */
+export const redondearADecena = (num: number): number => {
+  return Math.ceil(num / 10) * 10;
+};
+
+/**
+ * Redondea un número hacia arriba a la decena más cercana y lo formatea como precio
+ * @param num - El número a redondear y formatear
+ * @returns El precio formateado redondeado hacia arriba
+ * @example
+ * redondearYFormatearPrecio(122968.15) // "$122.970,00"
+ */
+export const redondearYFormatearPrecio = (num: number): string => {
+  const redondeado = redondearADecena(num);
+  return formatearPrecio(redondeado);
+};

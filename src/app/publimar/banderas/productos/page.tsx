@@ -37,7 +37,7 @@ import { TProduct, TProductCategory } from "@/types/product";
 import { Edit } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, redondearADecena } from "@/lib/utils";
 import ProductEditModal from "./modalProductos/productEditModal";
 
 export default function ProductosPage() {
@@ -130,9 +130,10 @@ export default function ProductosPage() {
     return pageNumbers;
   };
 
-  // Calcular precio con IVA
+  // Calcular precio con IVA (redondeado hacia arriba a la decena más cercana)
   const calculatePriceWithTax = (price: number, taxRate: number) => {
-    return price * (1 + taxRate / 100);
+    const priceWithTax = price * (1 + taxRate / 100);
+    return redondearADecena(priceWithTax);
   };
 
   // Obtener nombres de categorías

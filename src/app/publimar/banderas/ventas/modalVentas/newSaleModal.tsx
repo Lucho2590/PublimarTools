@@ -89,13 +89,13 @@ export function NuevaVentaModal({
   const taxRate = 21; // IVA
   const taxAmount = applyIVA ? subtotal * (taxRate / 100) : 0;
   const discountAmount = subtotal * (discountPercentage / 100);
-  const calculatedTotal = subtotal + taxAmount - discountAmount;
+  const calculatedTotal = Math.round((subtotal + taxAmount - discountAmount) * 100) / 100;
   const total = manualTotal !== null ? manualTotal : calculatedTotal;
 
   const handleTotalChange = (value: string) => {
     const numericValue = parseFloat(value);
     if (!isNaN(numericValue)) {
-      setManualTotal(numericValue);
+      setManualTotal(Math.round(numericValue * 100) / 100);
     } else {
       setManualTotal(null);
     }
@@ -381,7 +381,7 @@ export function NuevaVentaModal({
                             Producto
                           </th>
                           <th className="text-left p-4 font-medium">Medida</th>
-                          <th className="text-left p-4 font-medium">Categoria</th>
+                          {/* <th className="text-left p-4 font-medium">Categoria</th> */}
                           <th className="text-left p-4 font-medium">Valor</th>
                           <th className="text-left p-4 font-medium">
                             Cantidad
@@ -455,9 +455,9 @@ export function NuevaVentaModal({
                                   </SelectContent>
                                 </Select>
                               </td>
-                              <td className="p-4">
+                              {/* <td className="p-4">
                               {getCategoryNames(typedProduct.categories)}
-                              </td>
+                              </td> */}
                               <td className="p-4">
                                 {selectedVariant
                                   ? formatearPrecio(Number(selectedVariant.price))

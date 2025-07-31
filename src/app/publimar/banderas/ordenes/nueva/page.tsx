@@ -749,9 +749,9 @@ export default function NuevaOrdenPage() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Nombre</TableHead>
-                              <TableHead className="text-right">
+                              {/* <TableHead className="text-right">
                                 Stock
-                              </TableHead>
+                              </TableHead> */}
                               <TableHead>Acción</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -773,7 +773,7 @@ export default function NuevaOrdenPage() {
                                 return (
                                   <TableRow key={product.id}>
                                     <TableCell>{product.name}</TableCell>
-                                    <TableCell className="text-right">
+                                    {/* <TableCell className="text-right">
                                       {selectedVariant ? (
                                         <span
                                           className={
@@ -789,7 +789,7 @@ export default function NuevaOrdenPage() {
                                       ) : (
                                         "-"
                                       )}
-                                    </TableCell>
+                                    </TableCell> */}
                                     <TableCell>
                                       <Button
                                         size="sm"

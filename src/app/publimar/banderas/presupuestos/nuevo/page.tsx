@@ -819,7 +819,7 @@ export default function NuevoPresupuestoPage() {
                               <TableHead>Nombre</TableHead>
                               {/* <TableHead>Categorías</TableHead> */}
                               {/* <TableHead>Medida</TableHead> */}
-                              <TableHead className="text-right">Stock</TableHead>
+                              {/* <TableHead className="text-right">Stock</TableHead> */}
                               {/* <TableHead className="text-right">Precio</TableHead>
                               <TableHead className="text-right">+ IVA</TableHead> */}
                               <TableHead>Acción</TableHead>
@@ -842,7 +842,7 @@ export default function NuevoPresupuestoPage() {
                                 return (
                                   <TableRow key={product.id}>
                                     <TableCell>{product.name}</TableCell>
-                                    <TableCell className="text-right">
+                                    {/* <TableCell className="text-right">
                                       {selectedVariant ? (
                                         <span
                                           className={`${
@@ -854,7 +854,7 @@ export default function NuevoPresupuestoPage() {
                                       ) : (
                                         "-"
                                       )}
-                                    </TableCell>
+                                    </TableCell> */}
                                     <TableCell>
                                       <Button
                                         size="sm"
@@ -1002,6 +1002,7 @@ export default function NuevoPresupuestoPage() {
                                     100)
                               )}
                             </p>
+                            <p className="text-sm text-slate-400 text-right">+ IVA</p>
                           </div>
                         </div>
                       </div>
