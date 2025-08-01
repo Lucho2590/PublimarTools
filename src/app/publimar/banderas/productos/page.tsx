@@ -50,7 +50,7 @@ export default function ProductosPage() {
   const [increasePercentage, setIncreasePercentage] = useState("");
   const [isApplyingIncrease, setIsApplyingIncrease] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const firestore = useFirestore();
@@ -401,7 +401,7 @@ export default function ProductosPage() {
                         <TableCell>
                           {getCategoryNames(typedProduct.categories)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell >
                           {typedProduct.variants &&
                           typedProduct.variants.length > 0 ? (
                             <Select
@@ -416,7 +416,7 @@ export default function ProductosPage() {
                               <SelectTrigger className="w-[150px]">
                                 <SelectValue placeholder="Seleccionar medida" />
                               </SelectTrigger>
-                              <SelectContent>
+                              <SelectContent className="max-h-48 overflow-y-auto">
                                 {typedProduct.variants.map((variant) => (
                                   <SelectItem
                                     key={variant.id}

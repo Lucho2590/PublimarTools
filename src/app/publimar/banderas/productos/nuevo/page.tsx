@@ -168,7 +168,7 @@ export default function NuevoProductoPage() {
                   required
                 />
               </div>
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <Label htmlFor="sku">SKU</Label>
                 <Input
                   id="sku"
@@ -176,7 +176,7 @@ export default function NuevoProductoPage() {
                   value={formData.sku}
                   onChange={handleChange}
                 />
-              </div>
+              </div> */}
             </div>
 
             <div className="space-y-2">

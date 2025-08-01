@@ -65,6 +65,8 @@ export function NuevaVentaModal({
   const firestore = useFirestore();
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedStock, setSelectedStock] = useState<string>("all");
   const [items, setItems] = useState<SaleItem[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(
     new Set()
@@ -77,7 +79,7 @@ export function NuevaVentaModal({
   const [isInvoiced, setIsInvoiced] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [itemsPerPage, setItemsPerPage] = useState(8);
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
   >({});
@@ -108,6 +110,8 @@ export function NuevaVentaModal({
     setIsInvoiced(false);
     setInvoiceNumber("");
     setSearchTerm("");
+    setSelectedCategory("all");
+    setSelectedStock("all");
     setCurrentPage(1);
     setSelectedProducts(new Set());
     setSelectedQuantities({});
@@ -135,36 +139,76 @@ export function NuevaVentaModal({
     }
   );
 
-  // Filtrar productos según la búsqueda
+  // Filtrar productos con filtro súper combinado
   const filteredProducts = products?.reduce((unique: TProduct[], product) => {
     const typedProduct = product as unknown as TProduct;
     const exists = unique.find((p) => p.name === typedProduct.name);
-    if (
-      !exists &&
-      typedProduct.name.toLowerCase().includes(searchTerm.toLowerCase())
-    ) {
+    if (exists) return unique;
+
+    // Filtro de búsqueda combinada
+    if (searchTerm.trim()) {
+      // Separar términos por comas o espacios
+      const terminos = searchTerm
+        .toLowerCase()
+        .split(/[,\s]+/)
+        .filter(term => term.trim().length > 0);
+      
+      // Crear texto combinado de TODOS los campos
+      const textoCompleto = [
+        // Datos del producto
+        typedProduct.name,
+        typedProduct.sku,
+        
+        // Datos de variantes  
+        ...(typedProduct.variants?.map(v => [
+          v.size,
+          v.sku,
+          v.price?.toString(),
+          v.stock?.toString()
+        ]).flat() || []),
+        
+        // Nombres de categorías
+        typedProduct.categories?.map((id) => {
+          const category = categories?.find(
+            (c) => (c as unknown as TProductCategory).id === id
+          );
+          return category ? (category as unknown as TProductCategory).name : "";
+        }).filter(Boolean).join(", ") || "",
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      
+      // Verificar que TODOS los términos estén presentes
+      const matchesSearch = terminos.every(termino => textoCompleto.includes(termino));
+      if (!matchesSearch) return unique;
+    }
+    
+    // Filtro por categoría
+    const matchesCategory = selectedCategory === "all" || 
+      (typedProduct.categories && typedProduct.categories.includes(selectedCategory));
+    
+    // Filtro por stock
+    let matchesStock = true;
+    if (selectedStock !== "all") {
+      const hasStock = typedProduct.variants?.some(v => Number(v.stock) > 0);
+      if (selectedStock === "con_stock") {
+        matchesStock = hasStock || false;
+      } else if (selectedStock === "sin_stock") {
+        matchesStock = !hasStock;
+      } else if (selectedStock === "poco_stock") {
+        matchesStock = typedProduct.variants?.some(v => Number(v.stock) <= 5 && Number(v.stock) > 0) || false;
+      }
+    }
+    
+    if (matchesCategory && matchesStock) {
       unique.push(typedProduct);
     }
+    
     return unique;
   }, []);
 
-    // Obtener nombres de categorías
-    const getCategoryNames = (categoryIds: string[] | undefined) => {
-      if (!categoryIds || !Array.isArray(categoryIds)) {
-        return "-";
-      }
-      return (
-        categoryIds
-          .map((id) => {
-            const category = categories?.find(
-              (c) => (c as unknown as TProductCategory).id === id
-            );
-            return category ? (category as unknown as TProductCategory).name : "";
-          })
-          .filter(Boolean)
-          .join(", ") || "-"
-      );
-    };
+
 
   // Calcular productos paginados
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -351,216 +395,279 @@ export function NuevaVentaModal({
                   <CardTitle>Agregar Productos</CardTitle>
                 </CardHeader> */}
                 <CardContent className="flex flex-col gap-4">
-                  <div className="flex gap-4">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  {/* Filtros combinados */}
+                  <div className="space-y-3 pt-6">
+                    <div className="relative ">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                       <Input
-                        placeholder="Buscar productos..."
+                        placeholder="Buscar por TODO: nombre, categoría, medida, SKU, precio..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="pl-8"
+                        className="pl-10"
                       />
                     </div>
-                    <Button
-                      type="button"
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                      onClick={handleAddSelectedProducts}
-                      variant="outline"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Agregar Seleccionados
-                    </Button>
+                    
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">Categoría:</label>
+                        <Select
+                          value={selectedCategory}
+                          onValueChange={setSelectedCategory}
+                        >
+                          <SelectTrigger className="w-[140px]">
+                            <SelectValue placeholder="Todas" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-48 overflow-y-auto">
+                            <SelectItem value="all">Todas</SelectItem>
+                            {categories?.map((category) => {
+                              const typedCategory = category as unknown as TProductCategory;
+                              return (
+                                <SelectItem key={typedCategory.id} value={typedCategory.id}>
+                                  {typedCategory.name}
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">Stock:</label>
+                        <Select
+                          value={selectedStock}
+                          onValueChange={setSelectedStock}
+                        >
+                          <SelectTrigger className="w-[120px]">
+                            <SelectValue placeholder="Todos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Todos</SelectItem>
+                            <SelectItem value="con_stock">Con Stock</SelectItem>
+                            <SelectItem value="poco_stock">Poco Stock</SelectItem>
+                            <SelectItem value="sin_stock">Sin Stock</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      {(searchTerm || selectedCategory !== "all" || selectedStock !== "all") && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSearchTerm('');
+                            setSelectedCategory("all");
+                            setSelectedStock("all");
+                          }}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          Limpiar
+                        </Button>
+                      )}
+                      
+                      <div className="ml-auto">
+                        <Button
+                          type="button"
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                          onClick={handleAddSelectedProducts}
+                          size="sm"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Agregar ({selectedProducts.size})
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {/* Contador de resultados */}
+                    <div className="text-sm text-muted-foreground">
+                      {filteredProducts?.length === products?.length 
+                        ? `${products?.length || 0} productos disponibles`
+                        : `${filteredProducts?.length || 0} de ${products?.length || 0} productos`
+                      }
+                    </div>
                   </div>
 
-                  <div className="border rounded-lg">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b bg-muted/50">
-                          <th className="text-center p-4 font-medium w-10"></th>
-                          <th className="text-left p-4 font-medium">
-                            Producto
-                          </th>
-                          <th className="text-left p-4 font-medium">Medida</th>
-                          {/* <th className="text-left p-4 font-medium">Categoria</th> */}
-                          <th className="text-left p-4 font-medium">Valor</th>
-                          <th className="text-left p-4 font-medium">
-                            Cantidad
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginatedProducts?.map((product) => {
-                          const typedProduct = product as unknown as TProduct;
-                          const selectedVariant = typedProduct.variants?.find(
-                            (v) => v.id === selectedVariants[typedProduct.id]
-                          );
+                  {/* Vista compacta de productos */}
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {paginatedProducts?.map((product) => {
+                      const typedProduct = product as unknown as TProduct;
+                      const selectedVariant = typedProduct.variants?.find(
+                        (v) => v.id === selectedVariants[typedProduct.id]
+                      );
 
-                          // Verificar si hay al menos una variante con stock
-                          const hasAvailableStock = typedProduct.variants?.some(
-                            (v) => Number(v.stock) > 0
-                          );
+                      // Verificar si hay al menos una variante con stock
+                      const hasAvailableStock = typedProduct.variants?.some(
+                        (v) => Number(v.stock) > 0
+                      );
+                      
+                      const stockColor = selectedVariant 
+                        ? Number(selectedVariant.stock) === 0 
+                          ? "text-red-500"
+                          : Number(selectedVariant.stock) <= 5 
+                          ? "text-orange-500" 
+                          : "text-green-600"
+                        : "text-gray-400";
 
-                          return (
-                            <tr
-                              key={typedProduct.id}
-                              className="border-b hover:bg-muted/50 transition-colors"
-                            >
-                              <td className="p-4 text-center">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 rounded border-gray-300"
-                                  onChange={(e) => {
-                                    const newSelected = new Set(
-                                      selectedProducts
+                      return (
+                        <div
+                          key={typedProduct.id}
+                          className={`border rounded-lg p-3 transition-all ${
+                            selectedProducts.has(typedProduct.id) 
+                              ? "bg-blue-50 border-blue-200" 
+                              : "hover:bg-gray-50"
+                          } ${!hasAvailableStock ? "opacity-60" : ""}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            {/* Checkbox */}
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300"
+                              onChange={(e) => {
+                                const newSelected = new Set(selectedProducts);
+                                if (e.target.checked) {
+                                  newSelected.add(typedProduct.id);
+                                } else {
+                                  newSelected.delete(typedProduct.id);
+                                }
+                                setSelectedProducts(newSelected);
+                              }}
+                              checked={selectedProducts.has(typedProduct.id)}
+                              disabled={!hasAvailableStock}
+                            />
+                            
+                            {/* Producto info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className="font-medium text-sm truncate">{typedProduct.name}</h4>
+                                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                  {typedProduct.categories?.map((id) => {
+                                    const category = categories?.find(
+                                      (c) => (c as unknown as TProductCategory).id === id
                                     );
-                                    if (e.target.checked) {
-                                      newSelected.add(typedProduct.id);
-                                    } else {
-                                      newSelected.delete(typedProduct.id);
-                                    }
-                                    setSelectedProducts(newSelected);
-                                  }}
-                                  checked={selectedProducts.has(
-                                    typedProduct.id
-                                  )}
-                                  disabled={!hasAvailableStock}
-                                />
-                              </td>
-                              <td className="p-4 font-medium">
-                                {typedProduct.name}
-                              </td>
-                              <td className="p-4">
-                                <Select
-                                  onValueChange={(variantId) => {
-                                    handleVariantChange(
-                                      typedProduct.id,
-                                      variantId
-                                    );
-                                  }}
-                                  value={selectedVariants[typedProduct.id]}
-                                >
-                                  <SelectTrigger className="w-[120px]">
-                                    <SelectValue placeholder="Medida" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {typedProduct.variants?.map((variant) => (
-                                      <SelectItem
-                                        key={variant.id}
-                                        value={variant.id}
-                                        disabled={Number(variant.stock) === 0}
-                                      >
-                                        {variant.size}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </td>
-                              {/* <td className="p-4">
-                              {getCategoryNames(typedProduct.categories)}
-                              </td> */}
-                              <td className="p-4">
-                                {selectedVariant
-                                  ? formatearPrecio(Number(selectedVariant.price))
-                                  : "-"}
-                              </td>
-                              <td className="p-4">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max={selectedVariant ? Number(selectedVariant.stock) : 0}
-                                  value={(() => {
-                                    const existingItem = items.find(
-                                      (item) =>
-                                        item.product.id === typedProduct.id &&
-                                        item.variant?.id === selectedVariant?.id
-                                    );
-                                    if (existingItem) {
-                                      return existingItem.quantity;
-                                    }
-                                    return selectedQuantities[`${typedProduct.id}-${selectedVariant?.id}`] || 0;
-                                  })()}
-                                  onChange={(e) => {
-                                    if (!selectedProducts.has(typedProduct.id)) return;
-                                    
-                                    const newValue = parseInt(e.target.value);
-                                    if (!selectedVariant) return;
-                                    
-                                    if (newValue >= 0 && newValue <= Number(selectedVariant.stock)) {
-                                      handleQuantityChange(typedProduct.id, selectedVariant.id, newValue);
-                                    }
-                                  }}
-                                  disabled={!selectedProducts.has(typedProduct.id)}
-                                  className="w-20"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-
+                                    return category ? (category as unknown as TProductCategory).name : "";
+                                  }).filter(Boolean).join(", ") || "-"}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-600">
+                                Stock: <span className={stockColor}>{selectedVariant?.stock || 0}</span>
+                                {selectedVariant && " • " + formatearPrecio(Number(selectedVariant.price))}
+                              </p>
+                            </div>
+                            
+                            {/* Medida selector */}
+                            <div className="w-28">
+                              <Select
+                                onValueChange={(variantId) => {
+                                  handleVariantChange(typedProduct.id, variantId);
+                                }}
+                                value={selectedVariants[typedProduct.id]}
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue placeholder="Medida" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {typedProduct.variants?.map((variant) => (
+                                    <SelectItem
+                                      key={variant.id}
+                                      value={variant.id}
+                                      disabled={Number(variant.stock) === 0}
+                                    >
+                                      <div className="flex items-center justify-between w-full">
+                                        <span>{variant.size}</span>
+                                        <span className={`text-xs ml-2 ${
+                                          Number(variant.stock) === 0 
+                                            ? "text-red-500" 
+                                            : Number(variant.stock) <= 5 
+                                            ? "text-orange-500" 
+                                            : "text-green-600"
+                                        }`}>
+                                          ({variant.stock})
+                                        </span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            
+                            {/* Cantidad */}
+                            <div className="w-16">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={selectedVariant ? Number(selectedVariant.stock) : 0}
+                                value={(() => {
+                                  const existingItem = items.find(
+                                    (item) =>
+                                      item.product.id === typedProduct.id &&
+                                      item.variant?.id === selectedVariant?.id
+                                  );
+                                  if (existingItem) {
+                                    return existingItem.quantity;
+                                  }
+                                  return selectedQuantities[`${typedProduct.id}-${selectedVariant?.id}`] || 0;
+                                })()}
+                                onChange={(e) => {
+                                  if (!selectedProducts.has(typedProduct.id)) return;
+                                  
+                                  const newValue = parseInt(e.target.value);
+                                  if (!selectedVariant) return;
+                                  
+                                  if (newValue >= 0 && newValue <= Number(selectedVariant.stock)) {
+                                    handleQuantityChange(typedProduct.id, selectedVariant.id, newValue);
+                                  }
+                                }}
+                                disabled={!selectedProducts.has(typedProduct.id)}
+                                className="h-8 text-xs text-center"
+                                placeholder="0"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    
+                    {paginatedProducts?.length === 0 && (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>No se encontraron productos</p>
+                        <p className="text-sm">Intenta ajustar los filtros de búsqueda</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
-                <div className="flex justify-end px-6">
-                <Button
-                      type="button"
-                      className="bg-green-600 hover:bg-green-700 text-white max-w-55 "
-                      onClick={handleAddSelectedProducts}
-                      variant="outline"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Agregar Seleccionados
-                    </Button>
-                </div>
-                {/* Paginación */}
-                <div className="mt-auto border-t p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="text-sm text-muted-foreground">
-                        Mostrando {startIndex + 1}-
-                        {Math.min(endIndex, filteredProducts?.length || 0)} de{" "}
-                        {filteredProducts?.length} productos
+                {/* Paginación compacta */}
+                {totalPages > 1 && (
+                  <div className="border-t px-6 py-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="text-muted-foreground">
+                        {startIndex + 1}-{Math.min(endIndex, filteredProducts?.length || 0)} de {filteredProducts?.length}
                       </div>
-                      <Select
-                        value={itemsPerPage.toString()}
-                        onValueChange={(value) => {
-                          setItemsPerPage(Number(value));
-                          setCurrentPage(1);
-                        }}
-                      >
-                        <SelectTrigger className="w-[100px]">
-                          <SelectValue placeholder="Por página" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="5">5</SelectItem>
-                          <SelectItem value="10">10</SelectItem>
-                          <SelectItem value="20">20</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                      </Button>
-                      <span className="text-sm">
-                        Página {currentPage} de {totalPages}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="h-8 w-8 p-0"
+                        >
+                          <ChevronLeft className="h-3 w-3" />
+                        </Button>
+                        <span className="text-xs px-2">
+                          {currentPage}/{totalPages}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                          className="h-8 w-8 p-0"
+                        >
+                          <ChevronRight className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </Card>
 
               {/* Productos seleccionados */}
