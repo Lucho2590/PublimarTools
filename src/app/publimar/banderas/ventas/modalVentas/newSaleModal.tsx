@@ -32,15 +32,7 @@ import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
 import { EPaymentMethod } from "@/types/sale";
-
-const formatearPrecio = (valor: number): string => {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(valor);
-};
+import { formatearPrecio, redondearADecena, redondearTotal } from "@/lib/utils";
 
 interface SaleItem {
   id: string;
@@ -63,7 +55,7 @@ export function NuevaVentaModal({
   onSuccess,
 }: NuevaVentaModalProps) {
   const firestore = useFirestore();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedStock, setSelectedStock] = useState<string>("all");
@@ -83,21 +75,33 @@ export function NuevaVentaModal({
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
   >({});
-  const [applyIVA, setApplyIVA] = useState(true);
+  const [applyIVA, setApplyIVA] = useState(false);
   const [discountPercentage, setDiscountPercentage] = useState<number>(0);
   const [manualTotal, setManualTotal] = useState<number | null>(null);
+  const [manualDiscount, setManualDiscount] = useState<number>(0);
 
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
   const taxRate = 21; // IVA
-  const taxAmount = applyIVA ? subtotal * (taxRate / 100) : 0;
-  const discountAmount = subtotal * (discountPercentage / 100);
-  const calculatedTotal = Math.round((subtotal + taxAmount - discountAmount) * 100) / 100;
+  
+  // Calcular IVA desde precio final cuando aplica
+  let taxAmount = 0;
+  let subtotalSinIVA = subtotal;
+  
+  if (applyIVA) {
+    // Si aplicamos IVA, los precios son finales (con IVA incluido)
+    // Calculamos el IVA que está incluido en el precio
+    taxAmount = redondearTotal(subtotal * (taxRate / (100 + taxRate)));
+    subtotalSinIVA = redondearTotal(subtotal - taxAmount);
+  }
+  
+  const discountAmount = redondearTotal(subtotalSinIVA * (discountPercentage / 100));
+  const calculatedTotal = redondearTotal(subtotal - discountAmount - manualDiscount);
   const total = manualTotal !== null ? manualTotal : calculatedTotal;
 
   const handleTotalChange = (value: string) => {
     const numericValue = parseFloat(value);
     if (!isNaN(numericValue)) {
-      setManualTotal(Math.round(numericValue * 100) / 100);
+      setManualTotal(redondearTotal(numericValue));
     } else {
       setManualTotal(null);
     }
@@ -119,6 +123,7 @@ export function NuevaVentaModal({
     setApplyIVA(true);
     setDiscountPercentage(0);
     setManualTotal(null);
+    setManualDiscount(0);
   };
 
   // Obtener productos
@@ -322,11 +327,19 @@ export function NuevaVentaModal({
           productId: item.product.id,
           variantId: item.variant.id,
           quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.total,
+          unitPrice: redondearTotal(item.unitPrice), // Precio final unitario
+          total: redondearTotal(item.total), // Total final del item
         })),
-        subtotal,
-        total,
+        subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal), // Subtotal sin IVA si aplica
+        total: redondearTotal(total),
+        // Información de IVA
+        applyIVA,
+        taxRate,
+        taxAmount: redondearTotal(taxAmount), // IVA calculado desde precio final
+        // Información de descuentos
+        discountPercentage,
+        discountAmount: redondearTotal(discountAmount),
+        manualDiscount: redondearTotal(manualDiscount),
         paymentMethod,
         bank: paymentMethod === EPaymentMethod.TRANSFER ? bank : null,
         isInvoiced,
@@ -737,62 +750,79 @@ export function NuevaVentaModal({
                         </div>
                       ))}
                       <div className="border-t pt-4">
-                        <div className="flex justify-between items-center">
-                          <p className="font-semibold">Subtotal</p>
-                          <p className="font-semibold">{formatearPrecio(subtotal)}</p>
-                        </div>
-                        
-                        <div className="flex items-center justify-between text-sm text-gray-500">
-                          <div className="flex items-center gap-2">
-                            <Checkbox
-                              id="applyIVA"
-                              checked={applyIVA}
-                              onCheckedChange={(checked) => setApplyIVA(checked as boolean)}
-                              className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
-                            />
-                            <Label htmlFor="applyIVA">IVA ({taxRate}%)</Label>
+                        <div className="space-y-4">
+                          <div className="flex justify-between items-center">
+                            <p className="text-gray-700">Subtotal</p>
+                            <p className="font-semibold">{formatearPrecio(subtotal)}</p>
                           </div>
-                          <p>{formatearPrecio(taxAmount)}</p>
-                        </div>
-
-                        <div className="flex items-center justify-between text-sm text-gray-500">
-                          <div className="flex items-center gap-2">
-                            <Label htmlFor="discount">Descuento (%)</Label>
-                            <Input
-                              id="discount"
-                              type="number"
-                              min="0"
-                              max="100"
-                              value={discountPercentage}
-                              onChange={(e) => setDiscountPercentage(Number(e.target.value))}
-                              className="w-20 h-8"
-                            />
+                          
+                          <div className="flex items-center justify-between border-b pb-2">
+                            <div className="flex items-center gap-3">
+                              <Checkbox
+                                id="applyIVA"
+                                checked={applyIVA}
+                                onCheckedChange={(checked) => setApplyIVA(checked as boolean)}
+                                className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                              />
+                              <Label htmlFor="applyIVA" className="text-sm text-gray-700">
+                                Desglosar IVA ({taxRate}%)
+                              </Label>
+                            </div>
+                            <p className="text-sm text-gray-600">
+                              {applyIVA ? `${formatearPrecio(taxAmount)}` : '$ 0,00'}
+                            </p>
                           </div>
-                          <p className="text-red-500">-{formatearPrecio(discountAmount)}</p>
-                        </div>
 
-                        <div className="flex justify-between items-center font-semibold text-lg mt-2">
-                          <p>Total</p>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={total}
-                              onChange={(e) => handleTotalChange(e.target.value)}
-                              className="w-32 text-right font-semibold"
-                            />
-                            {manualTotal !== null && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setManualTotal(null)}
-                                className="h-8 px-2"
-                              >
-                                <span className="text-xs">Reset</span>
-                              </Button>
-                            )}
+                          {applyIVA && (
+                            <div className="flex justify-between items-center text-sm pl-6">
+                              <p className="text-gray-600">Subtotal sin IVA</p>
+                              <p className="font-medium">{formatearPrecio(subtotalSinIVA)}</p>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Label htmlFor="discount" className="text-sm text-gray-700 w-24">
+                                Descuento (%)
+                              </Label>
+                              <Input
+                                id="discount"
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={discountPercentage}
+                                onChange={(e) => setDiscountPercentage(Number(e.target.value))}
+                                className="w-16 h-8 text-center text-sm"
+                                placeholder="0"
+                              />
+                            </div>
+                            <p className="text-red-600">-{formatearPrecio(discountAmount)}</p>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <Label htmlFor="manualDiscount" className="text-sm text-gray-700 w-24">
+                                Descuento ($)
+                              </Label>
+                              <Input
+                                id="manualDiscount"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={manualDiscount}
+                                onChange={(e) => setManualDiscount(Number(e.target.value))}
+                                className="w-20 h-8 text-center text-sm"
+                                placeholder="0"
+                              />
+                            </div>
+                            <p className="text-red-600">-{formatearPrecio(manualDiscount)}</p>
+                          </div>
+
+                          <div className="border-t pt-3">
+                            <div className="flex justify-between items-center">
+                              <p className="text-lg font-semibold">Total</p>
+                              <p className="text-xl font-bold">{formatearPrecio(redondearADecena(total))}</p>
+                            </div>
                           </div>
                         </div>
                       </div>

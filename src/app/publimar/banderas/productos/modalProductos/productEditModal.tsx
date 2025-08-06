@@ -49,7 +49,6 @@ export default function ProductEditModal({
     price: "",
     stock: "",
     sku: "",
-    taxRate: 21,
     size: "",
     variants: [{
       id: crypto.randomUUID(),
@@ -71,7 +70,6 @@ export default function ProductEditModal({
       price: "",
       stock: "",
       sku: "",
-      taxRate: 21,
       size: "",
       variants: [{
         id: crypto.randomUUID(),
@@ -121,7 +119,6 @@ export default function ProductEditModal({
           price: "",
           stock: "",
           sku: product.sku || "",
-          taxRate: product.taxRate || 21,
           size: "",
           variants: Array.isArray(product.variants) && product.variants.length > 0 
             ? product.variants.map(variant => ({
@@ -199,7 +196,6 @@ export default function ProductEditModal({
         price: null,
         stock: null,
         sku: formData.sku || "",
-        taxRate: formData.taxRate || 21,
         size: "",
         variants: formData.variants.map(variant => ({
           id: variant.id,
@@ -332,20 +328,6 @@ export default function ProductEditModal({
                     );
                   })}
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="taxRate">Porcentaje de IVA</Label>
-                <Input
-                  id="taxRate"
-                  name="taxRate"
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={formData.taxRate}
-                  onChange={handleChange}
-                  required
-                />
               </div>
             </CardContent>
           </Card>

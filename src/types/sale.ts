@@ -21,6 +21,14 @@ export interface TSale {
   items: TSaleItem[];
   subtotal: number;
   total: number;
+  // Información de IVA
+  applyIVA?: boolean;
+  taxRate?: number;
+  taxAmount?: number;
+  // Información de descuentos
+  discountPercentage?: number;
+  discountAmount?: number;
+  manualDiscount?: number;
   paymentMethod: EPaymentMethod;
   isInvoiced: boolean;
   invoiceNumber: string | null;

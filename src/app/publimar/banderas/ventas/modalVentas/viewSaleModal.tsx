@@ -182,6 +182,49 @@ export function ViewSaleModal({ open, onOpenChange, saleId }: ViewSaleModalProps
               </TableBody>
             </Table>
           </div>
+
+          {/* Detalles de cálculos */}
+          <div className="bg-slate-50 p-4 rounded-lg">
+            <h3 className="font-semibold mb-4">Detalles del Cálculo</h3>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <p className="font-medium">Subtotal (precios finales)</p>
+                <p className="font-medium">{formatearPrecio((typedSale?.total || 0) + (typedSale?.taxAmount || 0))}</p>
+              </div>
+              
+              {typedSale?.applyIVA && (
+                <>
+                  <div className="flex justify-between items-center text-sm text-gray-600">
+                    <p>IVA incluido ({typedSale?.taxRate || 21}%)</p>
+                    <p>- {formatearPrecio(typedSale?.taxAmount || 0)}</p>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-gray-600">
+                    <p>Subtotal sin IVA</p>
+                    <p>{formatearPrecio(typedSale?.subtotal || 0)}</p>
+                  </div>
+                </>
+              )}
+              
+              {(typedSale?.discountPercentage && typedSale.discountPercentage > 0) && (
+                <div className="flex justify-between items-center text-sm text-red-600">
+                  <p>Descuento ({typedSale.discountPercentage}%)</p>
+                  <p>-{formatearPrecio(typedSale?.discountAmount || 0)}</p>
+                </div>
+              )}
+              
+              {(typedSale?.manualDiscount && typedSale.manualDiscount > 0) && (
+                <div className="flex justify-between items-center text-sm text-red-600">
+                  <p>Descuento manual</p>
+                  <p>-{formatearPrecio(typedSale.manualDiscount)}</p>
+                </div>
+              )}
+              
+              <div className="flex justify-between items-center font-semibold text-lg border-t pt-2">
+                <p>Total Final</p>
+                <p>{formatearPrecio(typedSale?.total || 0)}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

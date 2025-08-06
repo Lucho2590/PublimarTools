@@ -40,7 +40,6 @@ export default function NuevoProductoPage() {
     description: "",
     categories: [] as string[],
     imageUrls: [] as string[],
-    taxRate: 21,
     sku: "",
     variants: [{
       id: crypto.randomUUID(),
@@ -168,7 +167,7 @@ export default function NuevoProductoPage() {
                   required
                 />
               </div>
-              {/* <div className="space-y-2">
+              <div className="space-y-2">
                 <Label htmlFor="sku">SKU</Label>
                 <Input
                   id="sku"
@@ -176,7 +175,7 @@ export default function NuevoProductoPage() {
                   value={formData.sku}
                   onChange={handleChange}
                 />
-              </div> */}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -211,20 +210,6 @@ export default function NuevoProductoPage() {
                   );
                 })}
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="taxRate">Porcentaje de IVA</Label>
-              <Input
-                id="taxRate"
-                name="taxRate"
-                type="number"
-                min="0"
-                max="100"
-                value={formData.taxRate}
-                onChange={handleChange}
-                required
-              />
             </div>
           </CardContent>
         </Card>

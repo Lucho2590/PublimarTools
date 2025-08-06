@@ -22,7 +22,7 @@ import { TProduct, TProductCategory } from "@/types/product";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, redondearTotal, redondearADecena } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -67,7 +67,11 @@ export function SaleDetailsModal({
   const [total, setTotal] = useState(0);
   const [subtotal, setSubtotal] = useState(0);
   const [taxAmount, setTaxAmount] = useState(0);
-  const [applyIVA, setApplyIVA] = useState(true);
+  const [subtotalSinIVA, setSubtotalSinIVA] = useState(0);
+  const [applyIVA, setApplyIVA] = useState(false);
+  const [discountPercentage, setDiscountPercentage] = useState(0);
+  const [discountAmount, setDiscountAmount] = useState(0);
+  const [manualDiscount, setManualDiscount] = useState(0);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [categories, setCategories] = useState<
     Record<string, TProductCategory>
@@ -89,18 +93,14 @@ export function SaleDetailsModal({
       loadCategories();
       if (typedSale?.items) {
         setItems(typedSale.items);
-        const initialSubtotal = calculateSubtotal(typedSale.items);
-        // Determinar si el total original incluía IVA comparando con subtotal
-        const originalTotal = typedSale.total || 0;
-        const calculatedTotalWithIVA = initialSubtotal * 1.21;
-        const hasIVA = Math.abs(originalTotal - calculatedTotalWithIVA) < Math.abs(originalTotal - initialSubtotal);
         
-        setApplyIVA(hasIVA);
-        const initialTaxAmount = calculateTaxAmount(initialSubtotal, hasIVA);
-        const initialTotal = initialSubtotal + initialTaxAmount;
-        setSubtotal(initialSubtotal);
-        setTaxAmount(initialTaxAmount);
-        setTotal(initialTotal);
+        // Inicializar valores desde la venta guardada
+        setApplyIVA(typedSale.applyIVA || false);
+        setDiscountPercentage(typedSale.discountPercentage || 0);
+        setManualDiscount(typedSale.manualDiscount || 0);
+        
+        // Calcular totales usando la misma lógica que newSaleModal
+        calculateTotals(typedSale.items, typedSale.applyIVA || false, typedSale.discountPercentage || 0, typedSale.manualDiscount || 0);
       }
       if (typedSale?.paymentMethod) {
         setPaymentMethod(typedSale.paymentMethod);
@@ -154,15 +154,28 @@ export function SaleDetailsModal({
     return itemsToCalculate.reduce((sum, item) => sum + item.total, 0);
   };
 
-  const calculateTaxAmount = (subtotal: number, shouldApplyIVA: boolean = applyIVA) => {
+  const calculateTotals = (itemsToCalculate: TSaleItem[], shouldApplyIVA: boolean, discountPerc: number, manualDisc: number) => {
+    const initialSubtotal = calculateSubtotal(itemsToCalculate);
     const taxRate = 21; // IVA del 21%
-    return shouldApplyIVA ? subtotal * (taxRate / 100) : 0;
-  };
-
-  const calculateTotal = (itemsToCalculate: TSaleItem[], shouldApplyIVA: boolean = applyIVA) => {
-    const subtotal = calculateSubtotal(itemsToCalculate);
-    const taxAmount = calculateTaxAmount(subtotal, shouldApplyIVA);
-    return subtotal + taxAmount;
+    
+    let calculatedTaxAmount = 0;
+    let calculatedSubtotalSinIVA = initialSubtotal;
+    
+    if (shouldApplyIVA) {
+      // Si aplicamos IVA, los precios son finales (con IVA incluido)
+      // Calculamos el IVA que está incluido en el precio
+      calculatedTaxAmount = redondearTotal(initialSubtotal * (taxRate / (100 + taxRate)));
+      calculatedSubtotalSinIVA = redondearTotal(initialSubtotal - calculatedTaxAmount);
+    }
+    
+    const calculatedDiscountAmount = redondearTotal(calculatedSubtotalSinIVA * (discountPerc / 100));
+    const calculatedTotal = redondearTotal(initialSubtotal - calculatedDiscountAmount - manualDisc);
+    
+    setSubtotal(initialSubtotal);
+    setTaxAmount(calculatedTaxAmount);
+    setSubtotalSinIVA(calculatedSubtotalSinIVA);
+    setDiscountAmount(calculatedDiscountAmount);
+    setTotal(calculatedTotal);
   };
 
   const handleAddItem = () => {
@@ -178,14 +191,8 @@ export function SaleDetailsModal({
     };
 
     const newItems = [...items, newItem];
-    const newSubtotal = calculateSubtotal(newItems);
-    const newTaxAmount = calculateTaxAmount(newSubtotal, applyIVA);
-    const newTotal = newSubtotal + newTaxAmount;
-    
+    calculateTotals(newItems, applyIVA, discountPercentage, manualDiscount);
     setItems(newItems);
-    setSubtotal(newSubtotal);
-    setTaxAmount(newTaxAmount);
-    setTotal(newTotal);
     setSelectedProduct("");
     setSelectedVariant("");
     setQuantity(1);
@@ -195,25 +202,23 @@ export function SaleDetailsModal({
   const handleRemoveItem = (index: number) => {
     const newItems = [...items];
     newItems.splice(index, 1);
-    const newSubtotal = calculateSubtotal(newItems);
-    const newTaxAmount = calculateTaxAmount(newSubtotal, applyIVA);
-    const newTotal = newSubtotal + newTaxAmount;
-    
+    calculateTotals(newItems, applyIVA, discountPercentage, manualDiscount);
     setItems(newItems);
-    setSubtotal(newSubtotal);
-    setTaxAmount(newTaxAmount);
-    setTotal(newTotal);
   };
 
   const handleIVAChange = (checked: boolean) => {
     setApplyIVA(checked);
-    const newSubtotal = calculateSubtotal(items);
-    const newTaxAmount = calculateTaxAmount(newSubtotal, checked);
-    const newTotal = newSubtotal + newTaxAmount;
-    
-    setSubtotal(newSubtotal);
-    setTaxAmount(newTaxAmount);
-    setTotal(newTotal);
+    calculateTotals(items, checked, discountPercentage, manualDiscount);
+  };
+
+  const handleDiscountPercentageChange = (newPercentage: number) => {
+    setDiscountPercentage(newPercentage);
+    calculateTotals(items, applyIVA, newPercentage, manualDiscount);
+  };
+
+  const handleManualDiscountChange = (newManualDiscount: number) => {
+    setManualDiscount(newManualDiscount);
+    calculateTotals(items, applyIVA, discountPercentage, newManualDiscount);
   };
 
   const handleSave = async () => {
@@ -223,7 +228,16 @@ export function SaleDetailsModal({
     try {
       const updateData: Partial<TSale> = {
         items,
-        total,
+        subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal),
+        total: redondearTotal(total),
+        // Información de IVA
+        applyIVA,
+        taxRate: 21,
+        taxAmount: redondearTotal(taxAmount),
+        // Información de descuentos
+        discountPercentage,
+        discountAmount: redondearTotal(discountAmount),
+        manualDiscount: redondearTotal(manualDiscount),
       };
       if (paymentMethod) {
         updateData.paymentMethod = paymentMethod;
@@ -467,34 +481,83 @@ export function SaleDetailsModal({
                       )}
                     </>
                   )}
-                  <div className="space-y-1">
-                    <p>
-                      <span className="font-medium">Subtotal:</span>{" "}
-                      {formatearPrecio(subtotal)}
-                    </p>
-                    {isEditing ? (
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="applyIVA"
-                            checked={applyIVA}
-                            onCheckedChange={handleIVAChange}
-                            className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
-                          />
-                          <Label htmlFor="applyIVA" className="font-medium">IVA (21%)</Label>
-                        </div>
-                        <span>{formatearPrecio(taxAmount)}</span>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <p>Subtotal</p>
+                      <p>{formatearPrecio(subtotal)}</p>
+                    </div>
+                    
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id="applyIVA"
+                          checked={applyIVA}
+                          onCheckedChange={handleIVAChange}
+                          disabled={!isEditing}
+                          className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                        />
+                        <Label htmlFor="applyIVA" className="text-sm">
+                          Desglosar IVA (21%)
+                        </Label>
                       </div>
-                    ) : (
-                      <p>
-                        <span className="font-medium">IVA (21%):</span>{" "}
-                        {formatearPrecio(taxAmount)}
+                      <p className="text-sm">
+                        {applyIVA ? `${formatearPrecio(taxAmount)}` : '$ 0,00'}
                       </p>
+                    </div>
+
+                    {applyIVA && (
+                      <div className="flex justify-between items-center text-sm pl-6">
+                        <p>Subtotal sin IVA</p>
+                        <p>{formatearPrecio(subtotalSinIVA)}</p>
+                      </div>
                     )}
-                    <p className="text-lg font-semibold">
-                      <span className="font-medium">Total:</span>{" "}
-                      {formatearPrecio(total)}
-                    </p>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Label htmlFor="discount" className="text-sm w-24">
+                          Descuento (%)
+                        </Label>
+                        <Input
+                          id="discount"
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={discountPercentage}
+                          onChange={(e) => handleDiscountPercentageChange(Number(e.target.value))}
+                          disabled={!isEditing}
+                          className="w-16 h-8 text-center text-sm"
+                          placeholder="0"
+                        />
+                      </div>
+                      <p className="text-red-600">-{formatearPrecio(discountAmount)}</p>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Label htmlFor="manualDiscount" className="text-sm w-24">
+                          Descuento ($)
+                        </Label>
+                        <Input
+                          id="manualDiscount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={manualDiscount}
+                          onChange={(e) => handleManualDiscountChange(Number(e.target.value))}
+                          disabled={!isEditing}
+                          className="w-20 h-8 text-center text-sm"
+                          placeholder="0"
+                        />
+                      </div>
+                      <p className="text-red-600">-{formatearPrecio(manualDiscount)}</p>
+                    </div>
+
+                    <div className="border-t pt-3">
+                      <div className="flex justify-between items-center">
+                        <p className="text-lg">Total</p>
+                        <p className="text-xl">{formatearPrecio(redondearADecena(total))}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -659,7 +722,7 @@ export function SaleDetailsModal({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Producto</TableHead>
-                      <TableHead>Categoría</TableHead>
+                      {/* <TableHead>Categoría</TableHead> */}
                       <TableHead>Medida</TableHead>
                       <TableHead className="text-right">Cantidad</TableHead>
                       <TableHead className="text-right">
@@ -697,11 +760,11 @@ export function SaleDetailsModal({
                             {products[item.productId]?.name ||
                               "Producto no encontrado"}
                           </TableCell>
-                          <TableCell>
+                          {/* <TableCell>
                             {products[item.productId]?.categories
                               ?.map((catId) => getCategoryName(catId))
                               .join(", ") || "Sin categoría"}
-                          </TableCell>
+                          </TableCell> */}
                           <TableCell>
                             {getVariantName(item.productId, item.variantId)}
                           </TableCell>
@@ -712,7 +775,7 @@ export function SaleDetailsModal({
                             {formatearPrecio(item.unitPrice)}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatearPrecio(item.total)}
+                            {formatearPrecio(item.total * (applyIVA ? 1.21 : 1))}
                           </TableCell>
                           {isEditing && (
                             <TableCell className="text-right">
@@ -734,35 +797,7 @@ export function SaleDetailsModal({
                     )}
                   </TableBody>
                 </Table>
-                
-                {/* {isEditing && items.length > 0 && (
-                  <div className="p-4 border-t bg-slate-50">
-                    <div className="flex justify-end">
-                      <div className="space-y-2 text-right min-w-[200px]">
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium">Subtotal:</span>
-                          <span>{formatearPrecio(subtotal)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <div className="flex items-center gap-2">
-                            <Checkbox
-                              id="applyIVATable"
-                              checked={applyIVA}
-                              onCheckedChange={handleIVAChange}
-                              className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
-                            />
-                            <Label htmlFor="applyIVATable" className="font-medium">IVA (21%)</Label>
-                          </div>
-                          <span>{formatearPrecio(taxAmount)}</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-2 border-t">
-                          <span className="text-lg font-semibold">Total:</span>
-                          <span className="text-lg font-semibold">{formatearPrecio(total)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )} */}
+
               </div>
             </div>
           </div>

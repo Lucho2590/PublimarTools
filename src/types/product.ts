@@ -32,7 +32,7 @@ export enum EProductCategory {
     description?: string;
     variants: TProductVariant[];
     categories: string[];
-    taxRate: number;
+    taxRate?: number; // Opcional para compatibilidad con productos existentes
     price: number | string;
     stock: number | string;
     category?: string;

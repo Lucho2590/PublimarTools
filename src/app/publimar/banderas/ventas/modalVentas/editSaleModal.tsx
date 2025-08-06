@@ -21,7 +21,7 @@ import {
 import { EPaymentMethod } from "@/types/sale";
 import { TProduct } from "@/types/product";
 import { Input } from "@/components/ui/input";
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, redondearTotal } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -30,6 +30,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface EditSaleModalProps {
   open: boolean;
@@ -50,6 +52,9 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
   const [paymentMethod, setPaymentMethod] = useState<EPaymentMethod | null>(null);
   const [isInvoiced, setIsInvoiced] = useState<boolean | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState<string>("");
+  const [applyIVA, setApplyIVA] = useState<boolean>(true);
+  const [discountPercentage, setDiscountPercentage] = useState<number>(0);
+  const [manualDiscount, setManualDiscount] = useState<number>(0);
 
   const saleRef = saleId ? doc(firestore, collections.SALES, saleId) : null;
   const { data: sale } = useFirestoreDocData(saleRef ?? doc(firestore, collections.SALES, "dummy"), {
@@ -116,8 +121,26 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
     setItems(newItems);
   };
 
+  const calculateSubtotal = () => {
+    return redondearTotal(items.reduce((sum, item) => sum + item.total, 0));
+  };
+
   const calculateTotal = () => {
-    return items.reduce((sum, item) => sum + item.total, 0);
+    const subtotal = calculateSubtotal();
+    const taxRate = 21;
+    
+    // Calcular IVA desde precio final cuando aplica
+    let taxAmount = 0;
+    let subtotalSinIVA = subtotal;
+    
+    if (applyIVA) {
+      // Los precios son finales (con IVA incluido)
+      taxAmount = redondearTotal(subtotal * (taxRate / (100 + taxRate)));
+      subtotalSinIVA = redondearTotal(subtotal - taxAmount);
+    }
+    
+    const discountAmount = redondearTotal(subtotalSinIVA * (discountPercentage / 100));
+    return redondearTotal(subtotal - discountAmount - manualDiscount);
   };
 
   const handleSave = async () => {
@@ -125,9 +148,32 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
 
     setIsLoading(true);
     try {
+      const subtotal = calculateSubtotal();
+      const taxRate = 21;
+      
+      // Calcular IVA desde precio final cuando aplica
+      let taxAmount = 0;
+      let subtotalSinIVA = subtotal;
+      
+      if (applyIVA) {
+        taxAmount = redondearTotal(subtotal * (taxRate / (100 + taxRate)));
+        subtotalSinIVA = redondearTotal(subtotal - taxAmount);
+      }
+      
+      const discountAmount = redondearTotal(subtotalSinIVA * (discountPercentage / 100));
+      
       const updateData: Partial<TSale> = {
         items,
+        subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal), // Subtotal sin IVA si aplica
         total: calculateTotal(),
+        // Información de IVA
+        applyIVA,
+        taxRate,
+        taxAmount: redondearTotal(taxAmount), // IVA calculado desde precio final
+        // Información de descuentos
+        discountPercentage,
+        discountAmount: redondearTotal(discountAmount),
+        manualDiscount,
       };
       if (paymentMethod) updateData.paymentMethod = paymentMethod;
       if (isInvoiced !== null) {
@@ -295,10 +341,69 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
                   ))}
                 </TableBody>
               </Table>
-              <div className="mt-4 text-right">
-                <p className="text-lg font-semibold">
-                  Total: {formatearPrecio(calculateTotal())}
-                </p>
+              <div className="mt-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <p className="font-medium">Subtotal (precios finales)</p>
+                  <p className="font-medium">{formatearPrecio(calculateSubtotal())}</p>
+                </div>
+                
+                <div className="flex items-center justify-between text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="applyIVA"
+                      checked={applyIVA}
+                      onCheckedChange={(checked) => setApplyIVA(checked as boolean)}
+                      className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
+                    />
+                    <Label htmlFor="applyIVA">Desglosar IVA (21%)</Label>
+                  </div>
+                  <p>{applyIVA ? `- ${formatearPrecio(calculateSubtotal() * (21 / 121))}` : formatearPrecio(0)}</p>
+                </div>
+
+                {applyIVA && (
+                  <div className="flex justify-between items-center text-sm text-gray-600">
+                    <p>Subtotal sin IVA</p>
+                    <p>{formatearPrecio(calculateSubtotal() - (calculateSubtotal() * (21 / 121)))}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="discountPercentage">Descuento (%)</Label>
+                    <Input
+                      id="discountPercentage"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={discountPercentage}
+                      onChange={(e) => setDiscountPercentage(Number(e.target.value))}
+                      className="w-20 h-8"
+                    />
+                  </div>
+                  <p className="text-red-500">-{formatearPrecio((applyIVA ? calculateSubtotal() - (calculateSubtotal() * (21 / 121)) : calculateSubtotal()) * (discountPercentage / 100))}</p>
+                </div>
+
+                <div className="flex items-center justify-between text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="manualDiscount">Descuento ($)</Label>
+                    <Input
+                      id="manualDiscount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={manualDiscount}
+                      onChange={(e) => setManualDiscount(Number(e.target.value))}
+                      className="w-24 h-8"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <p className="text-red-500">-{formatearPrecio(manualDiscount)}</p>
+                </div>
+
+                <div className="flex justify-between items-center font-semibold text-lg border-t pt-2">
+                  <p>Total</p>
+                  <p>{formatearPrecio(calculateTotal())}</p>
+                </div>
               </div>
             </div>
           </div>

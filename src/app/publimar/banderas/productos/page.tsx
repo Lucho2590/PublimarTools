@@ -256,7 +256,7 @@ export default function ProductosPage() {
         Nombre: typedProduct.name,
         Medida: variant.size || '-',
         Precio: Number(variant.price).toFixed(2),
-        'Precio con IVA': calculatePriceWithTax(Number(variant.price), typedProduct.taxRate).toFixed(2)
+        'Precio con IVA': calculatePriceWithTax(Number(variant.price), typedProduct.taxRate || 21).toFixed(2)
       })) || [];
     });
 
@@ -376,8 +376,8 @@ export default function ProductosPage() {
                   <TableHead>Categorías</TableHead>
                   <TableHead>Medida</TableHead>
                   <TableHead className="text-right">Stock</TableHead>
-                  <TableHead className="text-right">Precio</TableHead>
-                  <TableHead className="text-right">+ IVA</TableHead>
+                  <TableHead className="text-right">Precio Final</TableHead>
+                  {/* <TableHead className="text-right">+ IVA</TableHead> */}
                   <TableHead className="text-center">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -451,18 +451,18 @@ export default function ProductosPage() {
                             "-"
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
+                        {/* <TableCell className="text-right">
                           {selectedVariant ? (
                             <span>
                               {formatearPrecio(calculatePriceWithTax(
                                 Number(selectedVariant.price),
-                                typedProduct.taxRate
+                                typedProduct.taxRate || 21
                               ))}
                             </span>
                           ) : (
                             "-"
                           )}
-                        </TableCell>
+                        </TableCell> */}
                         <TableCell className="text-center">
                           <Button
                             variant="ghost"

@@ -23,7 +23,7 @@ import {
 import collections from "@/lib/collections";
 import { EPaymentMethod, TSale } from "@/types/sale";
 import { useRouter } from "next/navigation";
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, redondearADecena } from "@/lib/utils";
 import { NuevaVentaModal } from "./modalVentas/newSaleModal";
 import { SaleDetailsModal } from "./modalVentas/saleDetailsModal";
 import { Edit, Eye, X } from "lucide-react";
@@ -215,10 +215,10 @@ export default function VentasPage() {
       });
     });
 
-    return Array.from(categorySales.entries()).map(([name, value]) => ({
-      name,
-      value,
-    }));
+    return Array.from(categorySales.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value) // Ordenar de mayor a menor
+      .slice(0, 5); // Tomar solo los Top 5
   };
 
   // Función para obtener las ventas por método de pago
@@ -234,10 +234,10 @@ export default function VentasPage() {
       paymentMethodSales.set(method, currentTotal + typedSale.total);
     });
 
-    return Array.from(paymentMethodSales.entries()).map(([name, value]) => ({
-      name,
-      value,
-    }));
+    return Array.from(paymentMethodSales.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value) // Ordenar de mayor a menor
+      .slice(0, 5); // Tomar solo los Top 5
   };
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
@@ -290,7 +290,7 @@ export default function VentasPage() {
                 {/* Ventas por Categoría - Mensual */}
                 <Card>
                   <CardContent className="pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Ventas por Categoría - Este Mes</h3>
+                    <h3 className="text-lg font-semibold mb-4">Top 5 Categorías - Este Mes</h3>
                     <div className="space-y-4">
                       {getSalesByCategory("month").map((category, index) => (
                         <div key={category.name} className="flex items-center justify-between">
@@ -311,7 +311,7 @@ export default function VentasPage() {
                 {/* Métodos de Pago - Mensual */}
                 <Card>
                   <CardContent className="pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Métodos de Pago - Este Mes</h3>
+                    <h3 className="text-lg font-semibold mb-4">Top 5 Métodos de Pago - Este Mes</h3>
                     <div className="space-y-4">
                       {getSalesByPaymentMethod().map((method, index) => (
                         <div key={method.name} className="flex items-center justify-between">
@@ -336,7 +336,7 @@ export default function VentasPage() {
                 {/* Ventas por Categoría - Anual */}
                 <Card>
                   <CardContent className="pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Ventas por Categoría - Este Año</h3>
+                    <h3 className="text-lg font-semibold mb-4">Top 5 Categorías - Este Año</h3>
                     <div className="space-y-4">
                       {getSalesByCategory("year").map((category, index) => (
                         <div key={category.name} className="flex items-center justify-between">
@@ -357,7 +357,7 @@ export default function VentasPage() {
                 {/* Métodos de Pago - Anual */}
                 <Card>
                   <CardContent className="pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Métodos de Pago - Este Año</h3>
+                    <h3 className="text-lg font-semibold mb-4">Top 5 Métodos de Pago - Este Año</h3>
                     <div className="space-y-4">
                       {getSalesByPaymentMethod().map((method, index) => (
                         <div key={method.name} className="flex items-center justify-between">
@@ -546,7 +546,7 @@ export default function VentasPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatearPrecio(typedSale.total)}
+                            {formatearPrecio(redondearADecena(typedSale.total))}
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex justify-center gap-2">
