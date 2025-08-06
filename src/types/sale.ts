@@ -4,6 +4,7 @@ export enum EPaymentMethod {
   DEBIT_CARD = "debit_card",
   TRANSFER = "transfer",
   MERCADOPAGO = "mercadopago",
+  CHECK = "cheque",
 }
 
 export interface TSaleItem {

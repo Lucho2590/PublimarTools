@@ -75,7 +75,7 @@ export default function VentasPage() {
   // Función para obtener el nombre de la categoría
   const getCategoryName = (categoryId: string) => {
     const category = categories?.find(c => c.id === categoryId);
-    return category ? (category as unknown as TProductCategory).name : "Sin categoría";
+    return category ? (category as unknown as TProductCategory).name : null
   };
 
   // Filtrar ventas según los filtros seleccionados
@@ -209,9 +209,11 @@ export default function VentasPage() {
       typedSale.items?.forEach((item) => {
         const product = products.find(p => p.id === item.productId) as unknown as TProduct;
         const categoryId = product?.categories?.[0];
-        const categoryName = categoryId ? getCategoryName(categoryId) : "Sin categoría";
-        const currentTotal = categorySales.get(categoryName) || 0;
-        categorySales.set(categoryName, currentTotal + (item.total || 0));
+        const categoryName = categoryId ? getCategoryName(categoryId) : null;
+        if (categoryName) {
+          const currentTotal = categorySales.get(categoryName) || 0;
+          categorySales.set(categoryName, currentTotal + (item.total || 0));
+        }
       });
     });
 

@@ -31,6 +31,18 @@ export function ViewSaleModal({ open, onOpenChange, saleId }: ViewSaleModalProps
   const [products, setProducts] = useState<Record<string, TProduct>>({});
   const [isLoading, setIsLoading] = useState(true);
 
+  const clearModalStates = () => {
+    setProducts({});
+    setIsLoading(true);
+  };
+
+  const handleModalClose = (open: boolean) => {
+    if (!open) {
+      clearModalStates();
+    }
+    onOpenChange(open);
+  };
+
   const saleRef = saleId ? doc(firestore, collections.SALES, saleId) : null;
   const { data: sale } = useFirestoreDocData(saleRef ?? doc(firestore, collections.SALES, "dummy"), {
     idField: "id",
@@ -129,7 +141,7 @@ export function ViewSaleModal({ open, onOpenChange, saleId }: ViewSaleModalProps
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleModalClose}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Detalles de la Venta #{typedSale?.number}</DialogTitle>

@@ -221,6 +221,46 @@ export function SaleDetailsModal({
     calculateTotals(items, applyIVA, discountPercentage, newManualDiscount);
   };
 
+  const clearModalStates = () => {
+    // Limpiar estados de edición
+    setIsEditing(false);
+    setIsLoading(false);
+    
+    // Limpiar productos y búsqueda
+    setProducts({});
+    setSelectedProduct("");
+    setSelectedVariant("");
+    setQuantity(1);
+    setUnitPrice(0);
+    setSearchTerm("");
+    setSelectedCategory("all");
+    setCategories({});
+    
+    // Limpiar items y totales
+    setItems([]);
+    setTotal(0);
+    setSubtotal(0);
+    setTaxAmount(0);
+    setSubtotalSinIVA(0);
+    setApplyIVA(false);
+    setDiscountPercentage(0);
+    setDiscountAmount(0);
+    setManualDiscount(0);
+    
+    // Limpiar datos de pago
+    setPaymentMethod(null);
+    setIsInvoiced(null);
+    setInvoiceNumber("");
+    setSelectedBank("");
+  };
+
+  const handleModalClose = (open: boolean) => {
+    if (!open) {
+      clearModalStates();
+    }
+    onOpenChange(open);
+  };
+
   const handleSave = async () => {
     if (!saleRef || !saleId) return;
 
@@ -298,6 +338,8 @@ export function SaleDetailsModal({
         return "Transferencia";
       case EPaymentMethod.MERCADOPAGO:
         return "MercadoPago";
+      case EPaymentMethod.CHECK:
+        return "Cheque";
       default:
         return method;
     }
@@ -329,7 +371,7 @@ export function SaleDetailsModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleModalClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Venta #{typedSale?.number}</DialogTitle>
@@ -580,7 +622,7 @@ export function SaleDetailsModal({
                         <SelectTrigger>
                           <SelectValue placeholder="Todas las categorías" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-48 overflow-y-auto">
                           <SelectItem value="all">
                             Todas las categorías
                           </SelectItem>
@@ -611,11 +653,12 @@ export function SaleDetailsModal({
                       <Select
                         value={selectedProduct}
                         onValueChange={setSelectedProduct}
+                      
                       >
-                        <SelectTrigger>
+                        <SelectTrigger >
                           <SelectValue placeholder="Seleccionar producto" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="max-h-48 overflow-y-auto">
                           {filteredProducts.map(([id, product]) => {
                             const hasStock =
                               product?.variants?.some(
@@ -636,11 +679,7 @@ export function SaleDetailsModal({
                                   <span>
                                     {product?.name || "Producto sin nombre"}
                                   </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {product?.categories
-                                      ?.map((catId) => getCategoryName(catId))
-                                      .join(", ") || "Sin categoría"}
-                                  </span>
+                      
                                 </div>
                               </SelectItem>
                             );

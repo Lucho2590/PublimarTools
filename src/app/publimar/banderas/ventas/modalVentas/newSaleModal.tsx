@@ -126,6 +126,13 @@ export function NuevaVentaModal({
     setManualDiscount(0);
   };
 
+  const handleModalClose = (open: boolean) => {
+    if (!open) {
+      limpiarFormulario();
+    }
+    onOpenChange(open);
+  };
+
   // Obtener productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
   const { status: productsStatus, data: products } = useFirestoreCollectionData(
@@ -379,7 +386,7 @@ export function NuevaVentaModal({
 
   if (productsStatus === "loading") {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleModalClose}>
         <DialogContent className="max-w-[60vw] max-h-[90vh] flex flex-col">
           <div className="flex items-center justify-center flex-1">
             <Loader2 className="w-8 h-8 animate-spin" />
@@ -390,7 +397,7 @@ export function NuevaVentaModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleModalClose}>
       <DialogContent className=" max-h-[90vh] flex flex-col overflow-hidden max-w-4xl">
         <DialogHeader>
           <DialogTitle>Nueva Venta</DialogTitle>

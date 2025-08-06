@@ -56,6 +56,29 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
   const [discountPercentage, setDiscountPercentage] = useState<number>(0);
   const [manualDiscount, setManualDiscount] = useState<number>(0);
 
+  const clearModalStates = () => {
+    setIsLoading(false);
+    setProducts({});
+    setSelectedProduct("");
+    setSelectedVariant("");
+    setQuantity(1);
+    setUnitPrice(0);
+    setItems([]);
+    setPaymentMethod(null);
+    setIsInvoiced(null);
+    setInvoiceNumber("");
+    setApplyIVA(true);
+    setDiscountPercentage(0);
+    setManualDiscount(0);
+  };
+
+  const handleModalClose = (open: boolean) => {
+    if (!open) {
+      clearModalStates();
+    }
+    onOpenChange(open);
+  };
+
   const saleRef = saleId ? doc(firestore, collections.SALES, saleId) : null;
   const { data: sale } = useFirestoreDocData(saleRef ?? doc(firestore, collections.SALES, "dummy"), {
     idField: "id",
@@ -211,7 +234,7 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleModalClose}>
       <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle>Editar Venta #{typedSale?.number}</DialogTitle>
