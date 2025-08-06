@@ -1136,6 +1136,9 @@ export default function OrderDetailsModal({
                               <SelectItem value={EPaymentMethod.MERCADOPAGO}>
                                 Mercado Pago
                               </SelectItem>
+                              <SelectItem value={EPaymentMethod.CHECK}>
+                                Cheque
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1193,7 +1196,9 @@ export default function OrderDetailsModal({
                                   ? "Transferencia"
                                   : payment.method ===
                                     EPaymentMethod.MERCADOPAGO
-                                  ? "Mercado Pago"
+                                  ? "Mercado Pago" 
+                                  : payment.method === EPaymentMethod.CHECK
+                                  ? "Cheque"
                                   : "Otro"}
                               </TableCell>
                               <TableCell>{payment.notes || "-"}</TableCell>

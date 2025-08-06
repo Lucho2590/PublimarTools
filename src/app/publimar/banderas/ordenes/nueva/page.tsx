@@ -1161,6 +1161,9 @@ export default function NuevaOrdenPage() {
                   <option value={EPaymentMethod.MERCADOPAGO}>
                     MercadoPago
                   </option>
+                  <option value={EPaymentMethod.CHECK}>
+                    Cheque
+                  </option>
                 </select>
               </div>
               <div className="space-y-2">

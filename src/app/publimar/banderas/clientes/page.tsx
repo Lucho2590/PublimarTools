@@ -187,7 +187,7 @@ export default function ClientesPage() {
                   <TableRow>
                     <TableHead className="text-left">Nombre/Razón Social</TableHead>
                     <TableHead className="text-left">Tipo</TableHead>
-                    <TableHead className="text-left">CUIT</TableHead>
+                    <TableHead className="text-left">CUIT/CUIL</TableHead>
                     <TableHead className="text-left">Email</TableHead>
                     <TableHead className="text-left">Teléfono</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
@@ -206,7 +206,7 @@ export default function ClientesPage() {
                             : "Individual"}
                         </TableCell>
                         <TableCell className="text-left">
-                          {client.taxId || "-"}
+                          {client.cuit || "-"}
                         </TableCell>
                         <TableCell className="text-left">
                           {client.email || "-"}

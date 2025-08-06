@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import collections from "@/lib/collections";
@@ -55,7 +56,7 @@ export function NuevaVentaModal({
   onSuccess,
 }: NuevaVentaModalProps) {
   const firestore = useFirestore();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedStock, setSelectedStock] = useState<string>("all");
@@ -80,6 +81,7 @@ export function NuevaVentaModal({
   const [manualTotal, setManualTotal] = useState<number | null>(null);
   const [manualDiscount, setManualDiscount] = useState<number>(0);
 
+  // Cálculos simples sin useMemo para evitar problemas
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
   const taxRate = 21; // IVA
   
@@ -141,6 +143,8 @@ export function NuevaVentaModal({
       idField: "id",
     }
   );
+
+
 
   // Obtener categorías
   const categoriesCollection = collection(firestore, collections.products.CATEGORIES);
@@ -230,15 +234,28 @@ export function NuevaVentaModal({
 
   // Inicializar las variantes seleccionadas con la primera variante de cada producto
   useEffect(() => {
-    if (products) {
+    if (products && Array.isArray(products) && products.length > 0) {
       const initialVariants: Record<string, string> = {};
+      
       products.forEach((product) => {
-        const typedProduct = product as unknown as TProduct;
-        if (typedProduct.variants?.[0]?.id) {
-          initialVariants[typedProduct.id] = typedProduct.variants[0].id;
+        try {
+          const typedProduct = product as unknown as TProduct;
+          // Verificar que el producto tenga ID y variantes
+          if (typedProduct?.id && typedProduct?.variants && Array.isArray(typedProduct.variants) && typedProduct.variants.length > 0) {
+            const firstVariant = typedProduct.variants[0];
+            if (firstVariant?.id) {
+              initialVariants[typedProduct.id] = firstVariant.id;
+            }
+          }
+        } catch (error) {
+          console.warn("Error procesando producto:", product, error);
         }
       });
-      setSelectedVariants(initialVariants);
+      
+      // Solo actualizar si hay variantes para establecer
+      if (Object.keys(initialVariants).length > 0) {
+        setSelectedVariants(initialVariants);
+      }
     }
   }, [products]);
 
@@ -325,27 +342,45 @@ export function NuevaVentaModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (items.length === 0) {
+      toast.error("No hay productos en la venta");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // Calcular valores en el momento del submit para asegurar que están actualizados
+      const currentSubtotal = items.reduce((sum, item) => sum + item.total, 0);
+      let currentTaxAmount = 0;
+      let currentSubtotalSinIVA = currentSubtotal;
+      
+      if (applyIVA) {
+        currentTaxAmount = redondearTotal(currentSubtotal * (21 / (100 + 21)));
+        currentSubtotalSinIVA = redondearTotal(currentSubtotal - currentTaxAmount);
+      }
+      
+      const currentDiscountAmount = redondearTotal(currentSubtotalSinIVA * (discountPercentage / 100));
+      const currentCalculatedTotal = redondearTotal(currentSubtotal - currentDiscountAmount - manualDiscount);
+      const currentTotal = manualTotal !== null ? manualTotal : currentCalculatedTotal;
+
       const saleData = {
         number: new Date().getTime().toString(),
         items: items.map((item) => ({
           productId: item.product.id,
           variantId: item.variant.id,
           quantity: item.quantity,
-          unitPrice: redondearTotal(item.unitPrice), // Precio final unitario
-          total: redondearTotal(item.total), // Total final del item
+          unitPrice: redondearTotal(item.unitPrice),
+          total: redondearTotal(item.total),
         })),
-        subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal), // Subtotal sin IVA si aplica
-        total: redondearTotal(total),
-        // Información de IVA
+        subtotal: redondearTotal(applyIVA ? currentSubtotalSinIVA : currentSubtotal),
+        total: redondearTotal(currentTotal),
         applyIVA,
-        taxRate,
-        taxAmount: redondearTotal(taxAmount), // IVA calculado desde precio final
-        // Información de descuentos
+        taxRate: 21,
+        taxAmount: redondearTotal(currentTaxAmount),
         discountPercentage,
-        discountAmount: redondearTotal(discountAmount),
+        discountAmount: redondearTotal(currentDiscountAmount),
         manualDiscount: redondearTotal(manualDiscount),
         paymentMethod,
         bank: paymentMethod === EPaymentMethod.TRANSFER ? bank : null,
@@ -355,11 +390,9 @@ export function NuevaVentaModal({
         updatedAt: serverTimestamp(),
       };
 
-      // Crear la venta
       const salesCollection = collection(firestore, collections.SALES);
       await addDoc(salesCollection, saleData);
 
-      // Actualizar el stock de cada producto
       for (const item of items) {
         const productRef = doc(firestore, collections.PRODUCTS, item.product.id);
         await updateDoc(productRef, {
@@ -374,7 +407,6 @@ export function NuevaVentaModal({
       toast.success("Venta registrada con éxito");
       onSuccess?.();
       onOpenChange(false);
-      // Limpiar el formulario
       limpiarFormulario();
     } catch (error) {
       console.error("Error al registrar la venta:", error);
@@ -873,6 +905,9 @@ export function NuevaVentaModal({
                             <SelectItem value={EPaymentMethod.MERCADOPAGO}>
                               MercadoPago
                             </SelectItem>
+                            <SelectItem value={EPaymentMethod.CHECK}>
+                              Cheque
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -934,11 +969,15 @@ export function NuevaVentaModal({
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading || items.length === 0}>
+              <Button type="submit" className="bg-blue-600 hover:bg-blue-700" >
                 {loading ? (
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                ) : null}
-                Registrar Venta
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    Registrando...
+                  </>
+                ) : (
+                  "Registrar Venta"
+                )}
               </Button>
             </div>
           </div>

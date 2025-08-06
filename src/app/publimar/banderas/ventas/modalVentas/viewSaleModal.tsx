@@ -108,6 +108,8 @@ export function ViewSaleModal({ open, onOpenChange, saleId }: ViewSaleModalProps
         return "Transferencia";
       case EPaymentMethod.MERCADOPAGO:
         return "MercadoPago";
+      case EPaymentMethod.CHECK:
+        return "Cheque";
       default:
         return method;
     }

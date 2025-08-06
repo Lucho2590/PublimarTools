@@ -471,46 +471,7 @@ export default function DashboardPage() {
 
         {/* Presupuestos por vencer y últimas OT */}
         <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Presupuestos por Vencer</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Vence</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {expiringQuotes?.map((quote: any) => (
-                    <TableRow key={quote.id}>
-                      <TableCell>{quote.number}</TableCell>
-                      <TableCell>{quote.client.name}</TableCell>
-                      <TableCell>{formatDate(quote.validUntil)}</TableCell>
-                      <TableCell>{formatearPrecio(quote.total)}</TableCell>
-                      <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => handleViewQuote(quote.id)}
-                          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <Card>
+        <Card>
             <CardHeader>
               <CardTitle>Últimas Órdenes de Trabajo</CardTitle>
             </CardHeader>
@@ -562,6 +523,46 @@ export default function DashboardPage() {
               </Table>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Presupuestos por Vencer</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Número</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Vence</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {expiringQuotes?.map((quote: any) => (
+                    <TableRow key={quote.id}>
+                      <TableCell>{quote.number}</TableCell>
+                      <TableCell>{quote.client.name}</TableCell>
+                      <TableCell>{formatDate(quote.validUntil)}</TableCell>
+                      <TableCell>{formatearPrecio(quote.total)}</TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={() => handleViewQuote(quote.id)}
+                          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          
         </div>
       </div>
 

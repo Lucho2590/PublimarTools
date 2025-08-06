@@ -168,6 +168,8 @@ export default function VentasPage() {
         return "Transferencia";
       case EPaymentMethod.MERCADOPAGO:
         return "MercadoPago";
+      case EPaymentMethod.CHECK:
+        return "Cheque";
       default:
         return method;
     }
@@ -402,6 +404,7 @@ export default function VentasPage() {
                 <SelectItem value={EPaymentMethod.DEBIT_CARD}>Tarjeta de Débito</SelectItem>
                 <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
                 <SelectItem value={EPaymentMethod.MERCADOPAGO}>MercadoPago</SelectItem>
+                <SelectItem value={EPaymentMethod.CHECK}>Cheque</SelectItem>
               </SelectContent>
             </Select>
 

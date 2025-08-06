@@ -324,6 +324,8 @@ export default function EditarOrdenPage({ params }: { params: { id: string } }) 
                             ? "Transferencia"
                             : method === EPaymentMethod.MERCADOPAGO
                             ? "Mercado Pago"
+                            : method === EPaymentMethod.CHECK
+                            ? "Cheque"
                             : "No especificada"}
                         </SelectItem>
                       ))}

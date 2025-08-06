@@ -375,6 +375,8 @@ export default function OrdenPage({ params }: { params: { id: string } }) {
                       ? "Transferencia"
                       : order.paymentMethod === EPaymentMethod.MERCADOPAGO
                       ? "Mercado Pago"
+                      : order.paymentMethod === EPaymentMethod.CHECK
+                      ? "Cheque"
                       : "No especificada"}
                   </span>
                 </div>
@@ -549,6 +551,9 @@ export default function OrdenPage({ params }: { params: { id: string } }) {
                             <SelectItem value={EPaymentMethod.MERCADOPAGO}>
                               Mercado Pago
                             </SelectItem>
+                            <SelectItem value={EPaymentMethod.CHECK}>
+                              Cheque
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                         {metodoPago === EPaymentMethod.TRANSFER && (
@@ -627,6 +632,8 @@ export default function OrdenPage({ params }: { params: { id: string } }) {
                                   ? "Transferencia"
                                   : pago.method === EPaymentMethod.MERCADOPAGO
                                   ? "Mercado Pago"
+                                  : pago.method === EPaymentMethod.CHECK
+                                  ? "Cheque"
                                   : "Otro"}
                                 {pago.notes && ` - ${pago.notes}`}
                               </p>

@@ -447,6 +447,7 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
                     <SelectItem value={EPaymentMethod.DEBIT_CARD}>Tarjeta de Débito</SelectItem>
                     <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
                     <SelectItem value={EPaymentMethod.MERCADOPAGO}>MercadoPago</SelectItem>
+                    <SelectItem value={EPaymentMethod.CHECK}>Cheque</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
