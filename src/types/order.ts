@@ -5,7 +5,7 @@ import { EPaymentMethod } from "./sale";
 import { TClient } from "./client";
 
 export enum EOrderStatus {
-  PENDING = "pending",
+  // PENDING = "pending",
   IN_PROCESS = "in_process",
   COMPLETED = "completed",
   CANCELLED = "cancelled",
@@ -24,6 +24,7 @@ export type TPaymentHistory = {
 };
 
 export type TOrder = {
+  invoiceType: string;
   id: string;
   number: string; // Número de orden para mostrar al cliente
   quoteId: string;
@@ -33,6 +34,7 @@ export type TOrder = {
   subtotal: number;
   taxRate: number;
   taxAmount: number;
+  applyIVA:boolean;
   discount?: number;
   total: number;
   notes?: string;

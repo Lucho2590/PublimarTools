@@ -1,4 +1,4 @@
-'use client';
+"use client";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,8 @@ import {
 } from "@/components/ui/dialog";
 import { Search, Plus, Trash2, Edit, ArrowLeft } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, redondearTotal } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import { TProduct, TProductVariant, TProductCategory } from "@/types/product";
 // import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -117,7 +118,13 @@ export default function NuevaOrdenPage() {
   const [itemDiscount, setItemDiscount] = useState(0);
   const [itemNotes, setItemNotes] = useState("");
   const [productSearchTerm, setProductSearchTerm] = useState("");
-  const [applyIVA, setApplyIVA] = useState(true);
+  const [applyIVA, setApplyIVA] = useState(false);
+  const [discountPercentage, setDiscountPercentage] = useState(0);
+  const [manualDiscount, setManualDiscount] = useState(0);
+  const [banco, setBanco] = useState("");
+  const [tipoFactura, setTipoFactura] = useState("");
+  
+  const BANCOS = ["Galicia", "Frances"];
 
   // Firestore
   const productsCollection = collection(firestore, collections.PRODUCTS);
@@ -138,8 +145,20 @@ export default function NuevaOrdenPage() {
 
   // Calcular totales
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-  const taxAmount = subtotal * (applyIVA ? parseFloat(iva) / 100 : 0);
-  const total = subtotal + taxAmount;
+  
+  // Calcular IVA desde precio final cuando aplica
+  let taxAmount = 0;
+  let subtotalSinIVA = subtotal;
+  
+  if (applyIVA) {
+    const taxRate = parseFloat(iva);
+    taxAmount = subtotal * (taxRate / (100 + taxRate));
+    subtotalSinIVA = subtotal - taxAmount;
+  }
+  
+  // Calcular descuentos
+  const discountAmount = subtotalSinIVA * (discountPercentage / 100);
+  const total = subtotal - discountAmount - manualDiscount;
 
   // Funciones para Items
   const addItemToOrder = () => {
@@ -165,14 +184,7 @@ export default function NuevaOrdenPage() {
     } else {
       setItems([...items, newItem]);
     }
-    setSelectedProduct(null);
-    setSelectedVariant(null);
-    setItemQuantity(1);
-    setItemDiscount(0);
-    setItemNotes("");
-    setProductSearchTerm("");
-    setEditingItemId(null);
-    setIsAddingItem(false);
+    clearModalStates();
   };
   const startEditItem = (item: any) => {
     setSelectedProduct(item.product);
@@ -192,6 +204,25 @@ export default function NuevaOrdenPage() {
     setItemQuantity(1);
     setItemDiscount(0);
     setItemNotes("");
+  };
+
+  const clearModalStates = () => {
+    // Limpiar estados del modal de items
+    setSelectedProduct(null);
+    setSelectedVariant(null);
+    setItemQuantity(1);
+    setItemDiscount(0);
+    setItemNotes("");
+    setProductSearchTerm("");
+    setEditingItemId(null);
+    setIsAddingItem(false);
+  };
+
+  const handleModalClose = (open: boolean) => {
+    if (!open) {
+      clearModalStates();
+    }
+    setIsAddingItem(open);
   };
 
   // Manejar selección de cliente
@@ -321,14 +352,22 @@ export default function NuevaOrdenPage() {
         client: clientWithSelectedContact,
         status: estado,
         items,
-        subtotal,
+        subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal),
         taxRate: parseFloat(iva),
-        taxAmount,
-        total,
+        taxAmount: redondearTotal(taxAmount),
+        total: redondearTotal(total),
+        // Información de IVA
+        applyIVA,
+        // Información de descuentos
+        discountPercentage,
+        discountAmount: redondearTotal(discountAmount),
+        manualDiscount: redondearTotal(manualDiscount),
         notes: detalle,
         paymentMethod: formaPago,
+        bank: formaPago === EPaymentMethod.TRANSFER ? banco : null,
         isInvoiced: facturado,
         invoiceNumber: facturaNumero,
+        invoiceType: tipoFactura || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: doc(firestore, `users/${user.uid}`),
@@ -501,9 +540,7 @@ export default function NuevaOrdenPage() {
                   value={personaContacto}
                   onChange={(e) => {
                     setPersonaContacto(e.target.value);
-                    const client = clients?.find(
-                      (c: any) => c.id === cliente
-                    );
+                    const client = clients?.find((c: any) => c.id === cliente);
                     if (client?.contacts) {
                       setContactosFiltrados(
                         client.contacts
@@ -520,9 +557,7 @@ export default function NuevaOrdenPage() {
                     setShowContactDropdown(true);
                   }}
                   onFocus={() => {
-                    const client = clients?.find(
-                      (c: any) => c.id === cliente
-                    );
+                    const client = clients?.find((c: any) => c.id === cliente);
                     if (client?.contacts) {
                       setContactosFiltrados(
                         client.contacts.map((c: any) => c.name)
@@ -604,10 +639,7 @@ export default function NuevaOrdenPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>CUIT/CUIL</Label>
-                <Input
-                  value={cuit}
-                  onChange={(e) => setCuit(e.target.value)}
-                />
+                <Input value={cuit} onChange={(e) => setCuit(e.target.value)} />
               </div>
             </div>
           </CardContent>
@@ -706,9 +738,9 @@ export default function NuevaOrdenPage() {
         <Card className="mb-6">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Items</CardTitle>
-            <Dialog open={isAddingItem} onOpenChange={setIsAddingItem}>
+            <Dialog open={isAddingItem} onOpenChange={handleModalClose}>
               <DialogTrigger asChild>
-              <Button
+                <Button
                   type="button"
                   variant="outline"
                   size="sm"
@@ -717,14 +749,11 @@ export default function NuevaOrdenPage() {
                 >
                   <Plus className="mr-2 h-4 w-4" /> Agregar item
                 </Button>
-         
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[700px]">
+              <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
-                    {editingItemId
-                      ? "Editar item"
-                      : "Agregar item a la orden"}
+                    {editingItemId ? "Editar item" : "Agregar item a la orden "}
                   </DialogTitle>
                 </DialogHeader>
                 <div className="py-4">
@@ -738,9 +767,7 @@ export default function NuevaOrdenPage() {
                         <Input
                           placeholder="Buscar producto por nombre o descripción..."
                           value={productSearchTerm}
-                          onChange={(e) =>
-                            setProductSearchTerm(e.target.value)
-                          }
+                          onChange={(e) => setProductSearchTerm(e.target.value)}
                           className="pl-10"
                         />
                       </div>
@@ -768,8 +795,7 @@ export default function NuevaOrdenPage() {
                             ) : filteredProducts &&
                               filteredProducts.length > 0 ? (
                               filteredProducts.map((product: any) => {
-                                const selectedVariant =
-                                  product.variants?.[0];
+                                const selectedVariant = product.variants?.[0];
                                 return (
                                   <TableRow key={product.id}>
                                     <TableCell>{product.name}</TableCell>
@@ -795,9 +821,7 @@ export default function NuevaOrdenPage() {
                                         size="sm"
                                         onClick={() => {
                                           setSelectedProduct(product);
-                                          setSelectedVariant(
-                                            selectedVariant
-                                          );
+                                          setSelectedVariant(selectedVariant);
                                         }}
                                         type="button"
                                         className="bg-blue-900 hover:bg-blue-700 text-white"
@@ -859,18 +883,14 @@ export default function NuevaOrdenPage() {
                                         ? "border-slate-800 bg-slate-50"
                                         : "hover:border-slate-400"
                                     }`}
-                                    onClick={() =>
-                                      setSelectedVariant(variant)
-                                    }
+                                    onClick={() => setSelectedVariant(variant)}
                                   >
                                     <div className="flex justify-between">
                                       <span className="font-medium">
                                         {variant.size}
                                       </span>
                                       <span className="text-slate-700">
-                                        {formatearPrecio(
-                                          Number(variant.price)
-                                        )}
+                                        {formatearPrecio(Number(variant.price))}
                                       </span>
                                     </div>
                                     <div className="text-sm text-slate-500 mt-1">
@@ -891,9 +911,7 @@ export default function NuevaOrdenPage() {
                             min="1"
                             value={itemQuantity}
                             onChange={(e) =>
-                              setItemQuantity(
-                                parseInt(e.target.value) || 1
-                              )
+                              setItemQuantity(parseInt(e.target.value) || 1)
                             }
                           />
                         </div>
@@ -906,9 +924,7 @@ export default function NuevaOrdenPage() {
                             max="100"
                             value={itemDiscount}
                             onChange={(e) =>
-                              setItemDiscount(
-                                parseInt(e.target.value) || 0
-                              )
+                              setItemDiscount(parseInt(e.target.value) || 0)
                             }
                           />
                         </div>
@@ -942,14 +958,12 @@ export default function NuevaOrdenPage() {
                                     ? Number(selectedVariant.price)
                                     : 0) *
                                     itemDiscount) /
-                                  100
+                                    100
                                 )}
                                 )
                               </p>
                             )}
-                            <p className="text-sm">
-                              Cantidad: {itemQuantity}
-                            </p>
+                            <p className="text-sm">Cantidad: {itemQuantity}</p>
                           </div>
                           <div>
                             <p className="text-lg font-semibold">
@@ -963,7 +977,7 @@ export default function NuevaOrdenPage() {
                                       ? Number(selectedVariant.price)
                                       : 0) *
                                       itemDiscount) /
-                                  100)
+                                      100)
                               )}
                             </p>
                           </div>
@@ -976,16 +990,7 @@ export default function NuevaOrdenPage() {
                   <Button
                     variant="outline"
                     type="button"
-                    onClick={() => {
-                      setIsAddingItem(false);
-                      setSelectedProduct(null);
-                      setSelectedVariant(null);
-                      setItemQuantity(1);
-                      setItemDiscount(0);
-                      setItemNotes("");
-                      setProductSearchTerm("");
-                      setEditingItemId(null);
-                    }}
+                    onClick={() => clearModalStates()}
                   >
                     Cancelar
                   </Button>
@@ -999,9 +1004,7 @@ export default function NuevaOrdenPage() {
                         !selectedVariant)
                     }
                   >
-                    {editingItemId
-                      ? "Actualizar item"
-                      : "Agregar a la orden"}
+                    {editingItemId ? "Actualizar item" : "Agregar a la orden"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -1010,9 +1013,7 @@ export default function NuevaOrdenPage() {
           <CardContent>
             {items.length === 0 ? (
               <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-md">
-                <p className="text-slate-500 mb-4">
-                  No hay items en la orden
-                </p>
+                <p className="text-slate-500 mb-4">No hay items en la orden</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -1086,32 +1087,81 @@ export default function NuevaOrdenPage() {
 
         <Card className="mb-6">
           <CardContent className="p-6">
-            <div className="flex items-center gap-4 mb-4">
-              <button
-                type="button"
-                role="switch"
-                aria-checked={applyIVA}
-                onClick={() => setApplyIVA(!applyIVA)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                  applyIVA ? 'bg-blue-600' : 'bg-slate-200'
-                }`}
-              >
-                <span
-                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-lg transition-transform ${
-                    applyIVA ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-              <span>Sumar IVA ({iva}%)</span>
-            </div>
-            <div className="space-y-3 divide-y">
-              <div className="flex justify-between py-2">
-                <span className="text-slate-600">Subtotal:</span>
-                <span className="font-medium">{formatearPrecio(subtotal)}</span>
-              </div>
-              <div className="flex justify-between py-3">
-                <span className="text-lg font-semibold">Total:</span>
-                <span className="text-lg font-bold">{formatearPrecio(total)}</span>
+            <div className="border-t pt-4">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <p className="text-gray-700">Subtotal</p>
+                  <p className="font-semibold">{formatearPrecio(subtotal)}</p>
+                </div>
+                
+                <div className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="applyIVA"
+                      checked={applyIVA}
+                      onCheckedChange={(checked) => setApplyIVA(checked as boolean)}
+                      className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                    />
+                    <Label htmlFor="applyIVA" className="text-sm text-gray-700">
+                      Desglosar IVA ({iva}%)
+                    </Label>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {applyIVA ? `${formatearPrecio(redondearTotal(taxAmount))}` : '$ 0,00'}
+                  </p>
+                </div>
+
+                {applyIVA && (
+                  <div className="flex justify-between items-center text-sm pl-6">
+                    <p className="text-gray-600">Subtotal sin IVA</p>
+                    <p className="font-medium">{formatearPrecio(redondearTotal(subtotalSinIVA))}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Label htmlFor="discount" className="text-sm text-gray-700 w-24">
+                      Descuento (%)
+                    </Label>
+                    <Input
+                      id="discount"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={discountPercentage}
+                      onChange={(e) => setDiscountPercentage(Number(e.target.value))}
+                      className="w-16 h-8 text-center text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <p className="text-red-600">-{formatearPrecio(redondearTotal(discountAmount))}</p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Label htmlFor="manualDiscount" className="text-sm text-gray-700 w-24">
+                      Descuento ($)
+                    </Label>
+                    <Input
+                      id="manualDiscount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={manualDiscount}
+                      onChange={(e) => setManualDiscount(Number(e.target.value))}
+                      className="w-20 h-8 text-center text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <p className="text-red-600">-{formatearPrecio(redondearTotal(manualDiscount))}</p>
+                </div>
+
+                <div className="border-t pt-3">
+                  <div className="flex justify-between items-center">
+                    <p className="text-lg font-semibold">Total</p>
+                    <p className="text-xl font-bold">{formatearPrecio(redondearTotal(total))}</p>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1122,50 +1172,82 @@ export default function NuevaOrdenPage() {
             <CardTitle>Información de facturación</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Factura N°</Label>
-                <Input
-                  value={facturaNumero}
-                  onChange={(e) => setFacturaNumero(e.target.value)}
-                />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label>Tipo de Factura</Label>
+                  <Select
+                    value={tipoFactura}
+                    onValueChange={(value) => setTipoFactura(value)}
+                  >
+                    <SelectTrigger >
+                      <SelectValue placeholder="Seleccionar tipo de factura" />
+                    </SelectTrigger>
+                    <SelectContent >
+                      <SelectItem value="A">A</SelectItem>
+                      <SelectItem value="B">B</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Factura N°</Label>
+                  <Input
+                    value={facturaNumero}
+                    onChange={(e) => setFacturaNumero(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fecha factura</Label>
+                  <Input
+                    type="date"
+                    value={facturaFecha}
+                    onChange={(e) => setFacturaFecha(e.target.value)}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Fecha factura</Label>
-                <Input
-                  type="date"
-                  value={facturaFecha}
-                  onChange={(e) => setFacturaFecha(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label>Forma de pago</Label>
-                <select
-                  className="w-full p-2 border border-slate-300 rounded-md"
+                <Select
                   value={formaPago}
-                  onChange={(e) => setFormaPago(e.target.value)}
+                  onValueChange={(value) => setFormaPago(value)}
                 >
-                  <option value="">Seleccionar forma de pago...</option>
-                  <option value={EPaymentMethod.CASH}>Efectivo</option>
-                  <option value={EPaymentMethod.CREDIT_CARD}>
-                    Tarjeta de Crédito
-                  </option>
-                  <option value={EPaymentMethod.DEBIT_CARD}>
-                    Tarjeta de Débito
-                  </option>
-                  <option value={EPaymentMethod.TRANSFER}>
-                    Transferencia
-                  </option>
-                  <option value={EPaymentMethod.MERCADOPAGO}>
-                    MercadoPago
-                  </option>
-                  <option value={EPaymentMethod.CHECK}>
-                    Cheque
-                  </option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar forma de pago..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={EPaymentMethod.CASH}>Efectivo</SelectItem>
+                    <SelectItem value={EPaymentMethod.CREDIT_CARD}>
+                      Tarjeta de Crédito
+                    </SelectItem>
+                    <SelectItem value={EPaymentMethod.DEBIT_CARD}>
+                      Tarjeta de Débito
+                    </SelectItem>
+                    <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
+                    <SelectItem value={EPaymentMethod.MERCADOPAGO}>
+                      MercadoPago
+                    </SelectItem>
+                    <SelectItem value={EPaymentMethod.CHECK}>Cheque</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+              {formaPago === EPaymentMethod.TRANSFER && (
+                <div className="space-y-2">
+                  <Label>Banco</Label>
+                  <Select
+                    value={banco}
+                    onValueChange={(value) => setBanco(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar banco" />
+                    </SelectTrigger>
+                    <SelectContent>
+                                           {BANCOS.map((bancoItem: string) => (
+                       <SelectItem key={bancoItem} value={bancoItem}>{bancoItem}</SelectItem>
+                     ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Seña</Label>
                 <Input
@@ -1186,15 +1268,7 @@ export default function NuevaOrdenPage() {
           <CardFooter className="flex justify-between pt-6">
             <Button
               variant="outline"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    "¿Estás seguro de que deseas cancelar? Se perderán los cambios no guardados."
-                  )
-                ) {
-                  router.push("/publimar/banderas/ordenes");
-                }
-              }}
+              onClick={() => setShowCancelDialog(true)}
               disabled={loading}
               type="button"
               className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"

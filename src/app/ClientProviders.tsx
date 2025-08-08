@@ -3,6 +3,7 @@
 import { FirebaseAppProvider } from "reactfire";
 import { app } from "@/lib/firebase";
 import { AuthProvider } from "@/contexts/AuthContext";
+import AuthGuard from "@/components/auth/AuthGuard";
 
 export default function ClientProviders({
   children,
@@ -12,7 +13,9 @@ export default function ClientProviders({
   return (
     <FirebaseAppProvider firebaseApp={app}>
       <AuthProvider>
-        {children}
+        <AuthGuard>
+          {children}
+        </AuthGuard>
       </AuthProvider>
     </FirebaseAppProvider>
   );

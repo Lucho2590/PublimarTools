@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Edit, Save, X, Plus, Trash2, Search } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import collections from "@/lib/collections";
 import {
   EOrderStatus,
@@ -89,6 +90,12 @@ export default function OrderDetailsModal({
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
   const [itemNotes, setItemNotes] = useState("");
+  
+  // Estados para facturación
+  const [tipoFactura, setTipoFactura] = useState("");
+  const [facturaNumero, setFacturaNumero] = useState("");
+  const [facturaFecha, setFacturaFecha] = useState("");
+  const [facturado, setFacturado] = useState(false);
 
   const firestore = useFirestore();
 
@@ -102,7 +109,9 @@ export default function OrderDetailsModal({
 
   const { status, data } = useFirestoreDocData(orderDoc!, { idField: "id" });
 
-  const order = data as TOrder | null;
+  const order = data as TOrder | null ;
+  
+  const BANCOS = ["Galicia", "Frances"];
 
   // Fetch clients
   const clientsCollection = collection(
@@ -147,13 +156,29 @@ export default function OrderDetailsModal({
           item.subtotal || item.quantity * (item.unitPrice || item.price || 0),
         tax: item.tax || 0,
         taxAmount: item.taxAmount || 0,
+        applyIVA: item.applyIVA || false,
         description: item.description || "",
         categories: item.categories || [],
         notes: item.notes || "",
       }));
       setItems(transformedItems);
+    } else {
+      setItems([]);
     }
-  }, [order]);
+    
+    // Inicializar estados de facturación cuando se carga la orden
+    if (order && status === "success") {
+      console.log("📋 Inicializando facturación:", {
+        isInvoiced: order.isInvoiced,
+        invoiceType: (order as any).invoiceType,
+        invoiceNumber: order.invoiceNumber
+      });
+      setFacturado(Boolean(order.isInvoiced));
+      setTipoFactura((order as any).invoiceType || "");
+      setFacturaNumero(order.invoiceNumber || "");
+      setFacturaFecha(""); // No hay fecha de factura en el tipo actual
+    }
+  }, [order, status]);
 
   // Reset function (stable reference)
   const resetModalState = useCallback(() => {
@@ -169,6 +194,11 @@ export default function OrderDetailsModal({
     setItemQuantity(1);
     setItemDiscount(0);
     setItemNotes("");
+    // Reset estados de facturación
+    setTipoFactura("");
+    setFacturaNumero("");
+    setFacturaFecha("");
+    setFacturado(false);
   }, []);
 
   // Reset al cerrar modal
@@ -177,6 +207,21 @@ export default function OrderDetailsModal({
       resetModalState();
     }
   }, [isOpen, resetModalState]);
+
+  // Asegurar que los estados de facturación estén correctos al entrar en modo edición
+  useEffect(() => {
+    if (isEditing && order && status === "success") {
+      console.log("🔍 Cargando estado facturación:", {
+        isInvoiced: order.isInvoiced,
+        invoiceType: (order as any).invoiceType,
+        invoiceNumber: order.invoiceNumber
+      });
+      setFacturado(Boolean(order.isInvoiced));
+      setTipoFactura((order as any).invoiceType || "");
+      setFacturaNumero(order.invoiceNumber || "");
+      setFacturaFecha("");
+    }
+  }, [isEditing, order, status]);
 
   // Si no tenemos firestore o orderId, mostrar loading
   if (!firestore || !orderId) {
@@ -321,8 +366,18 @@ export default function OrderDetailsModal({
         items: items,
         downPayment: Number(formData.get("downPayment")) || 0,
         balance: Number(formData.get("balance")) || 0,
+        // Información de facturación
+        isInvoiced: facturado,
+        invoiceNumber: facturado && facturaNumero ? facturaNumero : undefined,
+        ...(facturado && tipoFactura && { invoiceType: tipoFactura }),
         updatedAt: new Date(),
       };
+
+      console.log("💾 Guardando orden con datos:", {
+        isInvoiced: facturado,
+        invoiceNumber: facturado && facturaNumero ? facturaNumero : undefined,
+        invoiceType: facturado && tipoFactura ? tipoFactura : undefined
+      });
 
       await updateDoc(doc(firestore, collections.ORDERS, order.id), updateData);
       toast.success("Orden actualizada correctamente");
@@ -561,9 +616,9 @@ export default function OrderDetailsModal({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={EOrderStatus.PENDING}>
+                          {/* <SelectItem value={EOrderStatus.PENDING}>
                             Pendiente
-                          </SelectItem>
+                          </SelectItem> */}
                           <SelectItem value={EOrderStatus.IN_PROCESS}>
                             En Proceso
                           </SelectItem>
@@ -601,9 +656,32 @@ export default function OrderDetailsModal({
                           <SelectItem value={EPaymentMethod.MERCADOPAGO}>
                             Mercado Pago
                           </SelectItem>
+                          <SelectItem value={EPaymentMethod.CHECK}>
+                            Cheque
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
+                    {order.paymentMethod === EPaymentMethod.TRANSFER && (
+                      <> 
+                      <div>
+                        <Label htmlFor="banco">Banco</Label>
+                        <Select
+                          value={banco}
+                          onValueChange={(value) => setBanco(value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar banco" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {BANCOS.map((banco: string ) => (
+                              <SelectItem key={banco} value={banco}>{banco}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      </>
+                    )}
                     <div>
                       <Label htmlFor="downPayment">Seña</Label>
                       <Input
@@ -635,10 +713,10 @@ export default function OrderDetailsModal({
                 <CardTitle className="flex justify-between items-center">
                   Productos
                   <Button
-                         className="bg-blue-900 hover:bg-blue-700 text-white"
-                         type="button"
-                         variant="outline"
-                         size="sm"
+                    className="bg-blue-900 hover:bg-blue-700 text-white"
+                    type="button"
+                    variant="outline"
+                    size="sm"
                     onClick={() => setIsAddingProduct(true)}
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -667,7 +745,7 @@ export default function OrderDetailsModal({
                           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                         </div>
                         {productSearchTerm && filteredProducts && (
-                          <div className="mt-2 border rounded-md max-h-40 overflow-y-auto bg-white">
+                          <div className="mt-2 border rounded-md max-h-38 overflow-y-auto bg-white">
                             {filteredProducts.map((product: any) => (
                               <div
                                 key={product.id}
@@ -751,7 +829,7 @@ export default function OrderDetailsModal({
                                   size="sm"
                                   onClick={() => handleVariantSelect(variant)}
                                 >
-                                  {variant.size} 
+                                  {variant.size}
                                   {/* {formatearPrecio(Number(variant.price))} */}
                                 </Button>
                               ))}
@@ -856,6 +934,69 @@ export default function OrderDetailsModal({
                     )}
                   </TableBody>
                 </Table>
+              </CardContent>
+            </Card>
+
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle>Información de facturación</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Estado de facturación</Label>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="facturado"
+                        checked={facturado}
+                        onCheckedChange={(checked) => setFacturado(checked as boolean)}
+                        className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                      />
+                      <Label htmlFor="facturado" className="text-sm">
+                        {facturado ? "Facturada" : "No facturada"}
+                      </Label>
+                    </div>
+                  </div>
+                  {facturado && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Tipo de factura</Label>
+                        <Select
+                          value={tipoFactura}
+                          onValueChange={(value) => setTipoFactura(value)}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue placeholder="Tipo..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="A">A</SelectItem>
+                            <SelectItem value="B">B</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Número de factura</Label>
+                        <Input
+                          value={facturaNumero}
+                          onChange={(e) => setFacturaNumero(e.target.value)}
+                          placeholder="Número de factura..."
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+                {facturado && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Fecha de factura</Label>
+                      <Input
+                        type="date"
+                        value={facturaFecha}
+                        onChange={(e) => setFacturaFecha(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -975,12 +1116,16 @@ export default function OrderDetailsModal({
                           : "No especificada"}
                       </span>
                     </div>
-                    {order.isInvoiced && (
+                    {/* {order.isInvoiced && (
                       <div className="flex justify-between">
                         <span className="text-slate-600">Factura:</span>
                         <span>{order.invoiceNumber || "-"}</span>
                       </div>
-                    )}
+                    )} */}
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Factura:</span>
+                      <span>{order.invoiceType || "-"} - {order.invoiceNumber}</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1065,10 +1210,12 @@ export default function OrderDetailsModal({
                           <span>Subtotal:</span>
                           <span>{formatearPrecio(order.subtotal || 0)}</span>
                         </div>
-                        <div className="flex justify-between text-xs text-slate-500">
-                          <span>IVA ({order.taxRate}%):</span>
-                          <span>{formatearPrecio(order.taxAmount || 0)}</span>
-                        </div>
+                        {order.applyIVA ? (
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>IVA ({order.taxRate}%):</span>
+                            <span>{formatearPrecio(order.taxAmount || 0)}</span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     <div className="bg-green-50 p-4 rounded-lg">
@@ -1145,12 +1292,19 @@ export default function OrderDetailsModal({
                         {metodoPago === EPaymentMethod.TRANSFER && (
                           <div>
                             <Label htmlFor="banco">Banco</Label>
-                            <Input
-                              id="banco"
-                              placeholder="Nombre del banco"
+                            <Select
                               value={banco}
-                              onChange={(e) => setBanco(e.target.value)}
-                            />
+                              onValueChange={(value) => setBanco(value)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccionar banco" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {BANCOS.map((banco: string ) => (
+                                  <SelectItem key={banco} value={banco}>{banco}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                         )}
                         <Button
@@ -1196,7 +1350,7 @@ export default function OrderDetailsModal({
                                   ? "Transferencia"
                                   : payment.method ===
                                     EPaymentMethod.MERCADOPAGO
-                                  ? "Mercado Pago" 
+                                  ? "Mercado Pago"
                                   : payment.method === EPaymentMethod.CHECK
                                   ? "Cheque"
                                   : "Otro"}
