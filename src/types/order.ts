@@ -49,6 +49,7 @@ export type TOrder = {
   paymentMethod?: EPaymentMethod;
   isInvoiced?: boolean;
   invoiceNumber?: string;
+  invoiceDate?: Date;
   downPayment?: number;
   balance?: number;
   publicUrl?: string;

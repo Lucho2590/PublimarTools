@@ -308,6 +308,12 @@ export default function NuevaOrdenPage() {
   const [loading, setLoading] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
 
+  useEffect(() => {
+    if(facturaNumero.length > 0){
+      setFacturado(true);
+    }
+  }, [facturaNumero]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -346,6 +352,9 @@ export default function NuevaOrdenPage() {
         contacts: selectedContact ? [selectedContact] : [],
       };
 
+     
+
+      console.log("🔍 Facturado:", facturado);
       // Armar datos de la orden
       const orderData = {
         number: orderNumber,
@@ -367,6 +376,7 @@ export default function NuevaOrdenPage() {
         bank: formaPago === EPaymentMethod.TRANSFER ? banco : null,
         isInvoiced: facturado,
         invoiceNumber: facturaNumero,
+        invoiceDate: facturaFecha,
         invoiceType: tipoFactura || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -378,7 +388,6 @@ export default function NuevaOrdenPage() {
         budgetDate: presupuestoFecha || null,
         downPayment: sena,
         balance: saldo,
-        aFacturar,
         cuit,
       };
 

@@ -145,6 +145,7 @@ export default function OrderDetailsModal({
   useEffect(() => {
     if (order?.items) {
       // Transformar los datos para que coincidan con TOrderItem
+      // console.log("🔍 Transformando items:", order.items);
       const transformedItems: TOrderItem[] = order.items.map((item: any) => ({
         id: item.id || crypto.randomUUID(),
         product: item.product,
@@ -168,15 +169,48 @@ export default function OrderDetailsModal({
     
     // Inicializar estados de facturación cuando se carga la orden
     if (order && status === "success") {
-      console.log("📋 Inicializando facturación:", {
-        isInvoiced: order.isInvoiced,
-        invoiceType: (order as any).invoiceType,
-        invoiceNumber: order.invoiceNumber
-      });
+      // console.log("📋 Inicializando facturación:", {
+      //   isInvoiced: order.isInvoiced,
+      //   invoiceType: (order as any).invoiceType,
+      //   invoiceNumber: order.invoiceNumber
+      // });
       setFacturado(Boolean(order.isInvoiced));
       setTipoFactura((order as any).invoiceType || "");
       setFacturaNumero(order.invoiceNumber || "");
-      setFacturaFecha(""); // No hay fecha de factura en el tipo actual
+      // Si existe una fecha de factura, convertirla al formato YYYY-MM-DD para el input
+      if (order.invoiceDate) {
+        // console.log("🔍 Procesando invoiceDate:", order.invoiceDate, "Tipo:", typeof order.invoiceDate);
+        try {
+          let date;
+          
+          // Manejar diferentes tipos de fecha que puede devolver Firebase
+          if ((order.invoiceDate as any)?.toDate && typeof (order.invoiceDate as any).toDate === 'function') {
+            // Es un Timestamp de Firebase
+            date = (order.invoiceDate as any).toDate();
+            // console.log("📅 Convertido desde Firebase Timestamp:", date);
+          } else {
+            // Es una fecha normal o string
+            date = new Date(order.invoiceDate);
+            // console.log("📅 Date creado:", date);
+          }
+          
+          // console.log("✅ Es válido:", !isNaN(date.getTime()));
+          // Verificar que la fecha sea válida
+          if (!isNaN(date.getTime())) {
+            const formattedDate = date.toISOString().split('T')[0];
+            setFacturaFecha(formattedDate);
+          } else {
+            console.warn("⚠️ Fecha de factura inválida:", order.invoiceDate);
+            setFacturaFecha("");
+          }
+        } catch (error) {
+          console.warn("⚠️ Error al convertir fecha de factura:", error);
+          setFacturaFecha("");
+        }
+      } else {
+        console.log("🔍 No hay invoiceDate");
+        setFacturaFecha("");
+      }
     }
   }, [order, status]);
 
@@ -211,15 +245,49 @@ export default function OrderDetailsModal({
   // Asegurar que los estados de facturación estén correctos al entrar en modo edición
   useEffect(() => {
     if (isEditing && order && status === "success") {
-      console.log("🔍 Cargando estado facturación:", {
-        isInvoiced: order.isInvoiced,
-        invoiceType: (order as any).invoiceType,
-        invoiceNumber: order.invoiceNumber
-      });
+      // console.log("🔍 Cargando estado facturación:", {
+      //   isInvoiced: order.isInvoiced,
+      //   invoiceType: (order as any).invoiceType,
+      //   invoiceNumber: order.invoiceNumber,
+      //   invoiceDate: order.invoiceDate ? formatDate(order.invoiceDate) : undefined,
+      // });
       setFacturado(Boolean(order.isInvoiced));
       setTipoFactura((order as any).invoiceType || "");
       setFacturaNumero(order.invoiceNumber || "");
-      setFacturaFecha("");
+      // Si existe una fecha de factura, convertirla al formato YYYY-MM-DD para el input
+      if (order.invoiceDate) {
+        // console.log("🔍 Procesando invoiceDate (modo edición):", order.invoiceDate, "Tipo:", typeof order.invoiceDate);
+        try {
+          let date;
+          
+          // Manejar diferentes tipos de fecha que puede devolver Firebase
+          if ((order.invoiceDate as any)?.toDate && typeof (order.invoiceDate as any).toDate === 'function') {
+            // Es un Timestamp de Firebase
+            date = (order.invoiceDate as any).toDate();
+            // console.log("📅 Convertido desde Firebase Timestamp (modo edición):", date);
+          } else {
+            // Es una fecha normal o string
+            date = new Date(order.invoiceDate);
+            // console.log("📅 Date creado (modo edición):", date);
+          }
+          
+          // console.log("✅ Es válido (modo edición):", !isNaN(date.getTime()));
+          // Verificar que la fecha sea válida
+          if (!isNaN(date.getTime())) {
+            const formattedDate = date.toISOString().split('T')[0];
+            setFacturaFecha(formattedDate);
+          } else {
+            // console.warn("⚠️ Fecha de factura inválida en modo edición:", order.invoiceDate);
+            setFacturaFecha("");
+          }
+        } catch (error) {
+          // console.warn("⚠️ Error al convertir fecha de factura en modo edición:", error);
+          setFacturaFecha("");        
+        }
+      } else {
+        // console.log("🔍 No hay invoiceDate (modo edición)");
+        setFacturaFecha("");
+      }
     }
   }, [isEditing, order, status]);
 
@@ -353,38 +421,71 @@ export default function OrderDetailsModal({
 
   // Manejar el guardado de cambios en edición
   const handleSave = async (e: React.FormEvent) => {
+    // console.log("🚀 handleSave llamado");
     e.preventDefault();
-    if (!order) return;
+    if (!order) {
+      // console.log("❌ No hay orden, saliendo");
+      return;
+    }
 
+    // console.log("💾 Iniciando guardado...");
     setLoading(true);
     try {
       const formData = new FormData(e.target as HTMLFormElement);
-      const updateData: Partial<TOrder> = {
+      
+      // Calcular totales basados en los items actuales
+      const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+      const taxAmount = items.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
+      const total = subtotal + taxAmount;
+      
+      // console.log("📊 Totales calculados:", { subtotal, taxAmount, total });
+      
+      // Crear objeto base sin campos undefined
+      const updateData: any = {
         status: formData.get("status") as EOrderStatus,
         paymentMethod: formData.get("paymentMethod") as EPaymentMethod,
-        notes: formData.get("notes") as string,
+        notes: (formData.get("notes") as string) || "",
         items: items,
+        subtotal: subtotal,
+        total: total,
+        taxAmount: taxAmount,
         downPayment: Number(formData.get("downPayment")) || 0,
         balance: Number(formData.get("balance")) || 0,
         // Información de facturación
         isInvoiced: facturado,
-        invoiceNumber: facturado && facturaNumero ? facturaNumero : undefined,
-        ...(facturado && tipoFactura && { invoiceType: tipoFactura }),
         updatedAt: new Date(),
       };
 
-      console.log("💾 Guardando orden con datos:", {
-        isInvoiced: facturado,
-        invoiceNumber: facturado && facturaNumero ? facturaNumero : undefined,
-        invoiceType: facturado && tipoFactura ? tipoFactura : undefined
-      });
+      // Agregar campos de facturación solo si tienen valores válidos
+      if (facturado && facturaNumero) {
+        updateData.invoiceNumber = facturaNumero;
+      }
+      
+      if (facturado && facturaFecha) {
+        updateData.invoiceDate = new Date(facturaFecha + 'T00:00:00');
+      }
+      
+      if (facturado && tipoFactura) {
+        updateData.invoiceType = tipoFactura;
+      }
+
+      // console.log("💾 Guardando orden con datos:", {
+      //   isInvoiced: facturado,
+      //   invoiceNumber: updateData.invoiceNumber || null,
+      //   invoiceType: updateData.invoiceType || null,
+      //   invoiceDate: updateData.invoiceDate || null,
+      //   itemsCount: items.length,
+      //   total: total
+      // });
 
       await updateDoc(doc(firestore, collections.ORDERS, order.id), updateData);
+      // console.log("✅ Orden actualizada exitosamente");
       toast.success("Orden actualizada correctamente");
       setIsEditing(false);
     } catch (error) {
-      console.error("Error al actualizar orden:", error);
-      toast.error("Error al actualizar la orden");
+      // console.error("❌ Error al actualizar orden:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Error al actualizar la orden: ${errorMessage}`);
     } finally {
       setLoading(false);
     }
@@ -525,6 +626,7 @@ export default function OrderDetailsModal({
                   form="edit-order-form"
                   disabled={loading}
                   className="bg-green-600 hover:bg-green-700 text-white"
+                  onClick={() => console.log("🔘 Botón Guardar clickeado")}
                 >
                   <Save className="h-4 w-4 mr-2" />
                   Guardar
@@ -689,7 +791,7 @@ export default function OrderDetailsModal({
                         name="downPayment"
                         type="number"
                         step="0.01"
-                        defaultValue={order.downPayment || 0}
+                        defaultValue={order.downPayment}
                       />
                     </div>
                     <div>
@@ -699,7 +801,7 @@ export default function OrderDetailsModal({
                         name="balance"
                         type="number"
                         step="0.01"
-                        defaultValue={order.balance || 0}
+                        defaultValue={order.balance}
                       />
                     </div>
                   </div>
@@ -1199,8 +1301,8 @@ export default function OrderDetailsModal({
               <CardContent>
                 <div className="space-y-6">
                   {/* Resumen de pagos */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-slate-50 p-4 rounded-lg">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 ">
+                    <div className="bg-slate-50 p-4 rounded-lg ">
                       <p className="text-sm text-slate-600 mb-1">Total</p>
                       <p className="text-xl font-semibold">
                         {formatearPrecio(order.total || 0)}
@@ -1210,7 +1312,7 @@ export default function OrderDetailsModal({
                           <span>Subtotal:</span>
                           <span>{formatearPrecio(order.subtotal || 0)}</span>
                         </div>
-                        {order.applyIVA ? (
+                        {order.applyIVA && order.taxRate ? (
                           <div className="flex justify-between text-xs text-slate-500">
                             <span>IVA ({order.taxRate}%):</span>
                             <span>{formatearPrecio(order.taxAmount || 0)}</span>
@@ -1241,7 +1343,7 @@ export default function OrderDetailsModal({
                   </div>
 
                   {/* Formulario de pago parcial - solo si hay saldo */}
-                  {order.balance && order.balance > 0 && (
+                  {(order.balance || 0) > 0 && (
                     <div className="border-t pt-4">
                       <h4 className="font-medium mb-3">Registrar pago</h4>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">

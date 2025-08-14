@@ -119,6 +119,7 @@ export default function ClientesPage() {
     return pageNumbers;
   };
 
+  // console.log("🔍 Clientes:", clients);
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -188,7 +189,7 @@ export default function ClientesPage() {
                     <TableHead className="text-left">Nombre/Razón Social</TableHead>
                     <TableHead className="text-left">Tipo</TableHead>
                     <TableHead className="text-left">CUIT/CUIL</TableHead>
-                    <TableHead className="text-left">Email</TableHead>
+                    <TableHead className="text-left">Persona de contacto</TableHead>
                     <TableHead className="text-left">Teléfono</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>
@@ -209,10 +210,10 @@ export default function ClientesPage() {
                           {client.cuit || "-"}
                         </TableCell>
                         <TableCell className="text-left">
-                          {client.email || "-"}
+                        {client.contacts?.[0]?.name || client.name || "-"}
                         </TableCell>
                         <TableCell className="text-left">
-                          {client.phone || "-"}
+                          {client.contacts?.[0]?.phone || client.phone || "-"}
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-2">

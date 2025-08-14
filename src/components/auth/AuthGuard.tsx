@@ -9,7 +9,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   
-  const isLoginPage = pathname === '/login';
+  // Normalizar pathname removiendo barra final
+  const normalizedPathname = pathname.endsWith('/') && pathname.length > 1 
+    ? pathname.slice(0, -1) 
+    : pathname;
+  
+  const isLoginPage = normalizedPathname === '/login';
 
   useEffect(() => {
     if (!loading) {
@@ -18,7 +23,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
         router.push('/login');
       } else if (user && isLoginPage) {
         // Usuario autenticado y está en login -> redirigir al dashboard
-        router.push('/');
+        router.push('/publimar');
       }
     }
   }, [user, loading, isLoginPage, router]);
