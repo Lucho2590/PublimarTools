@@ -41,7 +41,7 @@ export default function NuevoClientePage() {
     email: "",
     phone: "",
     address: "",
-    taxId: "",
+    cuit: "",
     notes: "",
   });
 
@@ -192,11 +192,11 @@ export default function NuevoClientePage() {
                 </Select>
               </div>
                      <div className="space-y-2">
-                <Label htmlFor="taxId">CUIT/CUIL</Label>
+                <Label htmlFor="cuit">CUIT/CUIL</Label>
                 <Input
-                  id="taxId"
-                  name="taxId"
-                  value={formData.taxId}
+                  id="cuit"
+                  name="cuit"
+                  value={formData.cuit}
                   onChange={handleChange}
                 />
               </div>
