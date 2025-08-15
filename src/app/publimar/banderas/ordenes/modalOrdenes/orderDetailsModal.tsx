@@ -145,7 +145,6 @@ export default function OrderDetailsModal({
   useEffect(() => {
     if (order?.items) {
       // Transformar los datos para que coincidan con TOrderItem
-      // console.log("🔍 Transformando items:", order.items);
       const transformedItems: TOrderItem[] = order.items.map((item: any) => ({
         id: item.id || crypto.randomUUID(),
         product: item.product,
@@ -436,9 +435,11 @@ export default function OrderDetailsModal({
       // Calcular totales basados en los items actuales
       const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
       const taxAmount = items.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
-      const total = subtotal + taxAmount;
+      const total = subtotal; // El subtotal YA es el total final (no sumar IVA de nuevo)
       
-      // console.log("📊 Totales calculados:", { subtotal, taxAmount, total });
+      // Recalcular balance basado en el nuevo total
+      const downPayment = Number(formData.get("downPayment")) || 0;
+      const newBalance = total - downPayment;
       
       // Crear objeto base sin campos undefined
       const updateData: any = {
@@ -449,8 +450,8 @@ export default function OrderDetailsModal({
         subtotal: subtotal,
         total: total,
         taxAmount: taxAmount,
-        downPayment: Number(formData.get("downPayment")) || 0,
-        balance: Number(formData.get("balance")) || 0,
+        downPayment: downPayment,
+        balance: newBalance, // Saldo recalculado automáticamente
         // Información de facturación
         isInvoiced: facturado,
         updatedAt: new Date(),
@@ -469,21 +470,10 @@ export default function OrderDetailsModal({
         updateData.invoiceType = tipoFactura;
       }
 
-      // console.log("💾 Guardando orden con datos:", {
-      //   isInvoiced: facturado,
-      //   invoiceNumber: updateData.invoiceNumber || null,
-      //   invoiceType: updateData.invoiceType || null,
-      //   invoiceDate: updateData.invoiceDate || null,
-      //   itemsCount: items.length,
-      //   total: total
-      // });
-
       await updateDoc(doc(firestore, collections.ORDERS, order.id), updateData);
-      // console.log("✅ Orden actualizada exitosamente");
       toast.success("Orden actualizada correctamente");
       setIsEditing(false);
     } catch (error) {
-      // console.error("❌ Error al actualizar orden:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       toast.error(`Error al actualizar la orden: ${errorMessage}`);
     } finally {
@@ -534,7 +524,7 @@ export default function OrderDetailsModal({
       : Number(selectedProduct.price);
 
     const subtotal = price * itemQuantity * (1 - itemDiscount / 100);
-    const taxAmount = subtotal * 0.21; // 21% IVA
+    const taxAmount = subtotal * 0.21; // 21% IVA (solo para mostrar, no se suma)
 
     const newItem: TOrderItem = {
       id: editingItemId || Date.now().toString(),
@@ -543,9 +533,9 @@ export default function OrderDetailsModal({
       quantity: itemQuantity,
       unitPrice: price,
       discount: itemDiscount,
-      subtotal: subtotal,
-      tax: taxAmount,
-      taxAmount: taxAmount,
+      subtotal: subtotal, // Total final del item (sin sumar IVA adicional)
+      tax: 0.21, // Porcentaje de IVA (21%)
+      taxAmount: taxAmount, // Monto de IVA (solo informativo)
       description: selectedProduct.description || "",
       categories: [],
       notes: itemNotes,

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where, doc, updateDoc } from "firebase/firestore";
+import { collection, query, orderBy, where, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,6 +20,13 @@ import { EOrderStatus, TOrder } from "@/types/order";
 import { redirect, useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Pagination,
   PaginationContent,
@@ -40,6 +47,11 @@ export default function PedidosPage() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Estados para conversión a venta
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
+  const [orderToConvert, setOrderToConvert] = useState<TOrder | null>(null);
+  const [newStatusToSet, setNewStatusToSet] = useState<EOrderStatus | null>(null);
   const firestore = useFirestore();
   const router = useRouter();
 
@@ -49,8 +61,110 @@ export default function PedidosPage() {
     setShowModal(true);
   };
 
+  // Función para convertir orden a venta
+  const convertOrderToSale = async (order: TOrder) => {
+    try {
+      // Transformar items de orden a items de venta
+      const saleItems = order.items.map(item => ({
+        productId: item.product?.id || '',
+        productName: item.product?.name || '',
+        variantName: item.variant?.size || '', // Usar 'size' en lugar de 'name'
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        total: Number(item.subtotal) || 0,
+      }));
+
+      // Recalcular totales para asegurar valores numéricos correctos
+      const subtotal = saleItems.reduce((sum, item) => sum + item.total, 0);
+      const taxAmount = order.applyIVA ? subtotal * 0.21 : 0;
+      const total = subtotal;
+
+      // Crear la venta basada en la orden
+      const saleData = {
+        number: order.number, // Número de orden como número de venta
+        client: order.client,
+        items: saleItems,
+        subtotal: subtotal,
+        total: total,
+        applyIVA: order.applyIVA || false,
+        taxRate: order.applyIVA ? 21 : 0,
+        taxAmount: taxAmount,
+        discountPercentage: 0,
+        discountAmount: 0,
+        manualDiscount: 0,
+        paymentMethod: order.paymentMethod || 'cash',
+        isInvoiced: order.isInvoiced || false,
+        invoiceNumber: order.invoiceNumber || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        // Referencia a la orden original
+        orderId: order.id,
+      };
+
+      // Crear la venta
+      await addDoc(collection(firestore, collections.SALES), saleData);
+      
+      // Actualizar la orden para marcarla como convertida
+      const orderRef = doc(firestore, collections.ORDERS, order.id);
+      await updateDoc(orderRef, {
+        status: EOrderStatus.COMPLETED,
+        convertedToSale: true,
+        convertedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      toast.success("Orden convertida a venta exitosamente");
+      setShowConvertDialog(false);
+      setOrderToConvert(null);
+      setNewStatusToSet(null);
+    } catch (error) {
+      console.error("Error al convertir orden a venta:", error);
+      toast.error("Error al convertir la orden a venta");
+    }
+  };
+
+  // Función para confirmar la conversión a venta
+  const handleConfirmConvert = () => {
+    if (orderToConvert) {
+      convertOrderToSale(orderToConvert);
+    }
+  };
+
+  // Función para cancelar la conversión y solo cambiar el estado
+  const handleCancelConvert = async () => {
+    if (orderToConvert && newStatusToSet) {
+      try {
+        const orderRef = doc(firestore, collections.ORDERS, orderToConvert.id);
+        await updateDoc(orderRef, {
+          status: newStatusToSet,
+          updatedAt: new Date(),
+        });
+        toast.success("Estado actualizado correctamente");
+      } catch (error) {
+        console.error("Error al actualizar estado:", error);
+        toast.error("Error al actualizar el estado");
+      }
+    }
+    setShowConvertDialog(false);
+    setOrderToConvert(null);
+    setNewStatusToSet(null);
+  };
+
   // Función para actualizar el estado de la orden
   const handleStatusChange = async (orderId: string, newStatus: EOrderStatus) => {
+    // Si cambia a "Entregada", verificar si puede convertirse a venta
+    if (newStatus === EOrderStatus.COMPLETED) {
+      const order = orders?.find(o => o.id === orderId) as TOrder;
+      if (order && (order.balance === 0 || order.balance === undefined)) {
+        // Mostrar diálogo de confirmación para convertir a venta
+        setOrderToConvert(order);
+        setNewStatusToSet(newStatus);
+        setShowConvertDialog(true);
+        return; // No actualizar el estado todavía
+      }
+    }
+
+    // Actualizar estado normalmente
     try {
       const orderRef = doc(firestore, collections.ORDERS, orderId);
       await updateDoc(orderRef, {
@@ -368,6 +482,42 @@ export default function PedidosPage() {
         onClose={() => setShowModal(false)}
         orderId={selectedOrderId}
       />
+
+      {/* Dialog de confirmación para convertir a venta */}
+      <Dialog open={showConvertDialog} onOpenChange={setShowConvertDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Convertir a Venta</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-600">
+              Esta orden está <strong>Entregada</strong> y tiene <strong>saldo $0</strong>.
+            </p>
+            <p className="text-sm text-gray-600 mt-2">
+              ¿Deseas convertirla automáticamente a una <strong>Venta</strong>?
+            </p>
+            {orderToConvert && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                <p className="text-sm font-medium">Orden #{orderToConvert.number}</p>
+                <p className="text-sm text-gray-600">
+                  Cliente: {orderToConvert.client?.name}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Total: ${orderToConvert.total?.toFixed(2)}
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelConvert}>
+              No, solo cambiar estado
+            </Button>
+            <Button onClick={handleConfirmConvert} className="bg-green-600 hover:bg-green-700">
+              Sí, convertir a Venta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -558,7 +558,7 @@ export default function NuevaOrdenPage() {
             <DialogTitle>Cliente no encontrado</DialogTitle>
           </DialogHeader>
           <div className="text-sm text-slate-700 mb-4">
-            El cliente "{clienteInput}" no existe en la base de datos.
+            El cliente {clienteInput} no existe en la base de datos.
             <br />
             ¿Deseas registrarlo como un nuevo cliente?
           </div>
