@@ -44,6 +44,7 @@ export default function EditarClientePage({ params }: { params: { id: string } }
     phone: "",
     address: "",
     cuit: "",
+    reference: "",
     notes: "",
     contacts: [],
   });
@@ -243,6 +244,18 @@ export default function EditarClientePage({ params }: { params: { id: string } }
                   onChange={(e) =>
                     setFormData({ ...formData, cuit: e.target.value })
                   }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="reference">Referencia</Label>
+                <Input
+                  id="reference"
+                  value={formData.reference}
+                  onChange={(e) =>
+                    setFormData({ ...formData, reference: e.target.value })
+                  }
+                  placeholder="Referencia del cliente..."
                 />
               </div>
 

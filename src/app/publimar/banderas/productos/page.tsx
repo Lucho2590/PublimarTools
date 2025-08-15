@@ -224,10 +224,15 @@ export default function ProductosPage() {
       for (const productId of selectedProducts) {
         const product = products?.find(p => (p as unknown as TProduct).id === productId) as unknown as TProduct;
         if (product && product.variants) {
-          const updatedVariants = product.variants.map(variant => ({
-            ...variant,
-            price: Number(variant.price) * (1 + percentage)
-          }));
+          const updatedVariants = product.variants.map(variant => {
+            const increasedPrice = Number(variant.price) * (1 + percentage);
+            const roundedPrice = redondearADecena(increasedPrice);
+            return {
+              ...variant,
+              price: roundedPrice
+            };
+           
+          });
 
           await updateDoc(doc(firestore, collections.PRODUCTS, productId), {
             variants: updatedVariants,
@@ -438,7 +443,7 @@ export default function ProductosPage() {
                                 Number(selectedVariant.stock) < 5 ? "text-red-500" : ""
                               }`}
                             >
-                              {selectedVariant.stock}
+                              {selectedVariant.stock === Infinity ? "." : selectedVariant.stock}
                             </span>
                           ) : (
                             "-"

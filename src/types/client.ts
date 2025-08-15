@@ -25,6 +25,7 @@ export enum EClientType {
     phone?: string;
     address?: string;
     cuit?: string; // CUIT/CUIL
+    reference?: string; // Referencia del cliente
     notes?: string;
     contacts?: TClientContact[];
     createdAt: Date;

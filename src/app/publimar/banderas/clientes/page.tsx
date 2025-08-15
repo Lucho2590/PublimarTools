@@ -187,7 +187,7 @@ export default function ClientesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-left">Nombre/Razón Social</TableHead>
-                    <TableHead className="text-left">Tipo</TableHead>
+                    <TableHead className="text-left">Referencia</TableHead>
                     <TableHead className="text-left">CUIT/CUIL</TableHead>
                     <TableHead className="text-left">Persona de contacto</TableHead>
                     <TableHead className="text-left">Teléfono</TableHead>
@@ -202,9 +202,7 @@ export default function ClientesPage() {
                           {client.name || "-"}
                         </TableCell>
                         <TableCell className="text-left">
-                          {client.type === EClientType.COMPANY
-                            ? "Empresa"
-                            : "Individual"}
+                          {client.reference || "-"}
                         </TableCell>
                         <TableCell className="text-left">
                           {client.cuit || "-"}

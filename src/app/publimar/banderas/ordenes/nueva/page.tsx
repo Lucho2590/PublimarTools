@@ -41,7 +41,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, Plus, Trash2, Edit, ArrowLeft } from "lucide-react";
+import { Search, Plus, Trash2, Edit, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { formatearPrecio, redondearTotal } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -106,6 +106,13 @@ export default function NuevaOrdenPage() {
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
   const clienteInputRef = useRef<HTMLInputElement>(null);
   const [telefono, setTelefono] = useState("");
+  const [referencia, setReferencia] = useState("");
+  
+  // Estados para contacto
+  const [contactoNombre, setContactoNombre] = useState("");
+  const [contactoEmail, setContactoEmail] = useState("");
+  const [contactoTelefono, setContactoTelefono] = useState("");
+  const [contactoPosicion, setContactoPosicion] = useState("");
 
   // Estados para Items
   const [items, setItems] = useState<any[]>([]);
@@ -231,11 +238,20 @@ export default function NuevaOrdenPage() {
     setCliente(clientId);
     const client = clients?.find((c: any) => c.id === clientId);
     const contacto = client?.contacts?.[0];
+    
+    // Precargar datos del cliente
     setPersonaContacto(contacto?.name || "");
     setDireccion(client?.address || "");
     setEmail(contacto?.email || client?.email || "");
     setCuit(client?.cuit || "");
     setTelefono(client?.phone || "");
+    setReferencia(client?.reference || "");
+    
+    // Precargar datos del contacto
+    setContactoNombre(contacto?.name || "");
+    setContactoEmail(contacto?.email || "");
+    setContactoTelefono(contacto?.phone || "");
+    setContactoPosicion(contacto?.position || "");
   };
 
   // Manejar selección de presupuesto
@@ -307,6 +323,10 @@ export default function NuevaOrdenPage() {
 
   const [loading, setLoading] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showCreateClientDialog, setShowCreateClientDialog] = useState(false);
+  const [pendingOrderData, setPendingOrderData] = useState<any>(null);
+  const [isOrderDetailsCollapsed, setIsOrderDetailsCollapsed] = useState(true);
+  const [isContactDetailsCollapsed, setIsContactDetailsCollapsed] = useState(true);
 
   useEffect(() => {
     if(facturaNumero.length > 0){
@@ -314,7 +334,42 @@ export default function NuevaOrdenPage() {
     }
   }, [facturaNumero]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Función para crear un nuevo cliente
+  const createNewClient = async () => {
+    try {
+      const newClientData = {
+        name: clienteInput,
+        type: "company", // Por defecto, se puede ajustar según necesidades
+        status: "active",
+        email: email || null,
+        phone: telefono || null,
+        address: direccion || null,
+        cuit: cuit || null,
+        reference: referencia || null,
+        contacts: contactoNombre ? [{
+          name: contactoNombre,
+          email: contactoEmail || "",
+          phone: contactoTelefono || "",
+          position: contactoPosicion || ""
+        }] : [],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      const clientsCollection = collection(firestore, collections.CLIENTS);
+      const docRef = await addDoc(clientsCollection, newClientData);
+      
+      return {
+        id: docRef.id,
+        ...newClientData
+      };
+    } catch (error) {
+      console.error("Error creando cliente:", error);
+      throw error;
+    }
+  };
+
+    const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     if (!clienteInput || items.length === 0) {
@@ -325,74 +380,97 @@ export default function NuevaOrdenPage() {
       toast.error("Debes estar logueado para crear una orden");
       return;
     }
+    
+    // Verificar si el cliente existe en la DB
+    const existingClient = clients?.find((c: any) => 
+      c.id === cliente || c.name.toLowerCase() === clienteInput.toLowerCase()
+    );
+    
+    if (!existingClient && !cliente) {
+      // El cliente no existe, mostrar diálogo de confirmación
+      const orderData = await prepareOrderData();
+      setPendingOrderData(orderData);
+      setShowCreateClientDialog(true);
+      return;
+    }
+    
+    // El cliente existe o ya está seleccionado, proceder normalmente
+    await saveOrder();
+  };
+
+  const prepareOrderData = async () => {
+    // Generar número de orden único
+    const orderNumber = `O-${new Date().getFullYear()}-${Math.floor(
+      1000 + Math.random() * 9000
+    )}`;
+    
+    // Buscar cliente seleccionado o crear objeto temporal
+    const clientObj = clients?.find((c: any) => c.id === cliente) || {
+      id: null,
+      name: clienteInput,
+      email,
+      phone: telefono,
+      address: direccion,
+      cuit,
+      reference: referencia,
+    };
+
+    // Crear contacto si se proporcionaron datos
+    const contactData = contactoNombre ? {
+      name: contactoNombre,
+      email: contactoEmail,
+      phone: contactoTelefono,
+      position: contactoPosicion
+    } : null;
+
+    // Crear un nuevo objeto cliente con el contacto
+    const clientWithSelectedContact = {
+      ...clientObj,
+      contacts: contactData ? [contactData] : [],
+    };
+
+    return {
+      number: orderNumber,
+      client: clientWithSelectedContact,
+      status: estado,
+      items,
+      subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal),
+      taxRate: parseFloat(iva),
+      taxAmount: redondearTotal(taxAmount),
+      total: redondearTotal(total),
+      // Información de IVA
+      applyIVA,
+      // Información de descuentos
+      discountPercentage,
+      discountAmount: redondearTotal(discountAmount),
+      manualDiscount: redondearTotal(manualDiscount),
+      notes: detalle,
+      paymentMethod: formaPago,
+      bank: formaPago === EPaymentMethod.TRANSFER ? banco : null,
+      isInvoiced: facturado,
+      invoiceNumber: facturaNumero,
+      invoiceDate: facturaFecha,
+      invoiceType: tipoFactura || null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      createdBy: doc(firestore, `users/${user?.uid}`),
+      updatedBy: doc(firestore, `users/${user?.uid}`),
+      estimatedDeliveryDate: fechaEntrega,
+      budgetId: presupuestoId || null,
+      budgetNumber: presupuestoNumero || null,
+      budgetDate: presupuestoFecha || null,
+      downPayment: sena,
+      balance: saldo,
+      cuit,
+    };
+  };
+
+  const saveOrder = async (orderData?: any) => {
     setLoading(true);
     try {
-      // Generar número de orden único
-      const orderNumber = `O-${new Date().getFullYear()}-${Math.floor(
-        1000 + Math.random() * 9000
-      )}`;
-      // Buscar cliente seleccionado
-      const clientObj = clients?.find((c: any) => c.id === cliente) || {
-        id: null,
-        name: clienteInput,
-        email,
-        phone: telefono,
-        address: direccion,
-        cuit,
-      };
-
-      // Encontrar el contacto seleccionado
-      const selectedContact = clientObj.contacts?.find(
-        (c: any) => c.name === personaContacto
-      );
-
-      // Crear un nuevo objeto cliente solo con el contacto seleccionado
-      const clientWithSelectedContact = {
-        ...clientObj,
-        contacts: selectedContact ? [selectedContact] : [],
-      };
-
-     
-
-      console.log("🔍 Facturado:", facturado);
-      // Armar datos de la orden
-      const orderData = {
-        number: orderNumber,
-        client: clientWithSelectedContact,
-        status: estado,
-        items,
-        subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal),
-        taxRate: parseFloat(iva),
-        taxAmount: redondearTotal(taxAmount),
-        total: redondearTotal(total),
-        // Información de IVA
-        applyIVA,
-        // Información de descuentos
-        discountPercentage,
-        discountAmount: redondearTotal(discountAmount),
-        manualDiscount: redondearTotal(manualDiscount),
-        notes: detalle,
-        paymentMethod: formaPago,
-        bank: formaPago === EPaymentMethod.TRANSFER ? banco : null,
-        isInvoiced: facturado,
-        invoiceNumber: facturaNumero,
-        invoiceDate: facturaFecha,
-        invoiceType: tipoFactura || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: doc(firestore, `users/${user.uid}`),
-        updatedBy: doc(firestore, `users/${user.uid}`),
-        estimatedDeliveryDate: fechaEntrega,
-        budgetId: presupuestoId || null,
-        budgetNumber: presupuestoNumero || null,
-        budgetDate: presupuestoFecha || null,
-        downPayment: sena,
-        balance: saldo,
-        cuit,
-      };
-
+      const dataToSave = orderData || await prepareOrderData();
       const ordersCollection = collection(firestore, collections.ORDERS);
-      await addDoc(ordersCollection, orderData);
+      await addDoc(ordersCollection, dataToSave);
       toast.success("Orden guardada con éxito");
       router.push("/publimar/banderas/ordenes");
     } catch (error) {
@@ -402,6 +480,46 @@ export default function NuevaOrdenPage() {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateClientAndOrder = async () => {
+    setLoading(true);
+    try {
+      // Crear el cliente nuevo
+      const newClient = await createNewClient();
+      
+      // Actualizar los datos de la orden con el cliente creado
+      const updatedOrderData = {
+        ...pendingOrderData,
+        client: {
+          ...newClient,
+          contacts: contactoNombre ? [{
+            name: contactoNombre,
+            email: contactoEmail,
+            phone: contactoTelefono,
+            position: contactoPosicion
+          }] : [],
+        }
+      };
+      
+      // Guardar la orden
+      await saveOrder(updatedOrderData);
+      setShowCreateClientDialog(false);
+      setPendingOrderData(null);
+    } catch (error) {
+      toast.error("Error al crear cliente y orden: " + (error instanceof Error ? error.message : "Error desconocido"));
+      setLoading(false);
+    }
+  };
+
+  const handleSaveOrderWithoutClient = async () => {
+    try {
+      await saveOrder(pendingOrderData);
+      setShowCreateClientDialog(false);
+      setPendingOrderData(null);
+    } catch (error) {
+      toast.error("Error al guardar la orden: " + (error instanceof Error ? error.message : "Error desconocido"));
     }
   };
 
@@ -429,6 +547,37 @@ export default function NuevaOrdenPage() {
               }}
             >
               Sí, cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCreateClientDialog} onOpenChange={setShowCreateClientDialog}>
+        <DialogContent className="max-w-md p-6">
+          <DialogHeader>
+            <DialogTitle>Cliente no encontrado</DialogTitle>
+          </DialogHeader>
+          <div className="text-sm text-slate-700 mb-4">
+            El cliente "{clienteInput}" no existe en la base de datos.
+            <br />
+            ¿Deseas registrarlo como un nuevo cliente?
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSaveOrderWithoutClient}
+              disabled={loading}
+            >
+              No, solo guardar orden
+            </Button>
+            <Button
+              size="sm"
+              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+              onClick={handleCreateClientAndOrder}
+              disabled={loading}
+            >
+              {loading ? "Creando..." : "Sí, crear cliente"}
             </Button>
           </div>
         </DialogContent>
@@ -497,15 +646,8 @@ export default function NuevaOrdenPage() {
                             key={c.id}
                             style={{ padding: 8, cursor: "pointer" }}
                             onMouseDown={() => {
-                              setCliente(c.id);
+                              handleSelectClient(c.id);
                               setClienteInput(c.name);
-                              setSelectedClientId(c.id);
-                              const contacto = c.contacts?.[0];
-                              setPersonaContacto(contacto?.name || "");
-                              setDireccion(c.address || "");
-                              setEmail(contacto?.email || c?.email || "");
-                              setCuit(c.cuit || "");
-                              setTelefono(c.phone || "");
                               setShowClienteDropdown(false);
                               if (clienteInputRef.current)
                                 clienteInputRef.current.blur();
@@ -516,30 +658,6 @@ export default function NuevaOrdenPage() {
                         ))}
                     </ul>
                   )}
-                <Button
-                  variant="link"
-                  className="p-0"
-                  onClick={() =>
-                    router.push("/publimar/banderas/clientes/nuevo")
-                  }
-                  name="Agregar cliente"
-                  title="Agregar cliente"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                    stroke="currentColor"
-                    className="size-6"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z"
-                    />
-                  </svg>
-                </Button>
               </div>
               <div className="flex-1" style={{ position: "relative" }}>
                 <Label>Persona de contacto</Label>
@@ -650,15 +768,100 @@ export default function NuevaOrdenPage() {
                 <Label>CUIT/CUIL</Label>
                 <Input value={cuit} onChange={(e) => setCuit(e.target.value)} />
               </div>
+              <div className="space-y-2">
+                <Label>Referencia</Label>
+                <Input 
+                  value={referencia} 
+                  onChange={(e) => setReferencia(e.target.value)}
+                  placeholder="Referencia del cliente..."
+                />
+              </div>
+            </div>
+            
+            {/* Sección de Contacto */}
+            <div className="border-t pt-4 mt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <h4 className="text-sm font-medium text-gray-700">Datos del Contacto (Opcional)</h4>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsContactDetailsCollapsed(!isContactDetailsCollapsed)}
+                  className="p-1 h-6 w-6"
+                >
+                  {isContactDetailsCollapsed ? (
+                    <ChevronDown className="h-3 w-3" />
+                  ) : (
+                    <ChevronUp className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+              {!isContactDetailsCollapsed && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nombre del contacto</Label>
+                  <Input
+                    value={contactoNombre}
+                    onChange={(e) => setContactoNombre(e.target.value)}
+                    placeholder="Nombre completo..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Posición/Cargo</Label>
+                  <Input
+                    value={contactoPosicion}
+                    onChange={(e) => setContactoPosicion(e.target.value)}
+                    placeholder="Ej: Gerente, Encargado..."
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <div className="space-y-2">
+                  <Label>Email del contacto</Label>
+                  <Input
+                    type="email"
+                    value={contactoEmail}
+                    onChange={(e) => setContactoEmail(e.target.value)}
+                    placeholder="email@ejemplo.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Teléfono del contacto</Label>
+                  <Input
+                    value={contactoTelefono}
+                    onChange={(e) => setContactoTelefono(e.target.value)}
+                    placeholder="Teléfono directo..."
+                  />
+                </div>
+              </div>
+              </>
+              )}
             </div>
           </CardContent>
         </Card>
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Detalles de la orden</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle>Detalles de la orden</CardTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsOrderDetailsCollapsed(!isOrderDetailsCollapsed)}
+                className="p-1 h-8 w-8"
+              >
+                {isOrderDetailsCollapsed ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronUp className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4">
+          {!isOrderDetailsCollapsed && (
+            <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Fecha de entrada</Label>
@@ -742,6 +945,7 @@ export default function NuevaOrdenPage() {
               />
             </div>
           </CardContent>
+          )}
         </Card>
 
         <Card className="mb-6">

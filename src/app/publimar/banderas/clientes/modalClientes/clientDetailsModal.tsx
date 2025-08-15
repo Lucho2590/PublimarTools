@@ -66,6 +66,7 @@ export default function ClientDetailsModal({
     phone: "",
     address: "",
     cuit: "",
+    reference: "",
     notes: "",
     contacts: [],
   });
@@ -90,6 +91,7 @@ export default function ClientDetailsModal({
       phone: "",
       address: "",
       cuit: "",
+      reference: "",
       notes: "",
       contacts: [],
     });
@@ -341,6 +343,12 @@ export default function ClientDetailsModal({
                         <p className="text-slate-900">{typedClient.cuit}</p>
                       </div>
                     )}
+                    {typedClient.reference && (
+                      <div>
+                        <h3 className="font-semibold text-slate-700">Referencia</h3>
+                        <p className="text-slate-900">{typedClient.reference}</p>
+                      </div>
+                    )}
                     {typedClient.notes && (
                       <div className="md:col-span-2">
                         <h3 className="font-semibold text-slate-700">Notas</h3>
@@ -573,6 +581,18 @@ export default function ClientDetailsModal({
                       onChange={(e) =>
                         setFormData({ ...formData, cuit: e.target.value })
                       }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reference">Referencia</Label>
+                    <Input
+                      id="reference"
+                      value={formData.reference}
+                      onChange={(e) =>
+                        setFormData({ ...formData, reference: e.target.value })
+                      }
+                      placeholder="Referencia del cliente..."
                     />
                   </div>
 

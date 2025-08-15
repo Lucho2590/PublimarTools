@@ -931,7 +931,7 @@ export default function NuevoPresupuestoPage() {
                                     </span>
                                   </div>
                                   <div className="text-sm text-slate-500 mt-1">
-                                    Stock: {variant.stock} unidades
+                                    {variant.stock === Infinity ? " " : `Stock: ${variant.stock} unidades`}
                                   </div>
                                 </div>
                               ))}

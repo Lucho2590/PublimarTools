@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where } from "firebase/firestore";
+import { collection, query, orderBy, where, doc, updateDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/pagination";
 import { Edit, Eye } from "lucide-react";
 import OrderDetailsModal from "./modalOrdenes/orderDetailsModal";
+import { toast } from "sonner";
 
 export default function PedidosPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -46,6 +47,21 @@ export default function PedidosPage() {
   const handleViewOrder = (orderId: string) => {
     setSelectedOrderId(orderId);
     setShowModal(true);
+  };
+
+  // Función para actualizar el estado de la orden
+  const handleStatusChange = async (orderId: string, newStatus: EOrderStatus) => {
+    try {
+      const orderRef = doc(firestore, collections.ORDERS, orderId);
+      await updateDoc(orderRef, {
+        status: newStatus,
+        updatedAt: new Date(),
+      });
+      toast.success("Estado actualizado correctamente");
+    } catch (error) {
+      console.error("Error al actualizar estado:", error);
+      toast.error("Error al actualizar el estado");
+    }
   };
 
   // Consulta a Firestore
@@ -210,9 +226,9 @@ export default function PedidosPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Número</TableHead>
-                    <TableHead>Cliente</TableHead>
+                    <TableHead>Cliente</TableHead> 
+                    <TableHead>Referencia</TableHead>
                     <TableHead>Fecha</TableHead>
-                    <TableHead>Entrega estimada</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
@@ -226,27 +242,53 @@ export default function PedidosPage() {
                           {order.number}
                         </TableCell>
                         <TableCell>{order.client.name}</TableCell>
-                        <TableCell>{formatDate(order.createdAt)}</TableCell>
                         <TableCell>
-                          {formatDate(order.estimatedDeliveryDate)}
+                         {order.client.reference || "-"}
                         </TableCell>
+                        <TableCell>{formatDate(order.createdAt)}</TableCell>
                         <TableCell>${order.total.toFixed(2)}</TableCell>
-                        <TableCell >
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              order.status === EOrderStatus.IN_PROCESS
-                                ? "bg-amber-100 text-amber-800"
-                                : order.status === EOrderStatus.COMPLETED
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {order.status === EOrderStatus.IN_PROCESS
-                              ? "En proceso"
-                              : order.status === EOrderStatus.COMPLETED
-                              ? "Entregada"
-                              : "Cancelada"}
-                          </span>
+                        <TableCell>
+                          {order.status === EOrderStatus.COMPLETED ? (
+                            // Badge estático para órdenes entregadas
+                            <span
+                              className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 min-w-[80px] h-6 w-24"
+                            >
+                              Entregada
+                            </span>
+                          ) : (
+                            // Select editable para órdenes no entregadas
+                            <Select
+                              value={order.status}
+                              onValueChange={(newStatus: EOrderStatus) => 
+                                handleStatusChange(order.id, newStatus)
+                              }
+                            >
+                              <SelectTrigger 
+                                className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium border-none shadow-none cursor-pointer transition-colors min-w-[80px] h-6 ${
+                                  order.status === EOrderStatus.IN_PROCESS
+                                    ? "bg-amber-100 text-amber-800 hover:bg-amber-200 w-24"
+                                    : "bg-red-100 text-red-800 hover:bg-red-200 w-24"
+                                } [&>svg]:hidden`}
+                              >
+                                <SelectValue>
+                                  {order.status === EOrderStatus.IN_PROCESS
+                                    ? "En proceso"
+                                    : "Cancelada"}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={EOrderStatus.IN_PROCESS}>
+                                  En proceso
+                                </SelectItem>
+                                <SelectItem value={EOrderStatus.COMPLETED}>
+                                  Entregada
+                                </SelectItem>
+                                <SelectItem value={EOrderStatus.CANCELLED}>
+                                  Cancelada
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-2 ">

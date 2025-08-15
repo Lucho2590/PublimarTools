@@ -603,6 +603,7 @@ export default function OrderDetailsModal({
     );
   }
 
+  console.log("🔍 Order:", order);
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -1143,18 +1144,19 @@ export default function OrderDetailsModal({
                         )}
                       </>
                     )}
+                      {order.client.phone &&
+                    (
+                      <p className="text-slate-600">
+                        Teléfono: {order.client.phone}
+                      </p>
+                    )}
                   {order.client.email &&
                     !getClientContact(order.client, "email") && (
                       <p className="text-slate-600">
                         Email: {order.client.email}
                       </p>
                     )}
-                  {order.client.phone &&
-                    !getClientContact(order.client, "phone") && (
-                      <p className="text-slate-600">
-                        Teléfono: {order.client.phone}
-                      </p>
-                    )}
+                
                   {order.client.address && (
                     <p className="text-slate-600">
                       Dirección: {order.client.address}
@@ -1177,12 +1179,6 @@ export default function OrderDetailsModal({
                     <div className="flex justify-between">
                       <span className="text-slate-600">Fecha:</span>
                       <span>{formatDate(order.createdAt)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">
-                        Fecha estimada de entrega:
-                      </span>
-                      <span>{formatDate(order.estimatedDeliveryDate)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-600">Estado:</span>

@@ -601,7 +601,7 @@ export function NuevaVentaModal({
                                 </span>
                               </div>
                               <p className="text-xs text-gray-600">
-                                Stock: <span className={stockColor}>{selectedVariant?.stock || 0}</span>
+                                Stock: <span className={stockColor}>{selectedVariant?.stock === Infinity ? " - " : selectedVariant?.stock || 0}</span>
                                 {selectedVariant && " • " + formatearPrecio(Number(selectedVariant.price))}
                               </p>
                             </div>
@@ -633,7 +633,7 @@ export function NuevaVentaModal({
                                             ? "text-orange-500" 
                                             : "text-green-600"
                                         }`}>
-                                          ({variant.stock})
+                                          {variant.stock === Infinity ? " " : variant.stock}
                                         </span>
                                       </div>
                                     </SelectItem>
@@ -657,7 +657,7 @@ export function NuevaVentaModal({
                                   if (existingItem) {
                                     return existingItem.quantity;
                                   }
-                                  return selectedQuantities[`${typedProduct.id}-${selectedVariant?.id}`] || 0;
+                                  return selectedQuantities[`${typedProduct.id}-${selectedVariant?.id}`] || 1;
                                 })()}
                                 onChange={(e) => {
                                   if (!selectedProducts.has(typedProduct.id)) return;

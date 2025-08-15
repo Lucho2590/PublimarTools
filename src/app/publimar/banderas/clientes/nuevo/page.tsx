@@ -42,6 +42,7 @@ export default function NuevoClientePage() {
     phone: "",
     address: "",
     cuit: "",
+    reference: "",
     notes: "",
   });
 
@@ -198,6 +199,19 @@ export default function NuevoClientePage() {
                   name="cuit"
                   value={formData.cuit}
                   onChange={handleChange}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="reference">Referencia</Label>
+                <Input
+                  id="reference"
+                  name="reference"
+                  value={formData.reference}
+                  onChange={handleChange}
+                  placeholder="Referencia del cliente..."
                 />
               </div>
               {/* <div className="space-y-2">

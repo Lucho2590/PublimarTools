@@ -318,7 +318,7 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="text-2xl font-bold">
                   {lowStockProducts?.reduce((count, product) => 
-                    count + (product.variants?.filter((variant: any) => variant.stock <= 5).length || 0), 0
+                    count + (product.variants?.filter((variant: any) => variant.stock <= 3).length || 0), 0
                   ) || 0}
                 </div>
               </CardContent>
