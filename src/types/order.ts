@@ -28,7 +28,23 @@ export type TOrder = {
   id: string;
   number: string; // Número de orden para mostrar al cliente
   quoteId: string;
-  client: TClient;
+  // Cliente: soporta tanto estructura antigua como nueva
+  client?: TClient; // Estructura antigua (objeto completo)
+  clientId?: string | null; // Estructura nueva (solo ID)
+  clientName?: string; // Estructura nueva (solo nombre)
+  // Datos del contacto (estructura nueva)
+  contact?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    position?: string;
+  };
+  // Campos adicionales de cliente (estructura nueva)
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+  cuit?: string;
+  referencia?: string;
   status: EOrderStatus;
   items: TOrderItem[];
   subtotal: number;

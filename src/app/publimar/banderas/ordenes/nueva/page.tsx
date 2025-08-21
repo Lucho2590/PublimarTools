@@ -523,6 +523,9 @@ export default function NuevaOrdenPage() {
     }
   };
 
+
+console.log(clients)
+
   return (
     <div className="p-6">
       <Dialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>

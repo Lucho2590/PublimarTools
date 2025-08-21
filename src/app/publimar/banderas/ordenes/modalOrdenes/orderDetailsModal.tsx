@@ -97,6 +97,23 @@ export default function OrderDetailsModal({
   const [facturaFecha, setFacturaFecha] = useState("");
   const [facturado, setFacturado] = useState(false);
 
+  // Estados para cliente temporal (cuando clientId es null)
+  const [showCreateClientDialog, setShowCreateClientDialog] = useState(false);
+  const [tempClientData, setTempClientData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+    cuit: "",
+    reference: "",
+  });
+  const [tempContactData, setTempContactData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    position: "",
+  });
+
   const firestore = useFirestore();
 
   // Obtener la orden - crear un doc dummy si no hay orderId
@@ -139,6 +156,55 @@ export default function OrderDetailsModal({
     }
     // Si no hay contacts o es legacy data, usar datos directos del cliente
     return client?.[field] || "";
+  };
+
+  // Función para crear cliente y actualizar orden
+  const createClientAndUpdateOrder = async () => {
+    try {
+      setLoading(true);
+      
+      // Crear el nuevo cliente
+      const newClientData = {
+        name: tempClientData.name,
+        email: tempClientData.email,
+        phone: tempClientData.phone,
+        address: tempClientData.address,
+        cuit: tempClientData.cuit,
+        reference: tempClientData.reference,
+        type: "individual", // o detectar automáticamente
+        status: "active",
+        contacts: tempContactData.name ? [{
+          name: tempContactData.name,
+          email: tempContactData.email,
+          phone: tempContactData.phone,
+          position: tempContactData.position,
+        }] : [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const clientsCollection = collection(firestore, collections.CLIENTS);
+      const docRef = await addDoc(clientsCollection, newClientData);
+      
+      // Actualizar la orden con el nuevo clientId
+      const orderRef = doc(firestore, collections.ORDERS, order!.id);
+      await updateDoc(orderRef, {
+        clientId: docRef.id,
+        updatedAt: new Date(),
+      });
+
+      toast.success("Cliente creado y orden actualizada");
+      setShowCreateClientDialog(false);
+      
+      console.log("✅ Cliente creado con ID:", docRef.id);
+      console.log("🔄 Orden actualizada con clientId:", docRef.id);
+      
+    } catch (error) {
+      console.error("Error creando cliente:", error);
+      toast.error("Error al crear el cliente");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Inicializar items cuando se carga la orden
@@ -242,6 +308,39 @@ export default function OrderDetailsModal({
   }, [isOpen, resetModalState]);
 
   // Asegurar que los estados de facturación estén correctos al entrar en modo edición
+  // Detectar si es un cliente temporal y cargar datos
+  useEffect(() => {
+    if (order && status === "success") {
+      // Si la orden tiene clientId null, es un cliente temporal
+      const isTemporaryClient = !order.clientId || order.clientId === null;
+      
+      if (isTemporaryClient) {
+        // Cargar datos temporales desde la orden
+        setTempClientData({
+          name: order.clientName || "",
+          email: order.email || "",
+          phone: order.telefono || "",
+          address: order.direccion || "",
+          cuit: order.cuit || "",
+          reference: order.referencia || "",
+        });
+        
+        // Cargar datos del contacto si existen
+        if (order.contact) {
+          setTempContactData({
+            name: order.contact.name || "",
+            email: order.contact.email || "",
+            phone: order.contact.phone || "",
+            position: order.contact.position || "",
+          });
+        }
+        
+        console.log("👤 Cliente temporal detectado:", order.clientName);
+        console.log("📊 Datos del cliente temporal:", tempClientData);
+      }
+    }
+  }, [order, status]);
+
   useEffect(() => {
     if (isEditing && order && status === "success") {
       // console.log("🔍 Cargando estado facturación:", {
@@ -427,10 +526,56 @@ export default function OrderDetailsModal({
       return;
     }
 
+    const formData = new FormData(e.target as HTMLFormElement);
+    
+    // Verificar si es un cliente temporal y si hay cambios
+    const isTemporaryClient = !order.clientId || order.clientId === null;
+    
+    if (isTemporaryClient) {
+      // Obtener datos actuales del formulario
+      const currentClientData = {
+        name: formData.get("clientName") as string || "",
+        email: formData.get("clientEmail") as string || "",
+        phone: formData.get("clientPhone") as string || "",
+        address: formData.get("clientAddress") as string || "",
+        cuit: formData.get("clientCuit") as string || "",
+        reference: formData.get("clientReference") as string || "",
+      };
+      
+      const currentContactData = {
+        name: formData.get("clientContact") as string || "",
+        email: formData.get("contactEmail") as string || "",
+        phone: formData.get("contactPhone") as string || "",
+        position: formData.get("contactPosition") as string || "",
+      };
+      
+      // Verificar si hay cambios en los datos del cliente
+      const clientDataChanged = 
+        currentClientData.name !== tempClientData.name ||
+        currentClientData.email !== tempClientData.email ||
+        currentClientData.phone !== tempClientData.phone ||
+        currentClientData.address !== tempClientData.address ||
+        currentClientData.cuit !== tempClientData.cuit ||
+        currentClientData.reference !== tempClientData.reference ||
+        currentContactData.name !== tempContactData.name ||
+        currentContactData.email !== tempContactData.email ||
+        currentContactData.phone !== tempContactData.phone ||
+        currentContactData.position !== tempContactData.position;
+      
+      if (clientDataChanged) {
+        // Actualizar datos temporales con los cambios
+        setTempClientData(currentClientData);
+        setTempContactData(currentContactData);
+        
+        // Mostrar diálogo para preguntar si guardar cliente
+        setShowCreateClientDialog(true);
+        return; // No continuar con el guardado hasta que el usuario decida
+      }
+    }
+
     // console.log("💾 Iniciando guardado...");
     setLoading(true);
     try {
-      const formData = new FormData(e.target as HTMLFormElement);
       
       // Calcular totales basados en los items actuales
       const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
@@ -470,9 +615,39 @@ export default function OrderDetailsModal({
         updateData.invoiceType = tipoFactura;
       }
 
-      await updateDoc(doc(firestore, collections.ORDERS, order.id), updateData);
+      await updateDoc(doc(firestore, collections.ORDERS, order!.id), updateData);
       toast.success("Orden actualizada correctamente");
       setIsEditing(false);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Error al actualizar la orden: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Guardar orden sin crear cliente (cuando el usuario dice "No")
+  const handleSaveWithoutClient = async () => {
+    setLoading(true);
+    try {
+      // Actualizar solo los datos de la orden con los nuevos datos del cliente temporal
+      const updateData: any = {
+        clientName: tempClientData.name,
+        email: tempClientData.email,
+        telefono: tempClientData.phone,
+        direccion: tempClientData.address,
+        cuit: tempClientData.cuit,
+        referencia: tempClientData.reference,
+        contact: tempContactData.name ? tempContactData : null,
+        updatedAt: new Date(),
+      };
+
+      await updateDoc(doc(firestore, collections.ORDERS, order!.id), updateData);
+      toast.success("Orden actualizada (cliente no guardado en BD)");
+      setIsEditing(false);
+      
+      console.log("📝 Orden actualizada sin crear cliente:", updateData);
+      
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       toast.error(`Error al actualizar la orden: ${errorMessage}`);
@@ -579,7 +754,7 @@ export default function OrderDetailsModal({
     );
   }
 
-  if (!order || !order.client) {
+  if (!order || (!order.client && !order.clientName)) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -595,6 +770,7 @@ export default function OrderDetailsModal({
 
   console.log("🔍 Order:", order);
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="flex flex-row items-center justify-between">
@@ -642,7 +818,14 @@ export default function OrderDetailsModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Información del Cliente</CardTitle>
+                  <CardTitle>
+                    Información del Cliente
+                    {(!order.clientId || order.clientId === null) && (
+                      <span className="ml-2 text-sm text-orange-600 font-normal">
+                        (Cliente temporal - editable)
+                      </span>
+                    )}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
@@ -650,48 +833,65 @@ export default function OrderDetailsModal({
                       <Label htmlFor="clientName">Nombre</Label>
                       <Input
                         id="clientName"
-                        defaultValue={order.client.name}
-                        disabled
+                        name="clientName"
+                        defaultValue={order.clientName || order.client?.name || ""}
+                        disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
                     <div>
                       <Label htmlFor="clientContact">Persona de contacto</Label>
                       <Input
                         id="clientContact"
-                        defaultValue={getClientContact(order.client, "name")}
-                        disabled
+                        name="clientContact"
+                        defaultValue={order.contact?.name || getClientContact(order.client, "name") || ""}
+                        disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
-                    {order.client.email && (
-                      <div>
-                        <Label htmlFor="clientEmail">Email</Label>
-                        <Input
-                          id="clientEmail"
-                          defaultValue={getClientContact(order.client, "email")}
-                          disabled
-                        />
-                      </div>
-                    )}
-                    {order.client.phone && (
-                      <div>
-                        <Label htmlFor="clientPhone">Teléfono</Label>
-                        <Input
-                          id="clientPhone"
-                          defaultValue={getClientContact(order.client, "phone")}
-                          disabled
-                        />
-                      </div>
-                    )}
-                    {order.client.address && (
-                      <div>
-                        <Label htmlFor="clientAddress">Dirección</Label>
-                        <Input
-                          id="clientAddress"
-                          defaultValue={order.client.address}
-                          disabled
-                        />
-                      </div>
-                    )}
+                    <div>
+                      <Label htmlFor="clientEmail">Email</Label>
+                      <Input
+                        id="clientEmail"
+                        name="clientEmail"
+                        defaultValue={order.email || order.contact?.email || getClientContact(order.client, "email") || ""}
+                        disabled={!!(order.clientId && order.clientId !== null)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="clientPhone">Teléfono</Label>
+                      <Input
+                        id="clientPhone"
+                        name="clientPhone"
+                        defaultValue={order.telefono || order.contact?.phone || getClientContact(order.client, "phone") || ""}
+                        disabled={!!(order.clientId && order.clientId !== null)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="clientAddress">Dirección</Label>
+                      <Input
+                        id="clientAddress"
+                        name="clientAddress"
+                        defaultValue={order.direccion || order.client?.address || ""}
+                        disabled={!!(order.clientId && order.clientId !== null)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="clientCuit">CUIT/CUIL</Label>
+                      <Input
+                        id="clientCuit"
+                        name="clientCuit"
+                        defaultValue={order.cuit || order.client?.cuit || ""}
+                        disabled={!!(order.clientId && order.clientId !== null)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="clientReference">Referencia</Label>
+                      <Input
+                        id="clientReference"
+                        name="clientReference"
+                        defaultValue={order.referencia || order.client?.reference || ""}
+                        disabled={!!(order.clientId && order.clientId !== null)}
+                      />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1112,49 +1312,67 @@ export default function OrderDetailsModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Información del Cliente</CardTitle>
+                  <CardTitle>
+                    Información del Cliente
+                    {(!order.clientId || order.clientId === null) && (
+                      <span className="ml-2 text-sm text-orange-600 font-normal">
+                        (Cliente temporal)
+                      </span>
+                    )}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <h3 className="font-medium text-lg">{order.client.name}</h3>
-                  {Array.isArray(order.client.contacts) &&
-                    order.client.contacts.length > 0 && (
-                      <>
+                  <h3 className="font-medium text-lg">
+                    {order.clientName || order.client?.name || "Sin nombre"}
+                  </h3>
+                  
+                  {/* Datos del contacto */}
+                  {(order.contact?.name || (Array.isArray(order.client?.contacts) && order.client?.contacts?.length > 0)) && (
+                    <>
+                      <p className="text-slate-600">
+                        Contacto: {order.contact?.name || order.client?.contacts?.[0]?.name}
+                      </p>
+                      {(order.contact?.email || order.client?.contacts?.[0]?.email) && (
                         <p className="text-slate-600">
-                          Contacto: {order.client.contacts[0].name}
+                          Email contacto: {order.contact?.email || order.client?.contacts?.[0]?.email}
                         </p>
-                        {order.client.contacts[0].email && (
-                          <p className="text-slate-600">
-                            Email: {order.client.contacts[0].email}
-                          </p>
-                        )}
-                        {order.client.contacts[0].phone && (
-                          <p className="text-slate-600">
-                            Teléfono: {order.client.contacts[0].phone}
-                          </p>
-                        )}
-                      </>
-                    )}
-                      {order.client.phone &&
-                    (
-                      <p className="text-slate-600">
-                        Teléfono: {order.client.phone}
-                      </p>
-                    )}
-                  {order.client.email &&
-                    !getClientContact(order.client, "email") && (
-                      <p className="text-slate-600">
-                        Email: {order.client.email}
-                      </p>
-                    )}
-                
-                  {order.client.address && (
+                      )}
+                      {(order.contact?.phone || order.client?.contacts?.[0]?.phone) && (
+                        <p className="text-slate-600">
+                          Teléfono contacto: {order.contact?.phone || order.client?.contacts?.[0]?.phone}
+                        </p>
+                      )}
+                    </>
+                  )}
+                  
+                  {/* Datos directos del cliente */}
+                  {(order.telefono || order.client?.phone) && (
                     <p className="text-slate-600">
-                      Dirección: {order.client.address}
+                      Teléfono: {order.telefono || order.client?.phone}
                     </p>
                   )}
-                  {order.client.cuit && (
+                  
+                  {(order.email || order.client?.email) && (
                     <p className="text-slate-600">
-                      CUIT/CUIL: {order.client.cuit}
+                      Email: {order.email || order.client?.email}
+                    </p>
+                  )}
+                
+                  {(order.direccion || order.client?.address) && (
+                    <p className="text-slate-600">
+                      Dirección: {order.direccion || order.client?.address}
+                    </p>
+                  )}
+                  
+                  {(order.cuit || order.client?.cuit) && (
+                    <p className="text-slate-600">
+                      CUIT/CUIL: {order.cuit || order.client?.cuit}
+                    </p>
+                  )}
+                  
+                  {(order.referencia || order.client?.reference) && (
+                    <p className="text-slate-600">
+                      Referencia: {order.referencia || order.client?.reference}
                     </p>
                   )}
                 </CardContent>
@@ -1457,5 +1675,66 @@ export default function OrderDetailsModal({
         )}
       </DialogContent>
     </Dialog>
+
+    {/* Diálogo para crear cliente */}
+    <Dialog open={showCreateClientDialog} onOpenChange={setShowCreateClientDialog}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>¿Guardar cliente en la base de datos?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Has modificado los datos del cliente &quot;{tempClientData.name}&quot;. 
+            ¿Quieres guardarlo como un cliente permanente en la base de datos?
+          </p>
+          
+          <div className="bg-gray-50 p-3 rounded-md">
+            <h4 className="font-medium text-sm mb-2">Datos del cliente:</h4>
+            <ul className="text-xs space-y-1">
+              <li><strong>Nombre:</strong> {tempClientData.name}</li>
+              {tempClientData.email && <li><strong>Email:</strong> {tempClientData.email}</li>}
+              {tempClientData.phone && <li><strong>Teléfono:</strong> {tempClientData.phone}</li>}
+              {tempClientData.address && <li><strong>Dirección:</strong> {tempClientData.address}</li>}
+              {tempClientData.cuit && <li><strong>CUIT:</strong> {tempClientData.cuit}</li>}
+              {tempClientData.reference && <li><strong>Referencia:</strong> {tempClientData.reference}</li>}
+            </ul>
+          </div>
+          
+          {tempContactData.name && (
+            <div className="bg-gray-50 p-3 rounded-md">
+              <h4 className="font-medium text-sm mb-2">Datos del contacto:</h4>
+              <ul className="text-xs space-y-1">
+                <li><strong>Nombre:</strong> {tempContactData.name}</li>
+                {tempContactData.email && <li><strong>Email:</strong> {tempContactData.email}</li>}
+                {tempContactData.phone && <li><strong>Teléfono:</strong> {tempContactData.phone}</li>}
+                {tempContactData.position && <li><strong>Posición:</strong> {tempContactData.position}</li>}
+              </ul>
+            </div>
+          )}
+          
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowCreateClientDialog(false);
+                // Continuar con el guardado sin crear cliente
+                handleSaveWithoutClient();
+              }}
+            >
+              No, solo actualizar orden
+            </Button>
+            <Button
+              type="button"
+              onClick={createClientAndUpdateOrder}
+              disabled={loading}
+            >
+              {loading ? "Creando..." : "Sí, guardar cliente"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
