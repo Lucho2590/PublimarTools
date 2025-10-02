@@ -123,7 +123,12 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
   const handleAddItem = () => {
     if (!selectedProduct || !selectedVariant || quantity <= 0 || unitPrice <= 0) return;
 
+    // Obtener el producto y la variante seleccionados
+    const product = products[selectedProduct];
+    const variant = product?.variants?.find(v => v.id === selectedVariant);
+    
     const newItem: TSaleItem = {
+      variantName: variant?.size || "Sin variante",
       productId: selectedProduct,
       variantId: selectedVariant,
       quantity,

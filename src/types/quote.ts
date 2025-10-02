@@ -9,18 +9,26 @@ export enum EQuoteStatus {
 }
 
 export type TQuoteItem = {
-  tax: number;
-  taxAmount: number;
-  description: string;
-  categories: TProductCategory[];
   id: string;
-  product: TProduct;
-  variant?: TProductVariant;
+  // Referencias (no duplicar objetos completos)
+  productId?: string;        // ID del producto en la DB (null si es manual)
+  variantId?: string;        // ID de la variante seleccionada
+  
+  // Datos para mostrar rápido (snapshot)
+  productName: string;
+  description: string;
+  variantName?: string;      // ej: "Talle L", "Color Rojo", "2x1m"
+  categories?: TProductCategory[]; // Para filtros/reportes
+  
+  // Datos de la cotización/orden
   quantity: number;
   unitPrice: number;
   discount?: number;
   subtotal: number;
+  tax: number;
+  taxAmount: number;
   notes?: string;
+  isManual?: boolean;        // true si es un item creado manualmente
 };
 
 export type TQuoteComment = {

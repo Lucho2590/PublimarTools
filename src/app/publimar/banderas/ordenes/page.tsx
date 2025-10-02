@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where, doc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/table";
 import collections from "@/lib/collections";
 import { EOrderStatus, TOrder } from "@/types/order";
+import { useSales } from "@/hooks/useSales";
+import { EPaymentMethod } from "@/types/sale";
 import { redirect, useRouter } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -54,6 +56,9 @@ export default function PedidosPage() {
   const [newStatusToSet, setNewStatusToSet] = useState<EOrderStatus | null>(null);
   const firestore = useFirestore();
   const router = useRouter();
+  
+  // Hook para manejar ventas
+  const { createSale, generateSaleNumber } = useSales();
 
   // Función para manejar la vista de orden en modal
   const handleViewOrder = (orderId: string) => {
@@ -66,43 +71,44 @@ export default function PedidosPage() {
     try {
       // Transformar items de orden a items de venta
       const saleItems = order.items.map(item => ({
-        productId: item.product?.id || '',
-        productName: item.product?.name || '',
-        variantName: item.variant?.size || '', // Usar 'size' en lugar de 'name'
+        productId: item.productId || undefined,
+        variantId: item.variantId || undefined,
+        productName: item.productName || undefined,
+        variantName: item.variantName || undefined,
         quantity: Number(item.quantity) || 0,
         unitPrice: Number(item.unitPrice) || 0,
         total: Number(item.subtotal) || 0,
       }));
 
       // Recalcular totales para asegurar valores numéricos correctos
-      const subtotal = saleItems.reduce((sum, item) => sum + item.total, 0);
+      const subtotal = order.subtotal;
       const taxAmount = order.applyIVA ? subtotal * 0.21 : 0;
-      const total = subtotal;
+      const total = order.total;
 
-      // Crear la venta basada en la orden
+      // Crear la venta basada en la orden usando el hook
       const saleData = {
-        number: order.number, // Número de orden como número de venta
-        client: order.client,
+        number: order.number, // Prefijo para distinguir de la orden
         items: saleItems,
-        subtotal: subtotal,
-        total: total,
+        subtotal: order.subtotal,
+        total: order.total,
         applyIVA: order.applyIVA || false,
-        taxRate: order.applyIVA ? 21 : 0,
+        taxRate: order.applyIVA ? 0.21 : 0,
         taxAmount: taxAmount,
-        discountPercentage: 0,
-        discountAmount: 0,
-        manualDiscount: 0,
-        paymentMethod: order.paymentMethod || 'cash',
+        discountPercentage: order.discountPercentage || 0,
+        discountAmount: order.discountAmount || 0,
+        manualDiscount: order.manualDiscount || 0,
+        paymentMethod: (order.paymentMethod as EPaymentMethod) || EPaymentMethod.CASH,
         isInvoiced: order.isInvoiced || false,
-        invoiceNumber: order.invoiceNumber || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        invoiceNumber: order.invoiceNumber || "",
+        bank: order.bank || undefined,
         // Referencia a la orden original
         orderId: order.id,
       };
 
-      // Crear la venta
-      await addDoc(collection(firestore, collections.SALES), saleData);
+      console.log('🔧 Datos de venta a crear:', saleData);
+
+      // Crear la venta usando el hook (que ya limpia los undefined)
+      const saleId = await createSale(saleData as any);
       
       // Actualizar la orden para marcarla como convertida
       const orderRef = doc(firestore, collections.ORDERS, order.id);
@@ -110,10 +116,11 @@ export default function PedidosPage() {
         status: EOrderStatus.COMPLETED,
         convertedToSale: true,
         convertedAt: serverTimestamp(),
+        saleId: saleId, // Guardar referencia a la venta creada
         updatedAt: serverTimestamp(),
       });
 
-      toast.success("Orden convertida a venta exitosamente");
+      toast.success(`Orden convertida a venta exitosamente (ID: ${saleId})`);
       setShowConvertDialog(false);
       setOrderToConvert(null);
       setNewStatusToSet(null);
@@ -260,7 +267,7 @@ export default function PedidosPage() {
         <h1 className="text-2xl font-bold">Ordenes de trabajo</h1>
         <Button
           className="bg-blue-900 hover:bg-blue-900 hover:text-white"
-          onClick={() => router.push("/publimar/banderas/ordenes/nueva")}
+          onClick={() => router.push("/publimar/banderas/ordenes/nuevas")}
         >
           Nueva Orden
         </Button>
@@ -355,9 +362,9 @@ export default function PedidosPage() {
                         <TableCell className="font-medium">
                           {order.number}
                         </TableCell>
-                        <TableCell>{order.client.name}</TableCell>
+                        <TableCell>{order.clientName || order.client.name || order.client?.name || "-"}</TableCell>
                         <TableCell>
-                         {order.client.reference || "-"}
+                         {order.clientReference || order.client?.reference || order.reference || "-"}
                         </TableCell>
                         <TableCell>{formatDate(order.createdAt)}</TableCell>
                         <TableCell>${order.total.toFixed(2)}</TableCell>
@@ -381,16 +388,23 @@ export default function PedidosPage() {
                                 className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium border-none shadow-none cursor-pointer transition-colors min-w-[80px] h-6 ${
                                   order.status === EOrderStatus.IN_PROCESS
                                     ? "bg-amber-100 text-amber-800 hover:bg-amber-200 w-24"
+                                    : order.status === EOrderStatus.DRAFT
+                                    ? "bg-gray-100 text-gray-800 hover:bg-gray-200 w-24"
                                     : "bg-red-100 text-red-800 hover:bg-red-200 w-24"
                                 } [&>svg]:hidden`}
                               >
                                 <SelectValue>
                                   {order.status === EOrderStatus.IN_PROCESS
                                     ? "En proceso"
+                                    : order.status === EOrderStatus.DRAFT
+                                    ? "Borrador"
                                     : "Cancelada"}
                                 </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
+                                <SelectItem value={EOrderStatus.DRAFT}>
+                                  Borrador
+                                </SelectItem>
                                 <SelectItem value={EOrderStatus.IN_PROCESS}>
                                   En proceso
                                 </SelectItem>
@@ -409,11 +423,20 @@ export default function PedidosPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                title="Ver orden"
+                                title="Ver orden (Modal)"
                                 className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                                 onClick={() => handleViewOrder(order.id)}
                               >
                                 <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="Editar orden (Página)"
+                                className="bg-green-600 hover:bg-green-700 hover:text-white text-white"
+                                onClick={() => router.push(`/publimar/banderas/ordenes/${order.id}`)}
+                              >
+                                <Edit className="h-4 w-4" />
                               </Button>
                           </div>
                         </TableCell>

@@ -8,6 +8,7 @@ export enum EPaymentMethod {
 }
 
 export interface TSaleItem {
+  variantName: any;
   productId: string;
   variantId: string;
   quantity: number;

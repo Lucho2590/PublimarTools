@@ -323,6 +323,7 @@ export default function QuoteDetailsModal({
 
       const quoteItems: TQuoteItem[] = items.map((item) => ({
         id: item.id,
+        productName: item.product.name,
         product: item.product,
         variant: item.variant,
         quantity: item.quantity,

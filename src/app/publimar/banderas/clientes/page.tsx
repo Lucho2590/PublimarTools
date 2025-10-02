@@ -51,6 +51,7 @@ export default function ClientesPage() {
   const { status, data: clients } = useFirestoreCollectionData(clientsQuery, {
     idField: "id",
   });
+  console.log(clients);
 
   const handleViewClient = (clientId: string) => {
     setSelectedClientId(clientId);

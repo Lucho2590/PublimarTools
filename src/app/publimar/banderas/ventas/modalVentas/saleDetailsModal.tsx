@@ -188,6 +188,7 @@ export function SaleDetailsModal({
       quantity,
       unitPrice,
       total: quantity * unitPrice,
+      variantName: undefined
     };
 
     const newItems = [...items, newItem];
@@ -349,8 +350,10 @@ export function SaleDetailsModal({
     const product = products[productId];
     if (!product) return "Variante no encontrada";
     const variant = product.variants.find((v) => v.id === variantId);
-    return variant ? `${variant.size}` : "Variante no encontrada";
+    
+    return variant ? `${variant.id}` : "Variante no encontrada";
   };
+  
 
   // Filtrar productos basado en el término de búsqueda y categoría
   const filteredProducts = Object.entries(products).filter(([_, product]) => {
@@ -805,7 +808,7 @@ export function SaleDetailsModal({
                               .join(", ") || "Sin categoría"}
                           </TableCell> */}
                           <TableCell>
-                            {getVariantName(item.productId, item.variantId)}
+                            {item.variantName || "Sin variante"}
                           </TableCell>
                           <TableCell className="text-right">
                             {item.quantity}

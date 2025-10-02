@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   useFirestore,
   useFirestoreDocData,
   useFirestoreCollectionData,
 } from "reactfire";
+import { useClientByRef } from "@/hooks/useClients";
+
 import {
   doc,
   updateDoc,
@@ -91,6 +93,14 @@ export default function OrderDetailsModal({
   const [itemDiscount, setItemDiscount] = useState(0);
   const [itemNotes, setItemNotes] = useState("");
   
+  // Estados para item manual
+  const [isAddingManualItem, setIsAddingManualItem] = useState(false);
+  const [manualItemName, setManualItemName] = useState("");
+  const [manualItemMeasure, setManualItemMeasure] = useState("");
+  const [manualItemDescription, setManualItemDescription] = useState("");
+  const [manualItemQuantity, setManualItemQuantity] = useState(1);
+  const [manualItemPrice, setManualItemPrice] = useState(0);
+  
   // Estados para facturación
   const [tipoFactura, setTipoFactura] = useState("");
   const [facturaNumero, setFacturaNumero] = useState("");
@@ -116,37 +126,46 @@ export default function OrderDetailsModal({
 
   const firestore = useFirestore();
 
-  // Obtener la orden - crear un doc dummy si no hay orderId
-  const orderDoc =
-    orderId && firestore
+  // Obtener la orden - usar useMemo para evitar cambios en la referencia
+  const orderDoc = useMemo(() => {
+    if (!firestore) return null;
+    return orderId 
       ? doc(firestore, collections.ORDERS, orderId)
-      : firestore
-      ? doc(firestore, collections.ORDERS, "dummy")
-      : null;
+      : doc(firestore, collections.ORDERS, "dummy");
+  }, [firestore, orderId]);
 
-  const { status, data } = useFirestoreDocData(orderDoc!, { idField: "id" });
+  const { status, data } = useFirestoreDocData(orderDoc as any, { idField: "id" });
 
-  const order = data as TOrder | null ;
+  const order = (orderId && data) ? data as TOrder : null;
+  
+  // Obtener datos completos del cliente desde la BD usando el clientId
+  const { client: fullClientData, loading: clientLoading, error: clientError } = useClientByRef(
+    order?.clientId ? doc(firestore, collections.CLIENTS, order.clientId) : undefined
+  );
   
   const BANCOS = ["Galicia", "Frances"];
 
   // Fetch clients
-  const clientsCollection = collection(
-    firestore || ({} as any),
-    collections.CLIENTS
-  );
-  const { data: clients } = useFirestoreCollectionData(clientsCollection, {
-    idField: "id",
-  });
+  // const clientsCollection = firestore
+  //   ? collection(firestore, collections.CLIENTS)
+  //   : collection(firestore || {} as any, "dummy");
+  // const { data: clients } = useFirestoreCollectionData(clientsCollection, {
+  //   idField: "id",
+  // });
 
-  // Fetch products
-  const productsCollection = collection(
-    firestore || ({} as any),
-    collections.PRODUCTS
-  );
-  const { data: products } = useFirestoreCollectionData(productsCollection, {
+
+  
+ 
+  // Fetch products - usar useMemo para evitar cambios en la referencia
+  const productsCollection = useMemo(() => {
+    if (!firestore) return null;
+    return collection(firestore, collections.PRODUCTS);
+  }, [firestore]);
+
+  const { data: products } = useFirestoreCollectionData(productsCollection as any, {
     idField: "id",
   });
+  
 
   // Helper function para manejar datos legacy de client
   const getClientContact = (client: any, field: "name" | "email" | "phone") => {
@@ -186,18 +205,28 @@ export default function OrderDetailsModal({
       const clientsCollection = collection(firestore, collections.CLIENTS);
       const docRef = await addDoc(clientsCollection, newClientData);
       
-      // Actualizar la orden con el nuevo clientId
+      // Actualizar la orden con el nuevo clientId y limpiar datos temporales
       const orderRef = doc(firestore, collections.ORDERS, order!.id);
       await updateDoc(orderRef, {
         clientId: docRef.id,
         updatedAt: new Date(),
+        // Limpiar datos temporales que ahora están en el cliente
+        clientName: null,
+        email: null,
+        telefono: null,
+        direccion: null,
+        cuit: null,
+        referencia: null,
+        contact: null,
       });
 
       toast.success("Cliente creado y orden actualizada");
       setShowCreateClientDialog(false);
+      setIsEditing(false); // Salir del modo edición
       
       console.log("✅ Cliente creado con ID:", docRef.id);
-      console.log("🔄 Orden actualizada con clientId:", docRef.id);
+      console.log("🔄 Orden actualizada - clientId:", docRef.id);
+      console.log("🧹 Datos temporales limpiados de la orden");
       
     } catch (error) {
       console.error("Error creando cliente:", error);
@@ -209,6 +238,10 @@ export default function OrderDetailsModal({
 
   // Inicializar items cuando se carga la orden
   useEffect(() => {
+    console.log("🔄 useEffect - Inicializando items");
+    console.log("📦 Order recibida:", order);
+    console.log("📋 Items en order:", order?.items);
+    
     if (order?.items) {
       // Transformar los datos para que coincidan con TOrderItem
       const transformedItems: TOrderItem[] = order.items.map((item: any) => ({
@@ -226,9 +259,15 @@ export default function OrderDetailsModal({
         description: item.description || "",
         categories: item.categories || [],
         notes: item.notes || "",
+        productName: item.productName || "",
+        variantName: item.variantName || "",
+        isManual: item.isManual || false,
       }));
+      
+      console.log("✅ Items transformados:", transformedItems);
       setItems(transformedItems);
     } else {
+      console.log("❌ No hay items en order, seteando array vacío");
       setItems([]);
     }
     
@@ -277,7 +316,7 @@ export default function OrderDetailsModal({
         setFacturaFecha("");
       }
     }
-  }, [order, status]);
+  }, [order, status, isOpen]);
 
   // Reset function (stable reference)
   const resetModalState = useCallback(() => {
@@ -322,7 +361,7 @@ export default function OrderDetailsModal({
           phone: order.telefono || "",
           address: order.direccion || "",
           cuit: order.cuit || "",
-          reference: order.referencia || "",
+          reference: order.reference || "",
         });
         
         // Cargar datos del contacto si existen
@@ -519,88 +558,177 @@ export default function OrderDetailsModal({
 
   // Manejar el guardado de cambios en edición
   const handleSave = async (e: React.FormEvent) => {
-    // console.log("🚀 handleSave llamado");
+    console.log("🚀 handleSave llamado - INICIO");
+    console.log("📝 Evento recibido:", e);
+    console.log("🎯 Orden actual:", order);
+    console.log("📊 Estado actual de items:", items);
+    console.log("🔍 Modo edición activo:", isEditing);
+    
     e.preventDefault();
     if (!order) {
-      // console.log("❌ No hay orden, saliendo");
+      console.log("❌ No hay orden, saliendo");
       return;
     }
 
     const formData = new FormData(e.target as HTMLFormElement);
     
-    // Verificar si es un cliente temporal y si hay cambios
-    const isTemporaryClient = !order.clientId || order.clientId === null;
+    // Detectar si el cliente existe en la BD
+    const clientId = order.clientId || order.client?.id;
+    const clientExists = !!clientId;
     
-    if (isTemporaryClient) {
-      // Obtener datos actuales del formulario
-      const currentClientData = {
-        name: formData.get("clientName") as string || "",
-        email: formData.get("clientEmail") as string || "",
-        phone: formData.get("clientPhone") as string || "",
-        address: formData.get("clientAddress") as string || "",
-        cuit: formData.get("clientCuit") as string || "",
-        reference: formData.get("clientReference") as string || "",
-      };
-      
-      const currentContactData = {
-        name: formData.get("clientContact") as string || "",
-        email: formData.get("contactEmail") as string || "",
-        phone: formData.get("contactPhone") as string || "",
-        position: formData.get("contactPosition") as string || "",
-      };
-      
-      // Verificar si hay cambios en los datos del cliente
-      const clientDataChanged = 
-        currentClientData.name !== tempClientData.name ||
-        currentClientData.email !== tempClientData.email ||
-        currentClientData.phone !== tempClientData.phone ||
-        currentClientData.address !== tempClientData.address ||
-        currentClientData.cuit !== tempClientData.cuit ||
-        currentClientData.reference !== tempClientData.reference ||
-        currentContactData.name !== tempContactData.name ||
-        currentContactData.email !== tempContactData.email ||
-        currentContactData.phone !== tempContactData.phone ||
-        currentContactData.position !== tempContactData.position;
-      
-      if (clientDataChanged) {
-        // Actualizar datos temporales con los cambios
+    console.log(order.client);
+    // Obtener datos actuales del formulario del cliente
+    const currentClientData = {
+      name: formData.get("clientName") as string || "",
+      email: formData.get("clientEmail") as string || "",
+      phone: formData.get("clientPhone") as string || "",
+      address: formData.get("clientAddress") as string || "",
+      cuit: formData.get("clientCuit") as string || "",
+      reference: formData.get("clientReference") as string || "",
+    };
+    
+    const currentContactData = {
+      name: formData.get("clientContact") as string || "",
+      email: formData.get("contactEmail") as string || "",
+      phone: formData.get("contactPhone") as string || "",
+      position: formData.get("contactPosition") as string || "",
+    };
+    
+    // Datos originales del cliente para comparar
+    const originalClientData = {
+      name: order.clientName || order.client?.name || "",
+      email: order.email || order.client?.email || "",
+      phone: order.telefono || order.client?.phone || "",
+      address: order.direccion || order.client?.address || "",
+      cuit: order.cuit || order.client?.cuit || "",
+      reference: order.reference || order.client?.reference || "",
+    };
+    
+    const originalContactData = {
+      name: order.contact?.name || (order.client?.contacts?.[0]?.name) || "",
+      email: order.contact?.email || (order.client?.contacts?.[0]?.email) || "",
+      phone: order.contact?.phone || (order.client?.contacts?.[0]?.phone) || "",
+      position: order.contact?.position || (order.client?.contacts?.[0]?.position) || "",
+    };
+    
+    // Verificar si hay cambios en los datos del cliente
+    const clientDataChanged = 
+      currentClientData.name !== originalClientData.name ||
+      currentClientData.email !== originalClientData.email ||
+      currentClientData.phone !== originalClientData.phone ||
+      currentClientData.address !== originalClientData.address ||
+      currentClientData.cuit !== originalClientData.cuit ||
+      currentClientData.reference !== originalClientData.reference ||
+      currentContactData.name !== originalContactData.name ||
+      currentContactData.email !== originalContactData.email ||
+      currentContactData.phone !== originalContactData.phone ||
+      currentContactData.position !== originalContactData.position;
+    
+    // Si hay cambios en datos del cliente
+    if (clientDataChanged) {
+      if (clientExists) {
+        // Cliente existe en BD - actualizar directamente
+        console.log("👤 Cliente existe, actualizando en BD:", clientId);
+        await handleUpdateExistingClient(currentClientData, currentContactData, clientId, formData);
+        return;
+      } else {
+        // Cliente NO existe - preguntar si crear
+        console.log("❓ Cliente no existe, mostrando diálogo");
         setTempClientData(currentClientData);
         setTempContactData(currentContactData);
-        
-        // Mostrar diálogo para preguntar si guardar cliente
         setShowCreateClientDialog(true);
-        return; // No continuar con el guardado hasta que el usuario decida
+        return;
       }
     }
 
-    // console.log("💾 Iniciando guardado...");
+    // Solo llega aquí si NO hay cambios en datos del cliente
+    // Actualizar únicamente campos específicos de la orden
+    console.log("💾 Guardando cambios de orden (sin tocar datos del cliente)...");
     setLoading(true);
     try {
       
-      // Calcular totales basados en los items actuales
-      const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-      const taxAmount = items.reduce((sum, item) => sum + (item.taxAmount || 0), 0);
-      const total = subtotal; // El subtotal YA es el total final (no sumar IVA de nuevo)
-      
-      // Recalcular balance basado en el nuevo total
-      const downPayment = Number(formData.get("downPayment")) || 0;
-      const newBalance = total - downPayment;
-      
-      // Crear objeto base sin campos undefined
+      // Determinar qué campos actualizar según lo que cambió
       const updateData: any = {
         status: formData.get("status") as EOrderStatus,
-        paymentMethod: formData.get("paymentMethod") as EPaymentMethod,
         notes: (formData.get("notes") as string) || "",
-        items: items,
-        subtotal: subtotal,
-        total: total,
-        taxAmount: taxAmount,
-        downPayment: downPayment,
-        balance: newBalance, // Saldo recalculado automáticamente
-        // Información de facturación
-        isInvoiced: facturado,
         updatedAt: new Date(),
       };
+
+      // Solo agregar paymentMethod si cambió
+      const currentPaymentMethod = formData.get("paymentMethod") as EPaymentMethod;
+      if (currentPaymentMethod && currentPaymentMethod !== order.paymentMethod) {
+        updateData.paymentMethod = currentPaymentMethod;
+      }
+
+      // Solo recalcular totales SI los items cambiaron
+      const itemsChanged = JSON.stringify(items) !== JSON.stringify(order.items);
+      console.log("🔍 COMPARACIÓN DE ITEMS:");
+      console.log("📦 Items actuales (estado):", items);
+      console.log("📦 Items originales (order):", order.items);
+      console.log("🔄 ¿Cambiaron los items?:", itemsChanged);
+      
+      if (itemsChanged) {
+        console.log("📦 Items cambiaron, recalculando totales...");
+        
+        // Log detallado de cada item para el cálculo
+        items.forEach((item, index) => {
+          console.log(`🧮 Item ${index + 1} para cálculo:`, {
+            subtotal: item.subtotal,
+            taxAmount: item.taxAmount,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            isManual: item.isManual
+          });
+        });
+        
+        const subtotal = items.reduce((sum, item) => {
+          const itemSubtotal = item.subtotal || 0;
+          console.log(`➕ Sumando subtotal: ${sum} + ${itemSubtotal} = ${sum + itemSubtotal}`);
+          return sum + itemSubtotal;
+        }, 0);
+        
+        const taxAmount = items.reduce((sum, item) => {
+          const itemTax = item.taxAmount || 0;
+          console.log(`➕ Sumando tax: ${sum} + ${itemTax} = ${sum + itemTax}`);
+          return sum + itemTax;
+        }, 0);
+        
+        const total = subtotal;
+        
+        // Calcular balance preservando pagos existentes
+        const downPayment = Number(formData.get("downPayment")) || order.downPayment || 0;
+        const totalPagosExistentes = order.paymentHistory?.reduce((sum, pago) => sum + pago.amount, 0) || 0;
+        const newBalance = total - downPayment - totalPagosExistentes;
+        
+        updateData.items = items;
+        updateData.subtotal = subtotal;
+        updateData.total = total;
+        updateData.taxAmount = taxAmount;
+        updateData.downPayment = downPayment;
+        updateData.balance = newBalance;
+        
+        // console.log("💰 Totales recalculados:", { total, downPayment, totalPagosExistentes, newBalance });
+        // console.log("📦 ITEMS QUE SE VAN A GUARDAR EN LA ORDEN:");
+        // console.log("📊 Cantidad de items:", items.length);
+        // items.forEach((item, index) => {
+        //   console.log(`📋 Item ${index + 1}:`, {
+        //     id: item.id,
+        //     productName: item.productName,
+        //     product: item.product,
+        //     variant: item.variant,
+        //     variantName: item.variantName,
+        //     description: item.description,
+        //     quantity: item.quantity,
+        //     unitPrice: item.unitPrice,
+        //     subtotal: item.subtotal,
+        //     isManual: item.isManual,
+        //     categories: item.categories,
+        //     notes: item.notes
+        //   });
+        // });
+      } else {
+        console.log("📦 Items NO cambiaron, preservando datos financieros existentes");
+      }
 
       // Agregar campos de facturación solo si tienen valores válidos
       if (facturado && facturaNumero) {
@@ -615,12 +743,130 @@ export default function OrderDetailsModal({
         updateData.invoiceType = tipoFactura;
       }
 
-      await updateDoc(doc(firestore, collections.ORDERS, order!.id), updateData);
+      console.log("🚀 OBJETO COMPLETO QUE SE ACTUALIZA EN LA ORDEN:", updateData);
+      console.log("📊 Tamaño del objeto:", JSON.stringify(updateData).length, "caracteres");
+      console.log("🔍 Campos que se están actualizando:", Object.keys(updateData));
+      
+      // Limpiar campos undefined/null antes de enviar a Firestore
+      const cleanUpdateData: any = {};
+      Object.entries(updateData).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          cleanUpdateData[key] = value;
+        }
+      });
+      
+      console.log("🧹 OBJETO LIMPIO PARA FIREBASE:", cleanUpdateData);
+      console.log("📊 Tamaño del objeto limpio:", JSON.stringify(cleanUpdateData).length, "caracteres");
+      console.log("🔍 Campos que se van a actualizar (limpios):", Object.keys(cleanUpdateData));
+      
+      console.log("💾 Intentando guardar en Firestore...");
+      await updateDoc(doc(firestore, collections.ORDERS, order!.id), cleanUpdateData);
+      console.log("✅ Orden guardada exitosamente en Firestore");
       toast.success("Orden actualizada correctamente");
       setIsEditing(false);
     } catch (error) {
+      console.error("❌ ERROR al guardar en Firestore:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("📝 Mensaje de error:", errorMessage);
       toast.error(`Error al actualizar la orden: ${errorMessage}`);
+    } finally {
+      console.log("🏁 Finalizando handleSave");
+      setLoading(false);
+    }
+  };
+
+  // Actualizar cliente existente en BD y orden SIN datos financieros
+  const handleUpdateExistingClient = async (clientData: any, contactData: any, clientId: string, formData: FormData) => {
+    setLoading(true);
+    try {
+      // 1. Actualizar cliente en collections.CLIENTS
+      const clientUpdateData: any = {
+        name: clientData.name,
+        email: clientData.email || "",
+        phone: clientData.phone || "",
+        address: clientData.address || "",
+        cuit: clientData.cuit || "",
+        reference: clientData.reference || "",
+        updatedAt: new Date(),
+        id: clientId,
+      };
+      
+      console.log("👤 OBJETO CLIENTE QUE SE ACTUALIZA EN BD:", clientUpdateData);
+
+      // Actualizar contacto si existe
+      if (contactData.name) {
+        clientUpdateData.contacts = [{
+          name: contactData.name,
+          email: contactData.email || "",
+          phone: contactData.phone || "",
+          position: contactData.position || "",
+        }];
+      }
+
+      // Remover campos vacíos
+      Object.keys(clientUpdateData).forEach(key => {
+        if (clientUpdateData[key] === "" && key !== "updatedAt") {
+          delete clientUpdateData[key];
+        }
+      });
+
+      await updateDoc(doc(firestore, collections.CLIENTS, clientId), clientUpdateData);
+      console.log("✅ Cliente actualizado en BD:", clientId, clientUpdateData);
+
+      // 2. Actualizar la orden con los NUEVOS datos del cliente + campos específicos
+      const orderUpdateData: any = {
+        // Datos del cliente actualizados
+        clientName: clientData.name,
+        email: clientData.email || "",
+        telefono: clientData.phone || "",
+        direccion: clientData.address || "",
+        cuit: clientData.cuit || "",
+        referencia: clientData.reference || "",
+        contact: contactData.name ? {
+          name: contactData.name,
+          email: contactData.email || "",
+          phone: contactData.phone || "",
+          position: contactData.position || "",
+        } : null,
+        
+        // Campos específicos de la orden
+        status: formData.get("status") as EOrderStatus,
+        notes: (formData.get("notes") as string) || "",
+        updatedAt: new Date(),
+      };
+
+      // Agregar campos de facturación solo si tienen valores válidos
+      if (facturado && facturaNumero) {
+        orderUpdateData.invoiceNumber = facturaNumero;
+        orderUpdateData.isInvoiced = facturado;
+      }
+      
+      if (facturado && facturaFecha) {
+        orderUpdateData.invoiceDate = new Date(facturaFecha + 'T00:00:00');
+      }
+      
+      if (facturado && tipoFactura) {
+        orderUpdateData.invoiceType = tipoFactura;
+      }
+
+      console.log("🔄 ACTUALIZANDO ORDEN CON DATOS DEL CLIENTE:");
+      console.log("   📝 clientName:", clientData.name);
+      console.log("   📧 email:", clientData.email);
+      console.log("   📱 telefono:", clientData.phone);
+      console.log("   🏠 direccion:", clientData.address);
+      console.log("   🆔 cuit:", clientData.cuit);
+      console.log("   🏷️ referencia:", clientData.reference);
+      console.log("   👤 contact:", contactData.name ? contactData : "Sin contacto");
+      
+      await updateDoc(doc(firestore, collections.ORDERS, order!.id), orderUpdateData);
+      console.log("✅ Orden actualizada CON datos del cliente:", orderUpdateData);
+
+      toast.success("Cliente y orden actualizados correctamente");
+      setIsEditing(false);
+      
+    } catch (error) {
+      console.error("Error actualizando cliente/orden:", error);
+      toast.error("Error al actualizar los datos");
     } finally {
       setLoading(false);
     }
@@ -691,6 +937,57 @@ export default function OrderDetailsModal({
     setEditingItemId(null);
   };
 
+  const handleAddManualItem = () => {
+    if (!manualItemName || !manualItemQuantity || !manualItemPrice) {
+      toast.error("Por favor completa todos los campos requeridos");
+      return;
+    }
+
+    const newManualItem: TOrderItem = {
+      id: `manual_${Date.now()}`,
+      productName: manualItemName,
+      product: {
+        id: `manual_${Date.now()}`,
+        name: manualItemName,
+        description: manualItemDescription,
+        price: manualItemPrice,
+        variants: [],
+        categories: [],
+        stock: 0,
+        imageUrls: [],
+        hasVariants: false,
+        sku: `MANUAL_${Date.now()}`,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      } as TProduct,
+      // No incluir variant si es undefined para evitar errores de Firebase
+      variantName: manualItemMeasure || "Sin medida",
+      description: manualItemDescription,
+      quantity: manualItemQuantity,
+      unitPrice: manualItemPrice,
+      subtotal: manualItemQuantity * manualItemPrice,
+      tax: 0,
+      taxAmount: 0,
+      categories: [],
+      notes: "",
+      isManual: true
+    };
+
+    setItems(prev => [...prev, newManualItem]);
+    
+    // Limpiar formulario
+    setManualItemName("");
+    setManualItemMeasure("");
+    setManualItemDescription("");
+    setManualItemQuantity(1);
+    setManualItemPrice(0);
+    
+    // Cerrar modal
+    setIsAddingManualItem(false);
+    
+    toast.success("Item manual agregado exitosamente");
+  };
+
   const addItemToOrder = () => {
     if (!selectedProduct) return;
 
@@ -714,6 +1011,9 @@ export default function OrderDetailsModal({
       description: selectedProduct.description || "",
       categories: [],
       notes: itemNotes,
+      isManual: false,
+      productName: selectedProduct.name || "",
+      variantName: selectedVariant?.size || "", 
     };
 
     if (editingItemId) {
@@ -768,7 +1068,7 @@ export default function OrderDetailsModal({
     );
   }
 
-  console.log("🔍 Order:", order);
+  // console.log("🔍 Order:", clients);
   return (
     <>
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -793,7 +1093,7 @@ export default function OrderDetailsModal({
                   form="edit-order-form"
                   disabled={loading}
                   className="bg-green-600 hover:bg-green-700 text-white"
-                  onClick={() => console.log("🔘 Botón Guardar clickeado")}
+                  onClick={() => console.log("🔘 Botón Guardar clickeado - onClick")}
                 >
                   <Save className="h-4 w-4 mr-2" />
                   Guardar
@@ -814,13 +1114,20 @@ export default function OrderDetailsModal({
 
         {isEditing ? (
           // Modo edición
-          <form id="edit-order-form" onSubmit={handleSave}>
+          <form 
+            id="edit-order-form" 
+            onSubmit={(e) => {
+              console.log("📝 Formulario enviado - onSubmit");
+              console.log("🎯 Evento del formulario:", e);
+              handleSave(e);
+            }}
+          >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
                   <CardTitle>
                     Información del Cliente
-                    {(!order.clientId || order.clientId === null) && (
+                    {(!order.client?.ref && !order.clientId) && (
                       <span className="ml-2 text-sm text-orange-600 font-normal">
                         (Cliente temporal - editable)
                       </span>
@@ -835,7 +1142,7 @@ export default function OrderDetailsModal({
                         id="clientName"
                         name="clientName"
                         defaultValue={order.clientName || order.client?.name || ""}
-                        disabled={!!(order.clientId && order.clientId !== null)}
+                        // disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
                     <div>
@@ -843,8 +1150,8 @@ export default function OrderDetailsModal({
                       <Input
                         id="clientContact"
                         name="clientContact"
-                        defaultValue={order.contact?.name || getClientContact(order.client, "name") || ""}
-                        disabled={!!(order.clientId && order.clientId !== null)}
+                        defaultValue={order.contact?.name || getClientContact(order.client, "name") || fullClientData?.contacts?.[0]?.name || ""}
+                        // disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
                     <div>
@@ -852,8 +1159,8 @@ export default function OrderDetailsModal({
                       <Input
                         id="clientEmail"
                         name="clientEmail"
-                        defaultValue={order.email || order.contact?.email || getClientContact(order.client, "email") || ""}
-                        disabled={!!(order.clientId && order.clientId !== null)}
+                        defaultValue={order.email || order.contact?.email || getClientContact(order.client, "email") || fullClientData?.email || ""}
+                        // disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
                     <div>
@@ -861,8 +1168,8 @@ export default function OrderDetailsModal({
                       <Input
                         id="clientPhone"
                         name="clientPhone"
-                        defaultValue={order.telefono || order.contact?.phone || getClientContact(order.client, "phone") || ""}
-                        disabled={!!(order.clientId && order.clientId !== null)}
+                        defaultValue={order.telefono || order.contact?.phone || getClientContact(order.client, "phone") || fullClientData?.phone || ""}
+                        // disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
                     <div>
@@ -870,8 +1177,8 @@ export default function OrderDetailsModal({
                       <Input
                         id="clientAddress"
                         name="clientAddress"
-                        defaultValue={order.direccion || order.client?.address || ""}
-                        disabled={!!(order.clientId && order.clientId !== null)}
+                        defaultValue={order.direccion || order.client?.address || fullClientData?.address || ""}
+                        // disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
                     <div>
@@ -879,8 +1186,8 @@ export default function OrderDetailsModal({
                       <Input
                         id="clientCuit"
                         name="clientCuit"
-                        defaultValue={order.cuit || order.client?.cuit || ""}
-                        disabled={!!(order.clientId && order.clientId !== null)}
+                        defaultValue={order.cuit || order.client?.cuit || fullClientData?.cuit || ""}
+                        // disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
                     <div>
@@ -888,8 +1195,8 @@ export default function OrderDetailsModal({
                       <Input
                         id="clientReference"
                         name="clientReference"
-                        defaultValue={order.referencia || order.client?.reference || ""}
-                        disabled={!!(order.clientId && order.clientId !== null)}
+                        defaultValue={order.reference || order.client?.reference || fullClientData?.reference || ""}
+                        // disabled={!!(order.clientId && order.clientId !== null)}
                       />
                     </div>
                   </div>
@@ -1005,16 +1312,28 @@ export default function OrderDetailsModal({
               <CardHeader>
                 <CardTitle className="flex justify-between items-center">
                   Productos
-                  <Button
-                    className="bg-blue-900 hover:bg-blue-700 text-white"
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsAddingProduct(true)}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Agregar Producto
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      className="bg-blue-900 hover:bg-blue-700 text-white"
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsAddingProduct(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar Producto
+                    </Button>
+                    <Button
+                      className="bg-green-700 hover:bg-green-600 text-white"
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsAddingManualItem(true)}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Item Manual
+                    </Button>
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1151,7 +1470,109 @@ export default function OrderDetailsModal({
                   </div>
                 )}
 
+                {/* Modal para items manuales */}
+                {isAddingManualItem && (
+                  <div className="mb-6 p-4 border rounded-lg bg-gray-50">
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium text-gray-900">Agregar Item Manual</h3>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="manualName">Nombre del producto</Label>
+                          <Input
+                            id="manualName"
+                            placeholder="Ej: Bandera personalizada"
+                            value={manualItemName}
+                            onChange={(e) => setManualItemName(e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="manualMeasure">Medida</Label>
+                          <Input
+                            id="manualMeasure"
+                            placeholder="Ej: 90x1,40"
+                            value={manualItemMeasure}
+                            onChange={(e) => setManualItemMeasure(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="manualDescription">Descripción</Label>
+                        <Textarea
+                          id="manualDescription"
+                          placeholder="Descripción del producto..."
+                          value={manualItemDescription}
+                          onChange={(e) => setManualItemDescription(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="manualQuantity">Cantidad</Label>
+                          <Input
+                            id="manualQuantity"
+                            type="number"
+                            min="1"
+                            placeholder="1"
+                            value={manualItemQuantity}
+                            onChange={(e) => setManualItemQuantity(Number(e.target.value))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="manualPrice">Precio unitario</Label>
+                          <Input
+                            id="manualPrice"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={manualItemPrice}
+                            onChange={(e) => setManualItemPrice(Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="border-t pt-4">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">Precio total:</span>
+                          <span className="text-lg font-bold text-blue-600">
+                            {formatearPrecio(manualItemQuantity * manualItemPrice)}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          onClick={handleAddManualItem}
+                          disabled={!manualItemName || !manualItemQuantity || !manualItemPrice}
+                          className="bg-green-700 hover:bg-green-600 text-white"
+                        >
+                          Agregar Item Manual
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsAddingManualItem(false)}
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Tabla de productos */}
+                <div className="mb-4 p-2 bg-gray-100 rounded">
+                  <p className="text-sm text-gray-600">
+                    📊 Estado actual: {items.length} items en estado local
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    📋 Items del estado: {JSON.stringify(items.map(item => ({ id: item.id, name: item.productName || item.product?.name })))}
+                  </p>
+                </div>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -1168,15 +1589,15 @@ export default function OrderDetailsModal({
                       <TableRow key={item.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{item.product.name}</p>
-                            {item.variant && (
-                              <p className="text-sm text-slate-500">
-                                Medida: {item.variant.size}
-                              </p>
+                            <p className="font-medium">{item.product?.name || item.productName}</p>
+                            {(item.variant || item.variantName) && (
+                                <p className="text-sm text-slate-500">
+                                  Medida: {item.variant?.size || item.variantName}
+                                </p>
                             )}
-                            {item.notes && (
+                            {(item.notes || item.description) && (
                               <p className="text-xs text-slate-500 mt-1">
-                                Nota: {item.notes}
+                                Nota: {item.notes || item.description}
                               </p>
                             )}
                           </div>
@@ -1314,7 +1735,7 @@ export default function OrderDetailsModal({
                 <CardHeader>
                   <CardTitle>
                     Información del Cliente
-                    {(!order.clientId || order.clientId === null) && (
+                    {(!order.client?.ref && !order.clientId) && (
                       <span className="ml-2 text-sm text-orange-600 font-normal">
                         (Cliente temporal)
                       </span>
@@ -1332,12 +1753,12 @@ export default function OrderDetailsModal({
                       <p className="text-slate-600">
                         Contacto: {order.contact?.name || order.client?.contacts?.[0]?.name}
                       </p>
-                      {(order.contact?.email || order.client?.contacts?.[0]?.email) && (
+                      {(order.contact?.email || order.client?.contacts?.[0]?.email || fullClientData?.email) && (
                         <p className="text-slate-600">
                           Email contacto: {order.contact?.email || order.client?.contacts?.[0]?.email}
                         </p>
                       )}
-                      {(order.contact?.phone || order.client?.contacts?.[0]?.phone) && (
+                      {(order.contact?.phone || order.client?.contacts?.[0]?.phone || fullClientData?.phone) && (
                         <p className="text-slate-600">
                           Teléfono contacto: {order.contact?.phone || order.client?.contacts?.[0]?.phone}
                         </p>
@@ -1346,33 +1767,33 @@ export default function OrderDetailsModal({
                   )}
                   
                   {/* Datos directos del cliente */}
-                  {(order.telefono || order.client?.phone) && (
+                  {(order.telefono || order.client?.phone || fullClientData?.phone) && (
                     <p className="text-slate-600">
-                      Teléfono: {order.telefono || order.client?.phone}
+                      Teléfono: {order.telefono || order.client?.phone || fullClientData?.phone}
                     </p>
                   )}
                   
-                  {(order.email || order.client?.email) && (
+                  {(order.email || order.client?.email || fullClientData?.email) && (
                     <p className="text-slate-600">
-                      Email: {order.email || order.client?.email}
+                      Email: {order.email || order.client?.email || fullClientData?.email}
                     </p>
                   )}
                 
-                  {(order.direccion || order.client?.address) && (
+                  {(order.direccion || order.client?.address || fullClientData?.address) && (
                     <p className="text-slate-600">
-                      Dirección: {order.direccion || order.client?.address}
+                      Dirección: {order.direccion || order.client?.address || fullClientData?.address}
                     </p>
                   )}
                   
-                  {(order.cuit || order.client?.cuit) && (
+                  {(order.cuit || order.client?.cuit || fullClientData?.cuit) && (
                     <p className="text-slate-600">
-                      CUIT/CUIL: {order.cuit || order.client?.cuit}
+                      CUIT/CUIL: {order.cuit || order.client?.cuit || fullClientData?.cuit}
                     </p>
                   )}
                   
-                  {(order.referencia || order.client?.reference) && (
+                  {(order.referencia || order.client?.reference || fullClientData?.reference  ) && (
                     <p className="text-slate-600">
-                      Referencia: {order.referencia || order.client?.reference}
+                      Referencia: {order.referencia || order.client?.reference || fullClientData?.reference}
                     </p>
                   )}
                 </CardContent>
@@ -1456,16 +1877,16 @@ export default function OrderDetailsModal({
                     {order.items.map((item: any) => (
                       <TableRow key={item.id}>
                         <TableCell>
-                          <div>
-                            <p className="font-medium">{item.product.name}</p>
-                            {item.variant && (
-                              <p className="text-sm text-slate-500">
-                                Medida: {item.variant.size}
-                              </p>
+                        <div>
+                            <p className="font-medium">{item.product?.name || item.productName}</p>
+                            {(item.variant || item.variantName) && (
+                                <p className="text-sm text-slate-500">
+                                  Medida: {item.variant?.size || item.variantName}
+                                </p>
                             )}
-                            {item.notes && (
+                            {(item.notes || item.description) && (
                               <p className="text-xs text-slate-500 mt-1">
-                                Nota: {item.notes}
+                                Nota: {item.notes || item.description}
                               </p>
                             )}
                           </div>

@@ -41,13 +41,22 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, Plus, Trash2, Edit, ArrowLeft, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Trash2,
+  Edit,
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { formatearPrecio, redondearTotal } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TProduct, TProductVariant, TProductCategory } from "@/types/product";
 // import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { ref } from "firebase/database";
 
 export default function NuevaOrdenPage() {
   const firestore = useFirestore();
@@ -62,6 +71,22 @@ export default function NuevaOrdenPage() {
     { idField: "id" }
   );
 
+  const mappedClients = clients?.map((client) => ({
+    ref: doc(firestore, collections.CLIENTS, client.id),
+    id: client.id,
+    name: client.name,
+    reference: client.reference,
+    address: client.address,
+    email: client.email,
+    phone: client.phone,
+    cuit: client.cuit,
+    contacts: client.contacts,
+    type: client.type,
+    status: client.status,
+  }));
+
+  console.log("Aca traigo todos los clientes", mappedClients);
+
   // Presupuestos (quotes)
   const quotesCollection = collection(firestore, collections.QUOTES);
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -75,6 +100,7 @@ export default function NuevaOrdenPage() {
 
   // Estados para los campos principales (placeholder, lógica a implementar)
   const [cliente, setCliente] = useState("");
+
   const [personaContacto, setPersonaContacto] = useState("");
   const [direccion, setDireccion] = useState("");
   const [email, setEmail] = useState("");
@@ -107,7 +133,7 @@ export default function NuevaOrdenPage() {
   const clienteInputRef = useRef<HTMLInputElement>(null);
   const [telefono, setTelefono] = useState("");
   const [referencia, setReferencia] = useState("");
-  
+
   // Estados para contacto
   const [contactoNombre, setContactoNombre] = useState("");
   const [contactoEmail, setContactoEmail] = useState("");
@@ -117,7 +143,15 @@ export default function NuevaOrdenPage() {
   // Estados para Items
   const [items, setItems] = useState<any[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
+  const [isAddingManualItem, setIsAddingManualItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  
+  // Estados para item manual
+  const [manualItemName, setManualItemName] = useState("");
+  const [manualItemMeasure, setManualItemMeasure] = useState("");
+  const [manualItemDescription, setManualItemDescription] = useState("");
+  const [manualItemQuantity, setManualItemQuantity] = useState(1);
+  const [manualItemPrice, setManualItemPrice] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<TProduct | null>(null);
   const [selectedVariant, setSelectedVariant] =
     useState<TProductVariant | null>(null);
@@ -130,7 +164,7 @@ export default function NuevaOrdenPage() {
   const [manualDiscount, setManualDiscount] = useState(0);
   const [banco, setBanco] = useState("");
   const [tipoFactura, setTipoFactura] = useState("");
-  
+
   const BANCOS = ["Galicia", "Frances"];
 
   // Firestore
@@ -152,17 +186,17 @@ export default function NuevaOrdenPage() {
 
   // Calcular totales
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-  
+
   // Calcular IVA desde precio final cuando aplica
   let taxAmount = 0;
   let subtotalSinIVA = subtotal;
-  
+
   if (applyIVA) {
     const taxRate = parseFloat(iva);
     taxAmount = subtotal * (taxRate / (100 + taxRate));
     subtotalSinIVA = subtotal - taxAmount;
   }
-  
+
   // Calcular descuentos
   const discountAmount = subtotalSinIVA * (discountPercentage / 100);
   const total = subtotal - discountAmount - manualDiscount;
@@ -236,9 +270,14 @@ export default function NuevaOrdenPage() {
   const handleSelectClient = (clientId: string) => {
     setSelectedClientId(clientId);
     setCliente(clientId);
-    const client = clients?.find((c: any) => c.id === clientId);
+    const client = mappedClients?.find((c: any) => c.id === clientId);
     const contacto = client?.contacts?.[0];
-    
+
+    console.log("Cliente seleccionado:", client); // Debug
+
+    // console.log("Referencia del cliente:", client?.reference); // Debug
+    // console.log("Todos los campos del cliente:", Object.keys(client || {})); // Debug
+
     // Precargar datos del cliente
     setPersonaContacto(contacto?.name || "");
     setDireccion(client?.address || "");
@@ -246,7 +285,7 @@ export default function NuevaOrdenPage() {
     setCuit(client?.cuit || "");
     setTelefono(client?.phone || "");
     setReferencia(client?.reference || "");
-    
+
     // Precargar datos del contacto
     setContactoNombre(contacto?.name || "");
     setContactoEmail(contacto?.email || "");
@@ -326,13 +365,25 @@ export default function NuevaOrdenPage() {
   const [showCreateClientDialog, setShowCreateClientDialog] = useState(false);
   const [pendingOrderData, setPendingOrderData] = useState<any>(null);
   const [isOrderDetailsCollapsed, setIsOrderDetailsCollapsed] = useState(true);
-  const [isContactDetailsCollapsed, setIsContactDetailsCollapsed] = useState(true);
+  const [isContactDetailsCollapsed, setIsContactDetailsCollapsed] =
+    useState(true);
 
   useEffect(() => {
-    if(facturaNumero.length > 0){
+    if (facturaNumero.length > 0) {
       setFacturado(true);
     }
   }, [facturaNumero]);
+
+  // Resetear formulario de item manual cuando se cierra el modal
+  useEffect(() => {
+    if (!isAddingManualItem) {
+      setManualItemName("");
+      setManualItemMeasure("");
+      setManualItemDescription("");
+      setManualItemQuantity(1);
+      setManualItemPrice(0);
+    }
+  }, [isAddingManualItem]);
 
   // Función para crear un nuevo cliente
   const createNewClient = async () => {
@@ -346,22 +397,26 @@ export default function NuevaOrdenPage() {
         address: direccion || null,
         cuit: cuit || null,
         reference: referencia || null,
-        contacts: contactoNombre ? [{
-          name: contactoNombre,
-          email: contactoEmail || "",
-          phone: contactoTelefono || "",
-          position: contactoPosicion || ""
-        }] : [],
+        contacts: contactoNombre
+          ? [
+              {
+                name: contactoNombre,
+                email: contactoEmail || "",
+                phone: contactoTelefono || "",
+                position: contactoPosicion || "",
+              },
+            ]
+          : [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
       const clientsCollection = collection(firestore, collections.CLIENTS);
       const docRef = await addDoc(clientsCollection, newClientData);
-      
+
       return {
         id: docRef.id,
-        ...newClientData
+        ...newClientData,
       };
     } catch (error) {
       console.error("Error creando cliente:", error);
@@ -369,7 +424,7 @@ export default function NuevaOrdenPage() {
     }
   };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
     if (!clienteInput || items.length === 0) {
@@ -380,12 +435,13 @@ export default function NuevaOrdenPage() {
       toast.error("Debes estar logueado para crear una orden");
       return;
     }
-    
+
     // Verificar si el cliente existe en la DB
-    const existingClient = clients?.find((c: any) => 
-      c.id === cliente || c.name.toLowerCase() === clienteInput.toLowerCase()
+    const existingClient = clients?.find(
+      (c: any) =>
+        c.id === cliente || c.name.toLowerCase() === clienteInput.toLowerCase()
     );
-    
+
     if (!existingClient && !cliente) {
       // El cliente no existe, mostrar diálogo de confirmación
       const orderData = await prepareOrderData();
@@ -393,7 +449,7 @@ export default function NuevaOrdenPage() {
       setShowCreateClientDialog(true);
       return;
     }
-    
+
     // El cliente existe o ya está seleccionado, proceder normalmente
     await saveOrder();
   };
@@ -403,32 +459,39 @@ export default function NuevaOrdenPage() {
     const orderNumber = `O-${new Date().getFullYear()}-${Math.floor(
       1000 + Math.random() * 9000
     )}`;
-    
+
     // Buscar cliente seleccionado o crear objeto temporal
     const clientObj = clients?.find((c: any) => c.id === cliente) || {
-      id: null,
-      name: clienteInput,
-      email,
-      phone: telefono,
-      address: direccion,
-      cuit,
-      reference: referencia,
+      // id: null,
+      // name: clienteInput,
+      // email,
+      // phone: telefono,
+      // address: direccion,
+      // cuit,
+      // reference: referencia,
+      ref: doc(firestore, collections.CLIENTS, cliente)
     };
 
     // Crear contacto si se proporcionaron datos
-    const contactData = contactoNombre ? {
-      name: contactoNombre,
-      email: contactoEmail,
-      phone: contactoTelefono,
-      position: contactoPosicion
-    } : null;
+    const contactData = contactoNombre
+      ? {
+          // name: contactoNombre,
+          // email: contactoEmail,
+          // phone: contactoTelefono,
+          // position: contactoPosicion,
+          ref: doc(firestore, collections.CLIENTS, cliente)
+        }
+      : null;
 
     // Crear un nuevo objeto cliente con el contacto
     const clientWithSelectedContact = {
-      ...clientObj,
       contacts: contactData ? [contactData] : [],
+      ref: doc(firestore, collections.CLIENTS, cliente),
+      name: clientObj.name,
+      reference: clientObj.reference,
     };
 
+    // Si el cliente existe, usar su referencia
     return {
       number: orderNumber,
       client: clientWithSelectedContact,
@@ -438,9 +501,7 @@ export default function NuevaOrdenPage() {
       taxRate: parseFloat(iva),
       taxAmount: redondearTotal(taxAmount),
       total: redondearTotal(total),
-      // Información de IVA
       applyIVA,
-      // Información de descuentos
       discountPercentage,
       discountAmount: redondearTotal(discountAmount),
       manualDiscount: redondearTotal(manualDiscount),
@@ -468,7 +529,7 @@ export default function NuevaOrdenPage() {
   const saveOrder = async (orderData?: any) => {
     setLoading(true);
     try {
-      const dataToSave = orderData || await prepareOrderData();
+      const dataToSave = orderData || (await prepareOrderData());
       const ordersCollection = collection(firestore, collections.ORDERS);
       await addDoc(ordersCollection, dataToSave);
       toast.success("Orden guardada con éxito");
@@ -488,27 +549,34 @@ export default function NuevaOrdenPage() {
     try {
       // Crear el cliente nuevo
       const newClient = await createNewClient();
-      
-      // Actualizar los datos de la orden con el cliente creado
+
+      // Actualizar los datos de la orden con la referencia del cliente
       const updatedOrderData = {
         ...pendingOrderData,
         client: {
           ...newClient,
-          contacts: contactoNombre ? [{
-            name: contactoNombre,
-            email: contactoEmail,
-            phone: contactoTelefono,
-            position: contactoPosicion
-          }] : [],
-        }
+          contacts: contactoNombre
+            ? [
+                {
+                  name: contactoNombre,
+                  email: contactoEmail,
+                  phone: contactoTelefono,
+                  position: contactoPosicion,
+                },
+              ]
+            : [],
+        },
       };
-      
+
       // Guardar la orden
       await saveOrder(updatedOrderData);
       setShowCreateClientDialog(false);
       setPendingOrderData(null);
     } catch (error) {
-      toast.error("Error al crear cliente y orden: " + (error instanceof Error ? error.message : "Error desconocido"));
+      toast.error(
+        "Error al crear cliente y orden: " +
+          (error instanceof Error ? error.message : "Error desconocido")
+      );
       setLoading(false);
     }
   };
@@ -519,12 +587,64 @@ export default function NuevaOrdenPage() {
       setShowCreateClientDialog(false);
       setPendingOrderData(null);
     } catch (error) {
-      toast.error("Error al guardar la orden: " + (error instanceof Error ? error.message : "Error desconocido"));
+      toast.error(
+        "Error al guardar la orden: " +
+          (error instanceof Error ? error.message : "Error desconocido")
+      );
     }
   };
 
+  const handleAddManualItem = () => {
+    console.log("🚀 handleAddManualItem ejecutado");
+    console.log("📝 Datos del formulario:", {
+      name: manualItemName,
+      measure: manualItemMeasure,
+      description: manualItemDescription,
+      quantity: manualItemQuantity,
+      price: manualItemPrice
+    });
 
-console.log(clients)
+    if (!manualItemName || !manualItemQuantity || !manualItemPrice) {
+      console.log("❌ Validación falló - campos faltantes");
+      toast.error("Por favor completa todos los campos requeridos");
+      return;
+    }
+
+    const newManualItem = {
+      id: `manual_${Date.now()}`,
+      productId: `manual_${Date.now()}`,
+      productName: manualItemName,
+      variantId: null,
+      variantName: manualItemMeasure || "Sin medida",
+      description: manualItemDescription,
+      quantity: manualItemQuantity,
+      unitPrice: manualItemPrice,
+      subtotal: manualItemQuantity * manualItemPrice,
+      isManual: true
+    };
+
+    console.log("✅ Item manual creado:", newManualItem);
+
+    setItems(prev => {
+      console.log("📦 Items anteriores:", prev);
+      const newItems = [...prev, newManualItem];
+      console.log("📦 Items actualizados:", newItems);
+      return newItems;
+    });
+    
+    // Limpiar formulario
+    setManualItemName("");
+    setManualItemMeasure("");
+    setManualItemDescription("");
+    setManualItemQuantity(1);
+    setManualItemPrice(0);
+    
+    // Cerrar modal
+    setIsAddingManualItem(false);
+    
+    console.log("🎉 Item manual agregado exitosamente");
+    toast.success("Item manual agregado exitosamente");
+  };
 
   return (
     <div className="p-6">
@@ -555,7 +675,10 @@ console.log(clients)
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showCreateClientDialog} onOpenChange={setShowCreateClientDialog}>
+      <Dialog
+        open={showCreateClientDialog}
+        onOpenChange={setShowCreateClientDialog}
+      >
         <DialogContent className="max-w-md p-6">
           <DialogHeader>
             <DialogTitle>Cliente no encontrado</DialogTitle>
@@ -773,23 +896,27 @@ console.log(clients)
               </div>
               <div className="space-y-2">
                 <Label>Referencia</Label>
-                <Input 
-                  value={referencia} 
+                <Input
+                  value={referencia}
                   onChange={(e) => setReferencia(e.target.value)}
                   placeholder="Referencia del cliente..."
                 />
               </div>
             </div>
-            
+
             {/* Sección de Contacto */}
             <div className="border-t pt-4 mt-4">
               <div className="flex items-center gap-2 mb-3">
-                <h4 className="text-sm font-medium text-gray-700">Datos del Contacto (Opcional)</h4>
+                <h4 className="text-sm font-medium text-gray-700">
+                  Datos del Contacto (Opcional)
+                </h4>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() => setIsContactDetailsCollapsed(!isContactDetailsCollapsed)}
+                  onClick={() =>
+                    setIsContactDetailsCollapsed(!isContactDetailsCollapsed)
+                  }
                   className="p-1 h-6 w-6"
                 >
                   {isContactDetailsCollapsed ? (
@@ -800,45 +927,45 @@ console.log(clients)
                 </Button>
               </div>
               {!isContactDetailsCollapsed && (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nombre del contacto</Label>
-                  <Input
-                    value={contactoNombre}
-                    onChange={(e) => setContactoNombre(e.target.value)}
-                    placeholder="Nombre completo..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Posición/Cargo</Label>
-                  <Input
-                    value={contactoPosicion}
-                    onChange={(e) => setContactoPosicion(e.target.value)}
-                    placeholder="Ej: Gerente, Encargado..."
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                <div className="space-y-2">
-                  <Label>Email del contacto</Label>
-                  <Input
-                    type="email"
-                    value={contactoEmail}
-                    onChange={(e) => setContactoEmail(e.target.value)}
-                    placeholder="email@ejemplo.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Teléfono del contacto</Label>
-                  <Input
-                    value={contactoTelefono}
-                    onChange={(e) => setContactoTelefono(e.target.value)}
-                    placeholder="Teléfono directo..."
-                  />
-                </div>
-              </div>
-              </>
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Nombre del contacto</Label>
+                      <Input
+                        value={contactoNombre}
+                        onChange={(e) => setContactoNombre(e.target.value)}
+                        placeholder="Nombre completo..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Posición/Cargo</Label>
+                      <Input
+                        value={contactoPosicion}
+                        onChange={(e) => setContactoPosicion(e.target.value)}
+                        placeholder="Ej: Gerente, Encargado..."
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div className="space-y-2">
+                      <Label>Email del contacto</Label>
+                      <Input
+                        type="email"
+                        value={contactoEmail}
+                        onChange={(e) => setContactoEmail(e.target.value)}
+                        placeholder="email@ejemplo.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Teléfono del contacto</Label>
+                      <Input
+                        value={contactoTelefono}
+                        onChange={(e) => setContactoTelefono(e.target.value)}
+                        placeholder="Teléfono directo..."
+                      />
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </CardContent>
@@ -852,7 +979,9 @@ console.log(clients)
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsOrderDetailsCollapsed(!isOrderDetailsCollapsed)}
+                onClick={() =>
+                  setIsOrderDetailsCollapsed(!isOrderDetailsCollapsed)
+                }
                 className="p-1 h-8 w-8"
               >
                 {isOrderDetailsCollapsed ? (
@@ -865,96 +994,198 @@ console.log(clients)
           </CardHeader>
           {!isOrderDetailsCollapsed && (
             <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Fecha de entrada</Label>
-                <Input type="date" value={fechaEntrada} disabled />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Fecha de entrada</Label>
+                  <Input type="date" value={fechaEntrada} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fecha de entrega</Label>
+                  <Input
+                    type="date"
+                    value={fechaEntrega}
+                    onChange={(e) => setFechaEntrega(e.target.value)}
+                  />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label>Fecha de entrega</Label>
-                <Input
-                  type="date"
-                  value={fechaEntrega}
-                  onChange={(e) => setFechaEntrega(e.target.value)}
+                <Label>Presupuesto</Label>
+                <Select
+                  value={presupuestoId}
+                  onValueChange={(value) => handleSelectQuote(value)}
+                  disabled={!cliente}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Seleccionar presupuesto..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin presupuesto</SelectItem>
+                    {quotes &&
+                      quotes
+                        .filter((q: any) => q.client?.id === cliente)
+                        .sort((a: any, b: any) => {
+                          const aDate = a.createdAt?.seconds
+                            ? a.createdAt.seconds
+                            : 0;
+                          const bDate = b.createdAt?.seconds
+                            ? b.createdAt.seconds
+                            : 0;
+                          return bDate - aDate;
+                        })
+                        .map((q: any) => (
+                          <SelectItem key={q.id} value={q.id}>
+                            {q.number}
+                          </SelectItem>
+                        ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    disabled={!cliente}
+                    variant="link"
+                    className="p-0"
+                    onClick={() =>
+                      router.push("/publimar/banderas/presupuestos/nuevo")
+                    }
+                    name="Agregar presupuesto"
+                    title="Agregar presupuesto"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke-width="1.5"
+                      stroke="currentColor"
+                      className="size-6"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z"
+                      />
+                    </svg>
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Detalles</Label>
+                <Textarea
+                  value={detalle}
+                  onChange={(e) => setDetalle(e.target.value)}
+                  placeholder="Incluye cualquier detalle o especificación adicional..."
+                  rows={3}
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Presupuesto</Label>
-              <Select
-                value={presupuestoId}
-                onValueChange={(value) => handleSelectQuote(value)}
-                disabled={!cliente}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Seleccionar presupuesto..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin presupuesto</SelectItem>
-                  {quotes &&
-                    quotes
-                      .filter((q: any) => q.client?.id === cliente)
-                      .sort((a: any, b: any) => {
-                        const aDate = a.createdAt?.seconds
-                          ? a.createdAt.seconds
-                          : 0;
-                        const bDate = b.createdAt?.seconds
-                          ? b.createdAt.seconds
-                          : 0;
-                        return bDate - aDate;
-                      })
-                      .map((q: any) => (
-                        <SelectItem key={q.id} value={q.id}>
-                          {q.number}
-                        </SelectItem>
-                      ))}
-                </SelectContent>
-              </Select>
-              <div className="flex gap-2 mt-2">
-                <Button
-                  disabled={!cliente}
-                  variant="link"
-                  className="p-0"
-                  onClick={() =>
-                    router.push("/publimar/banderas/presupuestos/nuevo")
-                  }
-                  name="Agregar presupuesto"
-                  title="Agregar presupuesto"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                    stroke="currentColor"
-                    className="size-6"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z"
-                    />
-                  </svg>
-                </Button>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Detalles</Label>
-              <Textarea
-                value={detalle}
-                onChange={(e) => setDetalle(e.target.value)}
-                placeholder="Incluye cualquier detalle o especificación adicional..."
-                rows={3}
-              />
-            </div>
-          </CardContent>
+            </CardContent>
           )}
         </Card>
 
         <Card className="mb-6">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Items</CardTitle>
-            <Dialog open={isAddingItem} onOpenChange={handleModalClose}>
+            <div className="flex gap-2">
+              <Dialog open={isAddingManualItem} onOpenChange={setIsAddingManualItem}>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> Item manual
+                  </Button>
+                </DialogTrigger>
+               <DialogContent className="sm:max-w-[500px]">
+                 <DialogHeader>
+                   <DialogTitle>Agregar item manual</DialogTitle>
+                 </DialogHeader>
+                 <div className="py-4 space-y-4">
+                   <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                       <Label htmlFor="manualName">Nombre del producto</Label>
+                       <Input
+                         id="manualName"
+                         placeholder="Ej: Bandera personalizada"
+                         value={manualItemName}
+                         onChange={(e) => setManualItemName(e.target.value)}
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <Label htmlFor="manualMeasure">Medida</Label>
+                       <Input
+                         id="manualMeasure"
+                         placeholder="Ej: 90x1,40"
+                         value={manualItemMeasure}
+                         onChange={(e) => setManualItemMeasure(e.target.value)}
+                       />
+                     </div>
+                   </div>
+                   
+                   <div className="space-y-2">
+                     <Label htmlFor="manualDescription">Descripción</Label>
+                     <Textarea
+                       id="manualDescription"
+                       placeholder="Descripción del producto..."
+                       value={manualItemDescription}
+                       onChange={(e) => setManualItemDescription(e.target.value)}
+                       rows={3}
+                     />
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                       <Label htmlFor="manualQuantity">Cantidad</Label>
+                       <Input
+                         id="manualQuantity"
+                         type="number"
+                         min="1"
+                         placeholder="1"
+                         value={manualItemQuantity}
+                         onChange={(e) => setManualItemQuantity(Number(e.target.value))}
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <Label htmlFor="manualPrice">Precio unitario</Label>
+                       <Input
+                         id="manualPrice"
+                         type="number"
+                         min="0"
+                         step="0.01"
+                         placeholder="0.00"
+                         value={manualItemPrice}
+                         onChange={(e) => setManualItemPrice(Number(e.target.value))}
+                       />
+                     </div>
+                   </div>
+                   
+                   <div className="border-t pt-4">
+                     <div className="flex justify-between items-center">
+                       <span className="font-medium">Precio total:</span>
+                       <span className="text-lg font-bold text-blue-600">
+                         {formatearPrecio(manualItemQuantity * manualItemPrice)}
+                       </span>
+                     </div>
+                   </div>
+                 </div>
+                 
+                 <DialogFooter>
+                   <Button
+                     variant="outline"
+                     onClick={() => setIsAddingManualItem(false)}
+                   >
+                     Cancelar
+                   </Button>
+                   <Button
+                     onClick={handleAddManualItem}
+                     disabled={!manualItemName || !manualItemQuantity || !manualItemPrice}
+                     className="bg-blue-900 hover:bg-blue-700 text-white"
+                   >
+                     Agregar item
+                   </Button>
+                 </DialogFooter>
+               </DialogContent>
+              </Dialog>
+              <Dialog open={isAddingItem} onOpenChange={handleModalClose}>
               <DialogTrigger asChild>
                 <Button
                   type="button"
@@ -1225,6 +1456,7 @@ console.log(clients)
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            </div>
           </CardHeader>
           <CardContent>
             {items.length === 0 ? (
@@ -1249,16 +1481,34 @@ console.log(clients)
                       <TableRow key={item.id}>
                         <TableCell>
                           <div>
-                            <p className="font-medium">{item.product.name}</p>
-                            {item.variant && (
-                              <p className="text-sm text-slate-500">
-                                Variante: {item.variant.size}
-                              </p>
+                            <p className="font-medium">
+                              {item.isManual ? item.productName : item.product?.name}
+                            </p>
+                            {item.isManual ? (
+                              item.variantName && item.variantName !== "Sin medida" && (
+                                <p className="text-sm text-slate-500">
+                                  Medida: {item.variantName}
+                                </p>
+                              )
+                            ) : (
+                              item.variant && (
+                                <p className="text-sm text-slate-500">
+                                  Variante: {item.variant.size}
+                                </p>
+                              )
                             )}
-                            {item.notes && (
-                              <p className="text-xs text-slate-500 mt-1">
-                                Nota: {item.notes}
-                              </p>
+                            {item.isManual ? (
+                              item.description && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  {item.description}
+                                </p>
+                              )
+                            ) : (
+                              item.notes && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  Nota: {item.notes}
+                                </p>
+                              )
                             )}
                           </div>
                         </TableCell>
@@ -1309,13 +1559,15 @@ console.log(clients)
                   <p className="text-gray-700">Subtotal</p>
                   <p className="font-semibold">{formatearPrecio(subtotal)}</p>
                 </div>
-                
+
                 <div className="flex items-center justify-between border-b pb-2">
                   <div className="flex items-center gap-3">
                     <Checkbox
                       id="applyIVA"
                       checked={applyIVA}
-                      onCheckedChange={(checked) => setApplyIVA(checked as boolean)}
+                      onCheckedChange={(checked) =>
+                        setApplyIVA(checked as boolean)
+                      }
                       className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                     />
                     <Label htmlFor="applyIVA" className="text-sm text-gray-700">
@@ -1323,20 +1575,27 @@ console.log(clients)
                     </Label>
                   </div>
                   <p className="text-sm text-gray-600">
-                    {applyIVA ? `${formatearPrecio(redondearTotal(taxAmount))}` : '$ 0,00'}
+                    {applyIVA
+                      ? `${formatearPrecio(redondearTotal(taxAmount))}`
+                      : "$ 0,00"}
                   </p>
                 </div>
 
                 {applyIVA && (
                   <div className="flex justify-between items-center text-sm pl-6">
                     <p className="text-gray-600">Subtotal sin IVA</p>
-                    <p className="font-medium">{formatearPrecio(redondearTotal(subtotalSinIVA))}</p>
+                    <p className="font-medium">
+                      {formatearPrecio(redondearTotal(subtotalSinIVA))}
+                    </p>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Label htmlFor="discount" className="text-sm text-gray-700 w-24">
+                    <Label
+                      htmlFor="discount"
+                      className="text-sm text-gray-700 w-24"
+                    >
                       Descuento (%)
                     </Label>
                     <Input
@@ -1345,17 +1604,24 @@ console.log(clients)
                       min="0"
                       max="100"
                       value={discountPercentage}
-                      onChange={(e) => setDiscountPercentage(Number(e.target.value))}
+                      onChange={(e) =>
+                        setDiscountPercentage(Number(e.target.value))
+                      }
                       className="w-16 h-8 text-center text-sm"
                       placeholder="0"
                     />
                   </div>
-                  <p className="text-red-600">-{formatearPrecio(redondearTotal(discountAmount))}</p>
+                  <p className="text-red-600">
+                    -{formatearPrecio(redondearTotal(discountAmount))}
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Label htmlFor="manualDiscount" className="text-sm text-gray-700 w-24">
+                    <Label
+                      htmlFor="manualDiscount"
+                      className="text-sm text-gray-700 w-24"
+                    >
                       Descuento ($)
                     </Label>
                     <Input
@@ -1364,18 +1630,24 @@ console.log(clients)
                       min="0"
                       step="0.01"
                       value={manualDiscount}
-                      onChange={(e) => setManualDiscount(Number(e.target.value))}
+                      onChange={(e) =>
+                        setManualDiscount(Number(e.target.value))
+                      }
                       className="w-20 h-8 text-center text-sm"
                       placeholder="0"
                     />
                   </div>
-                  <p className="text-red-600">-{formatearPrecio(redondearTotal(manualDiscount))}</p>
+                  <p className="text-red-600">
+                    -{formatearPrecio(redondearTotal(manualDiscount))}
+                  </p>
                 </div>
 
                 <div className="border-t pt-3">
                   <div className="flex justify-between items-center">
                     <p className="text-lg font-semibold">Total</p>
-                    <p className="text-xl font-bold">{formatearPrecio(redondearTotal(total))}</p>
+                    <p className="text-xl font-bold">
+                      {formatearPrecio(redondearTotal(total))}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1389,38 +1661,38 @@ console.log(clients)
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-2">
-                  <Label>Tipo de Factura</Label>
-                  <Select
-                    value={tipoFactura}
-                    onValueChange={(value) => setTipoFactura(value)}
-                  >
-                    <SelectTrigger >
-                      <SelectValue placeholder="Seleccionar tipo de factura" />
-                    </SelectTrigger>
-                    <SelectContent >
-                      <SelectItem value="A">A</SelectItem>
-                      <SelectItem value="B">B</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Factura N°</Label>
-                  <Input
-                    value={facturaNumero}
-                    onChange={(e) => setFacturaNumero(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Fecha factura</Label>
-                  <Input
-                    type="date"
-                    value={facturaFecha}
-                    onChange={(e) => setFacturaFecha(e.target.value)}
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label>Tipo de Factura</Label>
+                <Select
+                  value={tipoFactura}
+                  onValueChange={(value) => setTipoFactura(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar tipo de factura" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A">A</SelectItem>
+                    <SelectItem value="B">B</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label>Factura N°</Label>
+                <Input
+                  value={facturaNumero}
+                  onChange={(e) => setFacturaNumero(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Fecha factura</Label>
+                <Input
+                  type="date"
+                  value={facturaFecha}
+                  onChange={(e) => setFacturaFecha(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label>Forma de pago</Label>
                 <Select
@@ -1431,14 +1703,18 @@ console.log(clients)
                     <SelectValue placeholder="Seleccionar forma de pago..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={EPaymentMethod.CASH}>Efectivo</SelectItem>
+                    <SelectItem value={EPaymentMethod.CASH}>
+                      Efectivo
+                    </SelectItem>
                     <SelectItem value={EPaymentMethod.CREDIT_CARD}>
                       Tarjeta de Crédito
                     </SelectItem>
                     <SelectItem value={EPaymentMethod.DEBIT_CARD}>
                       Tarjeta de Débito
                     </SelectItem>
-                    <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
+                    <SelectItem value={EPaymentMethod.TRANSFER}>
+                      Transferencia
+                    </SelectItem>
                     <SelectItem value={EPaymentMethod.MERCADOPAGO}>
                       MercadoPago
                     </SelectItem>
@@ -1457,9 +1733,11 @@ console.log(clients)
                       <SelectValue placeholder="Seleccionar banco" />
                     </SelectTrigger>
                     <SelectContent>
-                                           {BANCOS.map((bancoItem: string) => (
-                       <SelectItem key={bancoItem} value={bancoItem}>{bancoItem}</SelectItem>
-                     ))}
+                      {BANCOS.map((bancoItem: string) => (
+                        <SelectItem key={bancoItem} value={bancoItem}>
+                          {bancoItem}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

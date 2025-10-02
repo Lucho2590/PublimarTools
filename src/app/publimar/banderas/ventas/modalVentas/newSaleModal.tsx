@@ -657,7 +657,7 @@ export function NuevaVentaModal({
                                   if (existingItem) {
                                     return existingItem.quantity;
                                   }
-                                  return selectedQuantities[`${typedProduct.id}-${selectedVariant?.id}`] || 1;
+                                  return selectedQuantities[`${typedProduct.id}-${selectedVariant?.id}`] || 0;
                                 })()}
                                 onChange={(e) => {
                                   if (!selectedProducts.has(typedProduct.id)) return;

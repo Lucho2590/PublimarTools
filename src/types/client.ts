@@ -1,3 +1,5 @@
+import { DocumentReference } from "firebase/firestore";
+
 export enum EClientType {
     INDIVIDUAL = "individual",
     COMPANY = "company",
@@ -16,6 +18,7 @@ export enum EClientType {
   };
   
   export type TClient = {
+    ref: DocumentReference;
     id: string;
     name: string;
     type: EClientType;

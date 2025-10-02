@@ -239,6 +239,9 @@ export default function ClientDetailsModal({
 
   const typedClient = client as TClient;
 
+
+  console.log(typedClient);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">

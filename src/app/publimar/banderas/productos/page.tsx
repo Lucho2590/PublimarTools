@@ -271,6 +271,7 @@ export default function ProductosPage() {
     XLSX.writeFile(wb, "productos.xlsx");
   };
 
+  // console.log(filteredProducts?.[44]);
   return (
     <div>
       <div className="flex justify-between items-center mb-6">

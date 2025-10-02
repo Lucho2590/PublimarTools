@@ -16,9 +16,15 @@ export const formatearPrecio = (valor: number): string => {
 
 export const formatDate = (timestamp: any) => {
   if (!timestamp) return "-";
+  // Manejar Firebase Timestamp como objeto {seconds, nanoseconds} (para Firebase 9+)
   if (typeof timestamp.toDate === "function") {
     return timestamp.toDate().toLocaleDateString("es-AR");
   }
+  // Manejar Firebase Timestamp como objeto {seconds, nanoseconds} (para Firebase 9+)
+  if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+    return new Date(timestamp.seconds * 1000).toLocaleDateString("es-AR");
+  }
+  // Manejar Date como objeto
   if (timestamp instanceof Date) {
     return timestamp.toLocaleDateString("es-AR");
   }
