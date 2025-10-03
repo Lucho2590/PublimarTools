@@ -3,6 +3,7 @@ import { TProduct,  TProductCategory, TProductVariant } from "./product";
 import { TQuoteItem } from "./quote";
 import { EPaymentMethod } from "./sale";
 import { TClient } from "./client";
+import { Timestamp } from "firebase/firestore";
 
 export enum EOrderStatus {
   // PENDING = "pending",
@@ -32,7 +33,7 @@ export type TFactura = {
 
 export type TPaymentHistory = {
   amount: number;
-  date: Date;
+  date?: Date;
   type: string;
   method: EPaymentMethod;
   notes?: string;

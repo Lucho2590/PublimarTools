@@ -143,7 +143,7 @@ export default function OrderDetailsPage({
         date: order.createdAt || new Date(),
         type: "seña",
         method: order.paymentMethod || EPaymentMethod.CASH,
-        notes: "Seña/Anticipo (registro anterior)",
+        notes: "Seña/Anticipo ",
       });
     }
     
@@ -292,24 +292,32 @@ export default function OrderDetailsPage({
   useEffect(() => {
     if (order && !saving) {
       setEditedOrder(order);
-
-      // // Cargar facturas existentes
-      // if (order.facturas && order.facturas.length > 0) {
-      //   setFacturas(order.facturas);
-      // } else {
-      //   // Migrar datos de factura antigua si existen
-      //   if (order.invoiceNumber || order.invoiceDate) {
-      //     const facturaLegacy: TFactura = {
-      //       id: `factura-legacy-${Date.now()}`,
-      //       tipo: (order as any).invoiceType || "Factura B",
-      //       numero: order.invoiceNumber as string || "",
-      //       fecha: order.invoiceDate ? new Date(order.invoiceDate).toISOString().split("T")[0] : "",
-      //     };
-      //     setFacturas([facturaLegacy]);
-      //   } else {
-      //     setFacturas([]);
-      //   }
-      // }
+      // Cargar facturas existentes
+      if (order.facturas && order.facturas.length > 0) {
+        setFacturas(order.facturas);
+      } else {
+        // Migrar datos de factura antigua si existen
+        if (order.invoiceNumber || order.invoiceDate) {
+          const facturaLegacy: TFactura = {
+            id: `factura-legacy-${Date.now()}`,
+            tipo: (order as any).invoiceType || "Factura B",
+            numero: order.invoiceNumber as string || "",
+            fecha: (() => {
+              try {
+                if (!order.invoiceDate) return "";
+                const dateValue: any = order.invoiceDate;
+                const date = dateValue.toDate ? dateValue.toDate() : new Date(dateValue);
+                return isNaN(date.getTime()) ? "" : date.toISOString().split("T")[0];
+              } catch {
+                return "";
+              }
+            })(),
+          };
+          setFacturas([facturaLegacy]);
+        } else {
+          setFacturas([]);
+        }
+      }
     }
   }, [order, saving]);
 
@@ -450,11 +458,11 @@ export default function OrderDetailsPage({
           : undefined;
         updateData.invoiceType = facturasToSave[0].tipo;
       } else {
-        updateData.facturas = undefined;
+        updateData.facturas = [];  // Array vacío en vez de undefined
         updateData.isInvoiced = false;
-        updateData.invoiceNumber = undefined;
-        updateData.invoiceDate = undefined;
-        updateData.invoiceType = undefined;
+        updateData.invoiceNumber = null;
+        updateData.invoiceDate = null;
+        updateData.invoiceType = null;
       }
 
       // Función para limpiar valores undefined recursivamente con protección contra referencias circulares
@@ -1560,13 +1568,13 @@ export default function OrderDetailsPage({
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         {item.variantName || item.variant?.size || "-"}
                       </TableCell>
-                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell className="text-center">{item.quantity}</TableCell>
                       <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
                       <TableCell>{formatearPrecio(item.subtotal)}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-center">
                         <Button
                           size="sm"
                           variant="destructive"
@@ -1668,17 +1676,6 @@ export default function OrderDetailsPage({
 
               {/* Controles de edición */}
               <div className="space-y-4 border-t pt-4">
-                {/* Mensaje informativo si existe downPayment legacy */}
-                {order?.downPayment && order.downPayment > 0 && (
-                  <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
-                    <p className="text-sm text-blue-700">
-                      <span className="font-medium">Seña registrada (sistema anterior):</span>{" "}
-                      {formatearPrecio(order.downPayment)} 
-                      <span className="text-xs ml-2">(Los nuevos pagos se registran en el historial de pagos)</span>
-                    </p>
-                  </div>
-                )}
-
                 {/* Campos de descuento */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -1818,7 +1815,7 @@ export default function OrderDetailsPage({
                             onValueChange={(value) => setNewFacturaTipo(value)}
                           >
                             <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar tipo" />
+                              <SelectValue placeholder="Factura A" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Factura A">
@@ -2000,7 +1997,8 @@ export default function OrderDetailsPage({
                           (payment: TPaymentHistory, index: number) => (
                             <TableRow key={index}>
                               <TableCell className="text-sm">
-                                {formatDate(payment.date)}
+                                {formatDate(payment.date == undefined ? order.createdAt : payment.date)}
+                                {/* {!payment.date ? formatDate(payment.date) : formatDate(order.createdAt)} */}
                               </TableCell>
                               <TableCell>
                                 <span

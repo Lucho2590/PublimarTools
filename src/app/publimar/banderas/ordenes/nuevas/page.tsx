@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useUser } from "reactfire";
-import { useRouter } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
 import {
   Select,
   SelectContent,
@@ -38,6 +38,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronUp,
+  FileText,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { formatDate, formatearPrecio, redondearTotal } from "@/lib/utils";
@@ -45,7 +46,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { TProduct, TProductVariant } from "@/types/product";
 import { toast } from "sonner";
 import { EPaymentMethod } from "@/types/sale";
-import { EOrderStatus, TFactura } from "@/types/order";
+import { EOrderStatus, TFactura, TPaymentHistory } from "@/types/order";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
 import collections from "@/lib/collections";
@@ -106,6 +107,8 @@ export default function NuevasOrdenesPage() {
   const [newFacturaMonto, setNewFacturaMonto] = useState("");
   const [formaPago, setFormaPago] = useState("");
   const [sena, setSena] = useState("");
+  const [metodoPagoSena, setMetodoPagoSena] = useState<EPaymentMethod>(EPaymentMethod.CASH);
+  const [bancoSena, setBancoSena] = useState("");
   const [saldo, setSaldo] = useState("");
   const [aFacturar, setAFacturar] = useState(false);
   const [facturado, setFacturado] = useState(false);
@@ -155,7 +158,7 @@ export default function NuevasOrdenesPage() {
   const [manualDiscount, setManualDiscount] = useState(0);
   const [banco, setBanco] = useState("");
 
-  const BANCOS = ["Galicia", "Frances"];
+  const BANCOS = ["Galicia", "Frances", "Mercado Pago"];
 
   // Funciones para manejar facturas
   const handleAddFactura = () => {
@@ -690,6 +693,25 @@ const total = subtotal - totalDiscountAmount;
     );
 
     setLoading(true);
+
+    // Crear paymentHistory si hay seña
+    let paymentHistory: TPaymentHistory[] = [];
+    if (sena && parseFloat(sena) > 0) {
+      let senaNotes = "Seña/Anticipo";
+      if (metodoPagoSena === EPaymentMethod.TRANSFER) {
+        senaNotes += ` - Transferencia${bancoSena ? ` - ${bancoSena}` : ''}`;
+      } else if (metodoPagoSena === EPaymentMethod.MERCADOPAGO) {
+        senaNotes += " - Mercado Pago";
+      }
+
+      paymentHistory = [{
+        amount: parseFloat(sena),
+        type: "seña",
+        method: metodoPagoSena,
+        notes: senaNotes,
+      }];
+    }
+
     try {
       // Preparar datos de la orden usando el helper del hook
       const baseOrderData = {
@@ -702,6 +724,7 @@ const total = subtotal - totalDiscountAmount;
         taxAmount: redondearTotal(taxAmount),
         total: redondearTotal(total),
         applyIVA,
+        paymentHistory: paymentHistory,
         items: items.map(item => ({
           id: item.id,
           // Referencias (no duplicar objetos completos)
@@ -726,6 +749,7 @@ const total = subtotal - totalDiscountAmount;
         })),
       };
 
+      
       const orderData = createOrderWithDefaults({
         ...baseOrderData,
         notes: detalle,
@@ -739,7 +763,8 @@ const total = subtotal - totalDiscountAmount;
         // Agregar array de facturas
         facturas: facturas.length > 0 ? facturas : undefined,
         estimatedDeliveryDate: fechaEntrega ? new Date(fechaEntrega).getTime() : undefined,
-        downPayment: parseFloat(sena) || undefined,
+        // Nueva forma: seña en paymentHistory
+        paymentHistory: paymentHistory,
         balance: parseFloat(saldo) || undefined,
         // Datos del cliente (solo referencias, no duplicar datos)
         clientId: cliente || null, // Referencia a la DB del cliente
@@ -801,12 +826,11 @@ const total = subtotal - totalDiscountAmount;
 
       // Limpiar datos antes de enviar a Firebase
       const cleanOrderData = cleanData(orderData);
-      console.log('🔧 Datos limpios para crear orden:', cleanOrderData);
+
 
       const orderId = await createOrder(cleanOrderData as any);
       toast.success(`Orden creada exitosamente con ID: ${orderId}`);
       router.push("/publimar/banderas/ordenes");
-      
     } catch (error) {
       toast.error(
         "Error al guardar la orden: " +
@@ -1119,14 +1143,22 @@ const total = subtotal - totalDiscountAmount;
               {/* Modal para item manual */}
               <Dialog open={isAddingManualItem} onOpenChange={setIsAddingManualItem}>
                 <DialogTrigger asChild>
-                  <Button
+                <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-gray-600 hover:bg-gray-700 text-white"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Item Manual
+                    </Button>
+                  {/* <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                   >
                     <Plus className="mr-2 h-4 w-4" /> Item manual
-                  </Button>
+                  </Button> */}
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
@@ -1678,8 +1710,74 @@ const total = subtotal - totalDiscountAmount;
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-4">
+
+                 {/* Seña/Anticipo */}
+            <div>
+              <h4 className="font-medium mb-3">Seña/Anticipo (Opcional)</h4>
+              <div className={`grid ${metodoPagoSena === EPaymentMethod.TRANSFER ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
+                <div className="space-y-2">
+                  <Label>Monto de seña</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={sena}
+                    onChange={(e) => setSena(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Método de pago</Label>
+                  <Select
+                    value={metodoPagoSena}
+                    onValueChange={(value) => setMetodoPagoSena(value as EPaymentMethod)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={EPaymentMethod.CASH}>
+                        Efectivo
+                      </SelectItem>
+                      <SelectItem value={EPaymentMethod.CREDIT_CARD}>
+                        Tarjeta de crédito
+                      </SelectItem>
+                      <SelectItem value={EPaymentMethod.DEBIT_CARD}>
+                        Tarjeta de débito
+                      </SelectItem>
+                      <SelectItem value={EPaymentMethod.TRANSFER}>
+                        Transferencia
+                      </SelectItem>
+                      <SelectItem value={EPaymentMethod.MERCADOPAGO}>
+                        Mercado Pago
+                      </SelectItem>
+                      <SelectItem value={EPaymentMethod.CHECK}>
+                        Cheque
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {metodoPagoSena === EPaymentMethod.TRANSFER && (
+                  <div className="space-y-2">
+                    <Label>Banco</Label>
+                    <Select value={bancoSena} onValueChange={setBancoSena}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar banco" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BANCOS.map((bancoItem: string) => (
+                          <SelectItem key={bancoItem} value={bancoItem}>
+                            {bancoItem}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            </div>
               {/* Header con botón agregar */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between border-t pt-4 mt-4">
                 <h4 className="font-medium">Facturas</h4>
                 <Button
                   type="button"
@@ -1800,7 +1898,7 @@ const total = subtotal - totalDiscountAmount;
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Forma de pago</Label>
                 <Select
@@ -1851,18 +1949,12 @@ const total = subtotal - totalDiscountAmount;
                 </div>
               )}
               <div className="space-y-2">
-                <Label>Señas</Label>
-                <Input
-                  type="number"
-                  value={sena}
-                  onChange={(e) => setSena(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
                 <Label>Saldo</Label>
                 <Input type="number" value={saldo} readOnly />
               </div>
-            </div>
+            </div> */}
+
+         
           </CardContent>
         </Card>
 

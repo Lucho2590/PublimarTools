@@ -38,7 +38,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { Edit, Eye } from "lucide-react";
+import { Edit, Eye, CheckCircle2, Coins, Circle, Receipt } from "lucide-react";
 import OrderDetailsModal from "./modalOrdenes/orderDetailsModal";
 import { toast } from "sonner";
 
@@ -352,6 +352,7 @@ export default function PedidosPage() {
                     <TableHead>Fecha</TableHead>
                     <TableHead>Total</TableHead>
                     <TableHead>Estado</TableHead>
+                    <TableHead>Pagos</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -419,8 +420,34 @@ export default function PedidosPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-center">
+                          {(() => {
+                            if (order.balance === 0) {
+                              // Pagado - Verde
+                              return (
+                                <div className="flex justify-center" title="Pagado">
+                                  <Receipt className="h-5 w-5 text-green-600" />
+                                </div>
+                              );
+                            } else if (order.balance === order.total) {
+                              // Pendiente - Gris
+                              return (
+                                <div className="flex justify-center" title="Pendiente">
+                                  <Receipt className="h-5 w-5 text-gray-400" />
+                                </div>
+                              );
+                            } else {
+                              // Parcial - Ámbar
+                              return (
+                                <div className="flex justify-center" title="Pago parcial">
+                                  <Receipt className="h-5 w-5 text-amber-500" />
+                                </div>
+                              );
+                            }
+                          })()}
+                        </TableCell>
+                        <TableCell className="text-center">
                           <div className="flex justify-center gap-2 ">
-                              <Button
+                              {/* <Button
                                 variant="ghost"
                                 size="icon"
                                 title="Ver orden (Modal)"
@@ -428,12 +455,12 @@ export default function PedidosPage() {
                                 onClick={() => handleViewOrder(order.id)}
                               >
                                 <Eye className="h-4 w-4" />
-                              </Button>
+                              </Button> */}
                               <Button
                                 variant="ghost"
                                 size="icon"
                                 title="Editar orden (Página)"
-                                className="bg-green-600 hover:bg-green-700 hover:text-white text-white"
+                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                                 onClick={() => router.push(`/publimar/banderas/ordenes/${order.id}`)}
                               >
                                 <Edit className="h-4 w-4" />
