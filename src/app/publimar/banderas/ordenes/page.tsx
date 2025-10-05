@@ -101,6 +101,7 @@ export default function PedidosPage() {
         isInvoiced: order.isInvoiced || false,
         invoiceNumber: order.invoiceNumber || "",
         bank: order.bank || undefined,
+        facturas: order.facturas || [],
         // Referencia a la orden original
         orderId: order.id,
       };
@@ -193,13 +194,15 @@ export default function PedidosPage() {
     idField: "id",
   });
 
-  // console.log(orders);
-
+  
   // Filtrar pedidos según la búsqueda y estado
   const filteredOrders = orders?.filter((order) => {
     const matchesSearch =
       order.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.client.name.toLowerCase().includes(searchTerm.toLowerCase());
+      order.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.client?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.client?.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.reference?.toLowerCase().includes(searchTerm.toLowerCase());
 
     const matchesStatus =
       statusFilter === "all" || order.status === statusFilter;

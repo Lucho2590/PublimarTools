@@ -103,6 +103,9 @@ export function SaleDetailsModal({
     notes: "",
   });
 
+  // Estado para fecha editable
+  const [editedDate, setEditedDate] = useState<string>("");
+
   const saleRef = saleId ? doc(firestore, collections.SALES, saleId) : null;
   const { data: sale } = useFirestoreDocData(
     saleRef ?? doc(firestore, collections.SALES, "dummy"),
@@ -139,6 +142,18 @@ export function SaleDetailsModal({
       }
       if (typedSale?.bank) {
         setSelectedBank(typedSale.bank);
+      }
+      
+      // Inicializar fecha editable
+      if (typedSale?.createdAt) {
+        try {
+          const date = typeof typedSale.createdAt === 'object' && 'seconds' in typedSale.createdAt
+            ? new Date((typedSale.createdAt as any).seconds * 1000)
+            : new Date(typedSale.createdAt);
+          setEditedDate(date.toISOString().split('T')[0]);
+        } catch (error) {
+          console.error("Error al parsear fecha:", error);
+        }
       }
       
       // Cargar facturas existentes o migrar del sistema antiguo
@@ -420,6 +435,9 @@ export function SaleDetailsModal({
     setNewFacturaNumero("");
     setNewFacturaFecha("");
     setNewFacturaMonto("");
+    
+    // Limpiar fecha editada
+    setEditedDate("");
   };
 
   const handleModalClose = (open: boolean) => {
@@ -448,6 +466,8 @@ export function SaleDetailsModal({
         manualDiscount: redondearTotal(manualDiscount),
         // Sistema de múltiples facturas
         facturas: facturas.length > 0 ? facturas : [],
+        // Fecha editada
+        createdAt: editedDate ? new Date(editedDate + "T00:00:00") : typedSale?.createdAt,
       };
       if (paymentMethod) {
         updateData.paymentMethod = paymentMethod;
@@ -638,12 +658,25 @@ export function SaleDetailsModal({
               <h3 className="font-semibold mb-4">Información General</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p>
-                    <span className="font-medium">Fecha:</span>{" "}
-                    {formatDate(typedSale?.createdAt)}
-                  </p>
-                  {isEditing ? (
-                    <div className="mt-2 space-y-2">
+                  <div className="space-y-2">
+                    {isEditing ? (
+                      <div>
+                        <label className="text-sm font-medium">Fecha de la Venta</label>
+                        <Input
+                          type="date"
+                          value={editedDate}
+                          onChange={(e) => setEditedDate(e.target.value)}
+                          className="w-full mt-1"
+                        />
+                      </div>
+                    ) : (
+                      <p>
+                        <span className="font-medium">Fecha:</span>{" "}
+                        {formatDate(typedSale?.createdAt)}
+                      </p>
+                    )}
+                    
+                    {isEditing ? (
                       <div>
                         <label className="text-sm font-medium">
                           Método de Pago
@@ -666,42 +699,41 @@ export function SaleDetailsModal({
                           </SelectContent>
                         </Select>
                       </div>
-                      {paymentMethod === EPaymentMethod.TRANSFER && (
-                        <div>
-                          <label className="text-sm font-medium">Banco</label>
-                          <Select
-                            value={selectedBank}
-                            onValueChange={setSelectedBank}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar banco" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {BANCOS.map((banco) => (
-                                <SelectItem key={banco} value={banco}>
-                                  {banco}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <>
+                    ) : (
                       <p>
                         <span className="font-medium">Método de Pago:</span>{" "}
                         {formatPaymentMethod(typedSale?.paymentMethod)}
                       </p>
-                      {typedSale?.paymentMethod === EPaymentMethod.TRANSFER &&
-                        typedSale?.bank && (
-                          <p>
-                            <span className="font-medium">Banco:</span>{" "}
-                            {typedSale.bank}
-                          </p>
-                        )}
-                    </>
-                  )}
+                    )}
+                    
+                    {isEditing && paymentMethod === EPaymentMethod.TRANSFER && (
+                      <div>
+                        <label className="text-sm font-medium">Banco</label>
+                        <Select
+                          value={selectedBank}
+                          onValueChange={setSelectedBank}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar banco" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {BANCOS.map((banco) => (
+                              <SelectItem key={banco} value={banco}>
+                                {banco}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
+                    {!isEditing && typedSale?.paymentMethod === EPaymentMethod.TRANSFER && typedSale?.bank && (
+                      <p>
+                        <span className="font-medium">Banco:</span>{" "}
+                        {typedSale.bank}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div>
                   {/* Sistema de Múltiples Facturas */}
