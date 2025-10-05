@@ -39,7 +39,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Edit, Eye, CheckCircle2, Coins, Circle, Receipt } from "lucide-react";
-import OrderDetailsModal from "./modalOrdenes/orderDetailsModal";
+// import OrderDetailsModal from "./modalOrdenes/orderDetailsModal"; // Comentado temporalmente
 import { toast } from "sonner";
 
 export default function PedidosPage() {
@@ -105,7 +105,7 @@ export default function PedidosPage() {
         orderId: order.id,
       };
 
-      console.log('🔧 Datos de venta a crear:', saleData);
+      // console.log('🔧 Datos de venta a crear:', saleData);
 
       // Crear la venta usando el hook (que ya limpia los undefined)
       const saleId = await createSale(saleData as any);
@@ -421,7 +421,7 @@ export default function PedidosPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           {(() => {
-                            if (order.balance === 0) {
+                            if (order.paymentHistory?.reduce((sum: number, payment: any) => sum + payment.amount, 0) === order.total) {
                               // Pagado - Verde
                               return (
                                 <div className="flex justify-center" title="Pagado">
@@ -527,11 +527,11 @@ export default function PedidosPage() {
       )}
 
       {/* Modal de detalles de orden */}
-      <OrderDetailsModal
+      {/* <OrderDetailsModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         orderId={selectedOrderId}
-      />
+      /> */}
 
       {/* Dialog de confirmación para convertir a venta */}
       <Dialog open={showConvertDialog} onOpenChange={setShowConvertDialog}>

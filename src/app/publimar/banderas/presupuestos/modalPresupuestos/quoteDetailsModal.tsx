@@ -168,8 +168,25 @@ export default function QuoteDetailsModal({
         const mappedItems: QuoteItem[] = quoteData.items.map(
           (item: TQuoteItem) => ({
             id: item.id,
-            product: item.product,
-            variant: item.variant || undefined,
+            product: { 
+              id: item.productId || '', 
+              name: item.productName,
+              description: item.description || '',
+              images: [],
+              basePrice: item.unitPrice,
+              categories: item.categories || [],
+              stock: 0,
+              status: 'active' as const,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            },
+            variant: item.variantId ? { 
+              id: item.variantId, 
+              name: item.variantName || '',
+              price: item.unitPrice,
+              stock: 0,
+              isActive: true
+            } : undefined,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             discount: item.discount || 0,

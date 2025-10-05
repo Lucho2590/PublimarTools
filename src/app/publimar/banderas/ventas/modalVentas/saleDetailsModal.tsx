@@ -1,6 +1,6 @@
 "use client";
 import { useFirestore, useFirestoreDocData } from "reactfire";
-import { doc, updateDoc, collection, getDocs } from "firebase/firestore";
+import { doc, updateDoc, collection, getDocs, deleteDoc } from "firebase/firestore";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { TSale, TSaleItem, EPaymentMethod } from "@/types/sale";
+import { TSale, TSaleItem, EPaymentMethod, TFactura } from "@/types/sale";
 import collections from "@/lib/collections";
 import { useState, useEffect } from "react";
 import {
@@ -31,7 +31,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Edit, Save, X, Search, Filter, Trash2 } from "lucide-react";
+import { Edit, Save, X, Search, Filter, Trash2, Plus, Pencil, FileText } from "lucide-react";
+import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 const BANCOS = ["Galicia", "Frances"];
 
@@ -76,6 +81,27 @@ export function SaleDetailsModal({
   const [categories, setCategories] = useState<
     Record<string, TProductCategory>
   >({});
+  
+  // Estados para múltiples facturas
+  const [facturas, setFacturas] = useState<TFactura[]>([]);
+  const [showAddFactura, setShowAddFactura] = useState(false);
+  const [editingFacturaId, setEditingFacturaId] = useState<string | null>(null);
+  const [newFacturaTipo, setNewFacturaTipo] = useState("");
+  const [newFacturaNumero, setNewFacturaNumero] = useState("");
+  const [newFacturaFecha, setNewFacturaFecha] = useState("");
+  const [newFacturaMonto, setNewFacturaMonto] = useState("");
+
+  // Estados para item manual
+  const [showManualItemDialog, setShowManualItemDialog] = useState(false);
+  const [manualItem, setManualItem] = useState({
+    productName: "",
+    description: "",
+    variantName: "",
+    quantity: 1,
+    unitPrice: 0,
+    discount: 0,
+    notes: "",
+  });
 
   const saleRef = saleId ? doc(firestore, collections.SALES, saleId) : null;
   const { data: sale } = useFirestoreDocData(
@@ -113,6 +139,24 @@ export function SaleDetailsModal({
       }
       if (typedSale?.bank) {
         setSelectedBank(typedSale.bank);
+      }
+      
+      // Cargar facturas existentes o migrar del sistema antiguo
+      if (typedSale?.facturas && typedSale.facturas.length > 0) {
+        setFacturas(typedSale.facturas);
+      } else {
+        // Migrar datos de factura antigua si existen
+        if (typedSale?.invoiceNumber) {
+          const facturaLegacy: TFactura = {
+            id: `factura-legacy-${Date.now()}`,
+            tipo: "Factura B", // Valor por defecto
+            numero: typedSale.invoiceNumber,
+            fecha: typedSale.createdAt ? new Date(typedSale.createdAt).toISOString().split("T")[0] : "",
+          };
+          setFacturas([facturaLegacy]);
+        } else {
+          setFacturas([]);
+        }
       }
     }
   }, [open, typedSale]);
@@ -158,24 +202,26 @@ export function SaleDetailsModal({
     const initialSubtotal = calculateSubtotal(itemsToCalculate);
     const taxRate = 21; // IVA del 21%
     
+    // El IVA siempre se calcula sobre el subtotal ORIGINAL (antes de descuentos)
     let calculatedTaxAmount = 0;
     let calculatedSubtotalSinIVA = initialSubtotal;
     
     if (shouldApplyIVA) {
       // Si aplicamos IVA, los precios son finales (con IVA incluido)
-      // Calculamos el IVA que está incluido en el precio
+      // Calculamos el IVA que está incluido en el subtotal ORIGINAL
       calculatedTaxAmount = redondearTotal(initialSubtotal * (taxRate / (100 + taxRate)));
       calculatedSubtotalSinIVA = redondearTotal(initialSubtotal - calculatedTaxAmount);
     }
     
-    const calculatedDiscountAmount = redondearTotal(calculatedSubtotalSinIVA * (discountPerc / 100));
-    const calculatedTotal = redondearTotal(initialSubtotal - calculatedDiscountAmount - manualDisc);
+    // Los descuentos se calculan sobre el subtotal completo (con IVA incluido)
+    const calculatedDiscountAmount = redondearTotal(initialSubtotal * (discountPerc / 100));
+    const totalAfterDiscounts = redondearTotal(initialSubtotal - calculatedDiscountAmount - manualDisc);
     
     setSubtotal(initialSubtotal);
     setTaxAmount(calculatedTaxAmount);
     setSubtotalSinIVA(calculatedSubtotalSinIVA);
     setDiscountAmount(calculatedDiscountAmount);
-    setTotal(calculatedTotal);
+    setTotal(totalAfterDiscounts);
   };
 
   const handleAddItem = () => {
@@ -185,10 +231,12 @@ export function SaleDetailsModal({
     const newItem: TSaleItem = {
       productId: selectedProduct,
       variantId: selectedVariant,
+      productName: products[selectedProduct]?.name,
+      variantName: getVariantSize(selectedVariant),
       quantity,
       unitPrice,
       total: quantity * unitPrice,
-      variantName: undefined
+      // variantName: undefined
     };
 
     const newItems = [...items, newItem];
@@ -198,6 +246,45 @@ export function SaleDetailsModal({
     setSelectedVariant("");
     setQuantity(1);
     setUnitPrice(0);
+  };
+
+  const handleAddManualItem = () => {
+    if (!manualItem.productName || !manualItem.unitPrice) {
+      toast.error("Nombre y precio son requeridos");
+      return;
+    }
+
+    const itemSubtotal =
+      manualItem.unitPrice *
+      manualItem.quantity *
+      (1 - manualItem.discount / 100);
+
+    const newItem: TSaleItem = {
+      productId: `manual-${Date.now()}`,
+      variantId: `manual-variant-${Date.now()}`,
+      productName: manualItem.productName,
+      variantName: manualItem.variantName || "N/A",
+      quantity: manualItem.quantity,
+      unitPrice: manualItem.unitPrice,
+      total: itemSubtotal,
+    };
+
+    const newItems = [...items, newItem];
+    calculateTotals(newItems, applyIVA, discountPercentage, manualDiscount);
+    setItems(newItems);
+
+    // Reset
+    setManualItem({
+      productName: "",
+      description: "",
+      variantName: "",
+      quantity: 1,
+      unitPrice: 0,
+      discount: 0,
+      notes: "",
+    });
+    setShowManualItemDialog(false);
+    toast.success("Item manual agregado");
   };
 
   const handleRemoveItem = (index: number) => {
@@ -220,6 +307,77 @@ export function SaleDetailsModal({
   const handleManualDiscountChange = (newManualDiscount: number) => {
     setManualDiscount(newManualDiscount);
     calculateTotals(items, applyIVA, discountPercentage, newManualDiscount);
+  };
+
+  // Funciones para manejar facturas
+  const handleAddFactura = () => {
+    if (!newFacturaTipo || !newFacturaNumero || !newFacturaFecha) {
+      toast.error("Tipo, Número y Fecha son requeridos");
+      return;
+    }
+
+    if (editingFacturaId) {
+      // Editar factura existente
+      setFacturas(prev => 
+        prev.map(f => 
+          f.id === editingFacturaId 
+            ? {
+                ...f,
+                tipo: newFacturaTipo,
+                numero: newFacturaNumero,
+                fecha: newFacturaFecha,
+                monto: newFacturaMonto ? parseFloat(newFacturaMonto) : undefined,
+              }
+            : f
+        )
+      );
+      toast.success("Factura actualizada correctamente");
+    } else {
+      // Agregar nueva factura
+      const nuevaFactura: TFactura = {
+        id: `factura-${Date.now()}`,
+        tipo: newFacturaTipo,
+        numero: newFacturaNumero,
+        fecha: newFacturaFecha,
+        monto: newFacturaMonto ? parseFloat(newFacturaMonto) : undefined,
+      };
+      setFacturas(prev => [...prev, nuevaFactura]);
+      toast.success("Factura agregada correctamente");
+    }
+
+    // Limpiar formulario
+    setNewFacturaTipo("");
+    setNewFacturaNumero("");
+    setNewFacturaFecha("");
+    setNewFacturaMonto("");
+    setShowAddFactura(false);
+    setEditingFacturaId(null);
+  };
+
+  const handleEditFactura = (id: string) => {
+    const factura = facturas.find(f => f.id === id);
+    if (factura) {
+      setNewFacturaTipo(factura.tipo);
+      setNewFacturaNumero(factura.numero);
+      setNewFacturaFecha(factura.fecha);
+      setNewFacturaMonto(factura.monto?.toString() || "");
+      setEditingFacturaId(id);
+      setShowAddFactura(true);
+    }
+  };
+
+  const handleDeleteFactura = (id: string) => {
+    setFacturas(prev => prev.filter(f => f.id !== id));
+    toast.success("Factura eliminada correctamente");
+  };
+
+  const handleCancelFactura = () => {
+    setNewFacturaTipo("");
+    setNewFacturaNumero("");
+    setNewFacturaFecha("");
+    setNewFacturaMonto("");
+    setShowAddFactura(false);
+    setEditingFacturaId(null);
   };
 
   const clearModalStates = () => {
@@ -253,6 +411,15 @@ export function SaleDetailsModal({
     setIsInvoiced(null);
     setInvoiceNumber("");
     setSelectedBank("");
+    
+    // Limpiar facturas
+    setFacturas([]);
+    setShowAddFactura(false);
+    setEditingFacturaId(null);
+    setNewFacturaTipo("");
+    setNewFacturaNumero("");
+    setNewFacturaFecha("");
+    setNewFacturaMonto("");
   };
 
   const handleModalClose = (open: boolean) => {
@@ -279,6 +446,8 @@ export function SaleDetailsModal({
         discountPercentage,
         discountAmount: redondearTotal(discountAmount),
         manualDiscount: redondearTotal(manualDiscount),
+        // Sistema de múltiples facturas
+        facturas: facturas.length > 0 ? facturas : [],
       };
       if (paymentMethod) {
         updateData.paymentMethod = paymentMethod;
@@ -294,10 +463,35 @@ export function SaleDetailsModal({
       }
 
       await updateDoc(saleRef, updateData);
+      toast.success("Venta actualizada correctamente");
       onSuccess();
       setIsEditing(false);
     } catch (error) {
       console.error("Error al actualizar la venta:", error);
+      toast.error("Error al actualizar la venta");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteSale = async () => {
+    if (!saleRef || !saleId) return;
+
+    const confirmDelete = window.confirm(
+      "¿Está seguro que desea eliminar esta venta? Esta acción no se puede deshacer."
+    );
+    
+    if (!confirmDelete) return;
+
+    setIsLoading(true);
+    try {
+      await deleteDoc(saleRef);
+      toast.success("Venta eliminada correctamente");
+      onSuccess();
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error al eliminar la venta:", error);
+      toast.error("Error al eliminar la venta");
     } finally {
       setIsLoading(false);
     }
@@ -353,6 +547,17 @@ export function SaleDetailsModal({
     
     return variant ? `${variant.id}` : "Variante no encontrada";
   };
+
+  const getVariantSize = (variantId: string) => {
+    // Buscar en todos los productos hasta encontrar la variante
+    for (const product of Object.values(products)) {
+      const variant = product.variants?.find((v) => v.id === variantId);
+      if (variant) {
+        return variant.size;
+      }
+    }
+    return "Sin variante";
+  };
   
 
   // Filtrar productos basado en el término de búsqueda y categoría
@@ -374,20 +579,33 @@ export function SaleDetailsModal({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleModalClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader className="flex flex-row items-center justify-between">
           <DialogTitle>Venta #{typedSale?.number}</DialogTitle>
           {!isEditing ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-            >
-              <Edit className="h-4 w-4" />
-              Editar
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-2 bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+              >
+                <Edit className="h-4 w-4" />
+                Editar
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDeleteSale}
+                disabled={isLoading}
+                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white"
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar
+              </Button>
+            </div>
           ) : (
             <div className="flex gap-2">
               <Button
@@ -486,46 +704,142 @@ export function SaleDetailsModal({
                   )}
                 </div>
                 <div>
-                  {isEditing ? (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={isInvoiced || false}
-                          onChange={(e) => setIsInvoiced(e.target.checked)}
-                          className="rounded border-gray-300"
-                        />
-                        <label className="text-sm font-medium">Facturado</label>
-                      </div>
-                      {isInvoiced && (
-                        <div>
-                          <label className="text-sm font-medium">
-                            Número de Factura
-                          </label>
-                          <Input
-                            value={invoiceNumber}
-                            onChange={(e) => setInvoiceNumber(e.target.value)}
-                            placeholder="Ingrese el número de factura"
-                          />
-                        </div>
+                  {/* Sistema de Múltiples Facturas */}
+                  <div className="border-t pt-4 space-y-4 mb-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium">Facturas</h4>
+                      {isEditing && (
+                        <Button
+                          type="button"
+                          onClick={() => setShowAddFactura(true)}
+                          className="bg-blue-600 hover:bg-blue-700"
+                          size="sm"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Agregar
+                        </Button>
                       )}
                     </div>
-                  ) : (
-                    <>
-                      <p>
-                        <span className="font-medium">Facturado:</span>{" "}
-                        {typedSale?.isInvoiced ? "Sí" : "No"}
-                      </p>
-                      {typedSale?.invoiceNumber && (
-                        <p>
-                          <span className="font-medium">
-                            Número de Factura:
-                          </span>{" "}
-                          {typedSale.invoiceNumber}
-                        </p>
-                      )}
-                    </>
-                  )}
+
+                    {/* Lista de facturas */}
+                    {facturas.length > 0 && (
+                      <div className="space-y-2">
+                        {facturas.map((factura) => (
+                          <div
+                            key={factura.id}
+                            className="flex items-center justify-between p-3 bg-white border rounded-lg"
+                          >
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">
+                                {factura.tipo} - {factura.numero}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {new Date(factura.fecha).toLocaleDateString("es-AR")}
+                                {factura.monto && ` - $${factura.monto.toFixed(2)}`}
+                              </p>
+                            </div>
+                            {isEditing && (
+                              <div className="flex gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleEditFactura(factura.id)}
+                                  className="h-8 w-8"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleDeleteFactura(factura.id)}
+                                  className="h-8 w-8 text-red-500 hover:text-red-700"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Formulario agregar/editar factura */}
+                    {isEditing && showAddFactura && (
+                      <div className="border rounded-lg p-4 bg-blue-50 space-y-3">
+                        <h5 className="font-medium text-sm">
+                          {editingFacturaId ? "Editar Factura" : "Nueva Factura"}
+                        </h5>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">Tipo</Label>
+                            <Select
+                              value={newFacturaTipo}
+                              onValueChange={setNewFacturaTipo}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Tipo" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Factura A">Factura A</SelectItem>
+                                <SelectItem value="Factura B">Factura B</SelectItem>
+                                <SelectItem value="Factura C">Factura C</SelectItem>
+                                <SelectItem value="Factura E">Factura E</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label className="text-xs">Número</Label>
+                            <Input
+                              value={newFacturaNumero}
+                              onChange={(e) => setNewFacturaNumero(e.target.value)}
+                              placeholder="0000-00000000"
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Fecha</Label>
+                            <Input
+                              type="date"
+                              value={newFacturaFecha}
+                              onChange={(e) => setNewFacturaFecha(e.target.value)}
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Monto (opcional)</Label>
+                            <Input
+                              type="number"
+                              value={newFacturaMonto}
+                              onChange={(e) => setNewFacturaMonto(e.target.value)}
+                              placeholder="0.00"
+                              className="h-9"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleCancelFactura}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={handleAddFactura}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            {editingFacturaId ? "Actualizar" : "Agregar"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <p>Subtotal</p>
@@ -542,7 +856,7 @@ export function SaleDetailsModal({
                           className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                         />
                         <Label htmlFor="applyIVA" className="text-sm">
-                          Desglosar IVA (21%)
+                          Desglosa IVA (21%)
                         </Label>
                       </div>
                       <p className="text-sm">
@@ -744,18 +1058,29 @@ export function SaleDetailsModal({
                       />
                     </div>
                   </div>
-                  <Button
-                    onClick={handleAddItem}
-                    className="mt-4"
-                    disabled={
-                      !selectedProduct ||
-                      !selectedVariant ||
-                      quantity <= 0 ||
-                      unitPrice <= 0
-                    }
-                  >
-                    Agregar Producto
-                  </Button>
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      onClick={handleAddItem}
+                      disabled={
+                        !selectedProduct ||
+                        !selectedVariant ||
+                        quantity <= 0 ||
+                        unitPrice <= 0
+                      }
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar Producto
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowManualItemDialog(true)}
+                      className="bg-gray-600 hover:bg-gray-700 text-white"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Item Manual
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -799,7 +1124,7 @@ export function SaleDetailsModal({
                       items.map((item, index) => (
                         <TableRow key={index}>
                           <TableCell>
-                            {products[item.productId]?.name ||
+                            {products[item.productId]?.name || item.productName ||
                               "Producto no encontrado"}
                           </TableCell>
                           {/* <TableCell>
@@ -808,7 +1133,7 @@ export function SaleDetailsModal({
                               .join(", ") || "Sin categoría"}
                           </TableCell> */}
                           <TableCell>
-                            {item.variantName || "Sin variante"}
+                            {item.variantName  || getVariantSize(item.variantId) || "Sin variante"}
                           </TableCell>
                           <TableCell className="text-right">
                             {item.quantity}
@@ -817,7 +1142,7 @@ export function SaleDetailsModal({
                             {formatearPrecio(item.unitPrice)}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatearPrecio(item.total * (applyIVA ? 1.21 : 1))}
+                            {formatearPrecio(item.total)}
                           </TableCell>
                           {isEditing && (
                             <TableCell className="text-right">
@@ -846,5 +1171,162 @@ export function SaleDetailsModal({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Dialog para Item Manual */}
+    <Dialog
+      open={showManualItemDialog}
+      onOpenChange={setShowManualItemDialog}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Agregar Item Manual</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Nombre del Producto *</Label>
+            <Input
+              value={manualItem.productName}
+              onChange={(e) =>
+                setManualItem((prev) => ({
+                  ...prev,
+                  productName: e.target.value,
+                }))
+              }
+              placeholder="Nombre del producto o servicio"
+            />
+          </div>
+          <div>
+            <Label>Descripción</Label>
+            <Textarea
+              value={manualItem.description}
+              onChange={(e) =>
+                setManualItem((prev) => ({
+                  ...prev,
+                  description: e.target.value,
+                }))
+              }
+              placeholder="Descripción detallada"
+              rows={2}
+            />
+          </div>
+          <div>
+            <Label>Variante/Tamaño</Label>
+            <Input
+              value={manualItem.variantName}
+              onChange={(e) =>
+                setManualItem((prev) => ({
+                  ...prev,
+                  variantName: e.target.value,
+                }))
+              }
+              placeholder="Ej: Talle L, 2x1m, etc."
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Cantidad *</Label>
+              <Input
+                type="number"
+                min="1"
+                value={manualItem.quantity}
+                onChange={(e) =>
+                  setManualItem((prev) => ({
+                    ...prev,
+                    quantity: parseInt(e.target.value) || 1,
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <Label>Precio Unitario *</Label>
+              <Input
+                type="number"
+                min="0"
+                step="10.00"
+                placeholder="0.00"
+                value={manualItem.unitPrice || ""}
+                onChange={(e) =>
+                  setManualItem((prev) => ({
+                    ...prev,
+                    unitPrice: parseFloat(e.target.value) || 0,
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Descuento (%)</Label>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              placeholder="0"
+              value={manualItem.discount || ""}
+              onChange={(e) =>
+                setManualItem((prev) => ({
+                  ...prev,
+                  discount: parseFloat(e.target.value) || 0,
+                }))
+              }
+            />
+          </div>
+          <div>
+            <Label>Notas</Label>
+            <Textarea
+              value={manualItem.notes}
+              onChange={(e) =>
+                setManualItem((prev) => ({
+                  ...prev,
+                  notes: e.target.value,
+                }))
+              }
+              placeholder="Notas adicionales"
+              rows={2}
+            />
+          </div>
+          {/* Preview del subtotal */}
+          {manualItem.unitPrice > 0 && (
+            <div className="bg-gray-50 p-3 rounded">
+              <div className="text-sm">
+                <div>Cantidad: {manualItem.quantity}</div>
+                <div>
+                  Precio unitario:{" "}
+                  {formatearPrecio(manualItem.unitPrice)}
+                </div>
+                {manualItem.discount > 0 && (
+                  <div>Descuento: {manualItem.discount}%</div>
+                )}
+                <div className="font-bold">
+                  Subtotal:{" "}
+                  {formatearPrecio(
+                    manualItem.unitPrice *
+                      manualItem.quantity *
+                      (1 - manualItem.discount / 100)
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setShowManualItemDialog(false)}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleAddManualItem}
+            disabled={
+              !manualItem.productName || !manualItem.unitPrice
+            }
+            className="bg-green-600 hover:bg-green-700"
+          >
+            Agregar Item
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

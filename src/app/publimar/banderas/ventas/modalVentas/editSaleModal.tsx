@@ -128,6 +128,7 @@ export function EditSaleModal({ open, onOpenChange, saleId, onSuccess }: EditSal
     const variant = product?.variants?.find(v => v.id === selectedVariant);
     
     const newItem: TSaleItem = {
+      productName: product?.name || "Sin producto",
       variantName: variant?.size || "Sin variante",
       productId: selectedProduct,
       variantId: selectedVariant,

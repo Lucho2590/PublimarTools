@@ -27,6 +27,8 @@ export enum EProductCategory {
   }
   
   export interface TProduct {
+    salesCount: number;
+    totalSales: number;
     id: string;
     name: string;
     description?: string;

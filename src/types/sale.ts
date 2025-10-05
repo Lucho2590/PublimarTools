@@ -7,7 +7,16 @@ export enum EPaymentMethod {
   CHECK = "cheque",
 }
 
+export type TFactura = {
+  id: string;
+  tipo: string;
+  numero: string;
+  fecha: string;
+  monto?: number;
+}
+
 export interface TSaleItem {
+  productName: string;
   variantName: any;
   productId: string;
   variantId: string;
@@ -32,8 +41,11 @@ export interface TSale {
   discountAmount?: number;
   manualDiscount?: number;
   paymentMethod: EPaymentMethod;
+  // Sistema de facturación (antiguo - mantener para compatibilidad)
   isInvoiced: boolean;
   invoiceNumber: string | null;
+  // Sistema de múltiples facturas (nuevo)
+  facturas?: TFactura[];
   createdAt: Date;
   updatedAt: Date;
   orderId?: string;

@@ -374,10 +374,17 @@ export default function OrderDetailsPage({
 
   const handleDeleteOrder = async () => {
     if (!order) return;
-    alert("Desea eliminar la orden?");
-    router.push("/publimar/banderas/ordenes");
-    await deleteOrder(params.id);
-    toast.success("Orden eliminada correctamente");
+    
+    const confirmDelete = window.confirm("¿Está seguro que desea eliminar esta orden? Esta acción no se puede deshacer.");
+    if (!confirmDelete) return;
+    
+    try {
+      await deleteOrder(params.id);
+      toast.success("Orden eliminada correctamente");
+      router.push("/publimar/banderas/ordenes");
+    } catch (error) {
+      toast.error("Error al eliminar la orden");
+    }
   };
 
   const handleUpdateClientData = async (
@@ -1197,7 +1204,7 @@ export default function OrderDetailsPage({
                                 <TableRow>
                                   <TableHead>Producto</TableHead>
                                   <TableHead>Descripción</TableHead>
-                                  <TableHead>Precio</TableHead>
+                                  {/* <TableHead>Precio</TableHead> */}
                                   <TableHead>Acción</TableHead>
                                 </TableRow>
                               </TableHeader>
@@ -1210,11 +1217,11 @@ export default function OrderDetailsPage({
                                     <TableCell className="text-sm text-gray-600">
                                       {product.description}
                                     </TableCell>
-                                    <TableCell>
+                                    {/* <TableCell>
                                       {formatearPrecio(
                                         Number(product.price || 0)
                                       )}
-                                    </TableCell>
+                                    </TableCell> */}
                                     <TableCell>
                                       <Button
                                         size="sm"
@@ -1241,11 +1248,11 @@ export default function OrderDetailsPage({
                             <p className="text-sm text-gray-600">
                               {selectedProduct.description}
                             </p>
-                            <p className="text-sm font-medium">
+                            {/* <p className="text-sm font-medium">
                               {formatearPrecio(
                                 Number(selectedProduct.price || 0)
                               )}
-                            </p>
+                            </p> */}
                           </div>
 
                           {selectedProduct.variants &&
@@ -1302,6 +1309,7 @@ export default function OrderDetailsPage({
                                 type="number"
                                 min="0"
                                 max="100"
+                                placeholder="0"
                                 value={itemDiscount}
                                 onChange={(e) =>
                                   setItemDiscount(
@@ -1451,15 +1459,15 @@ export default function OrderDetailsPage({
                           <Input
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="10.00"
+                            placeholder="0.00"
                             value={manualItem.unitPrice}
                             onChange={(e) =>
                               setManualItem((prev) => ({
                                 ...prev,
-                                unitPrice: parseFloat(e.target.value) || 0,
+                                unitPrice: parseFloat(e.target.value),
                               }))
                             }
-                            placeholder="0.00"
                           />
                         </div>
                       </div>
@@ -1469,14 +1477,14 @@ export default function OrderDetailsPage({
                           type="number"
                           min="0"
                           max="100"
+                          placeholder="0"
                           value={manualItem.discount}
                           onChange={(e) =>
                             setManualItem((prev) => ({
                               ...prev,
-                              discount: parseFloat(e.target.value) || 0,
+                              discount: parseFloat(e.target.value) ,
                             }))
                           }
-                          placeholder="0"
                         />
                       </div>
                       <div>
@@ -1727,6 +1735,7 @@ export default function OrderDetailsPage({
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="facturado"
+                    disabled={true}
                     checked={editedOrder?.isInvoiced || false}
                     onCheckedChange={(checked) =>
                       setEditedOrder((prev: any) => ({
@@ -1814,8 +1823,8 @@ export default function OrderDetailsPage({
                             value={newFacturaTipo}
                             onValueChange={(value) => setNewFacturaTipo(value)}
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Factura A" />
+                            <SelectTrigger className={newFacturaTipo ? " text-black" : " text-gray-500"}>
+                              <SelectValue placeholder="Tipo de factura"  />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Factura A">
@@ -1843,6 +1852,7 @@ export default function OrderDetailsPage({
                             type="date"
                             value={newFacturaFecha}
                             onChange={(e) => setNewFacturaFecha(e.target.value)}
+                            className={newFacturaFecha ? " text-black" : " text-gray-500"}
                           />
                         </div>
                         <div className="space-y-2">
@@ -1896,7 +1906,8 @@ export default function OrderDetailsPage({
                           <Label>Monto</Label>
                           <Input
                             type="number"
-                            step="0.01"
+                            min="0"
+                            step="10.00"
                             placeholder="0.00"
                             value={pagoParcial}
                             onChange={(e) => setPagoParcial(e.target.value)}

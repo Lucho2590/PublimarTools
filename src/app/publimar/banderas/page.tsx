@@ -54,7 +54,7 @@ import collections from "@/lib/collections";
 import { toast } from "sonner";
 // import { Textarea } from "@/components/ui/textarea";
 import QuoteDetailsModal from "./presupuestos/modalPresupuestos/quoteDetailsModal";
-import OrderDetailsModal from "./ordenes/modalOrdenes/orderDetailsModal";
+// import OrderDetailsModal from "./ordenes/modalOrdenes/orderDetailsModal"; // Comentado temporalmente
 
 export default function DashboardPage() {
   const firestore = useFirestore();
@@ -489,7 +489,7 @@ export default function DashboardPage() {
                   {recentOrders?.map((order: any) => (
                     <TableRow key={order.id}>
                       <TableCell>{order.number}</TableCell>
-                      <TableCell>{order.client.name}</TableCell>
+                      <TableCell>{order.clientName||order.client?.name}</TableCell>
                       <TableCell>
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -633,11 +633,11 @@ export default function DashboardPage() {
       />
 
       {/* Modal de detalles de orden */}
-      <OrderDetailsModal
+      {/* <OrderDetailsModal
         isOpen={showOrderModal}
         onClose={handleCloseOrderModal}
         orderId={selectedOrderId}
-      />
+      /> */}
     </div>
   );
 }

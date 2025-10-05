@@ -26,17 +26,12 @@ export function useSales() {
   const salesCollection = collection(firestore, COLLECTION_NAME)
   const salesQuery = query(salesCollection, orderBy('createdAt', 'desc'))
   
-  console.log('🔧 DEBUG useSales - Hook iniciado')
-  console.log('🔥 Firestore instance:', firestore)
-  console.log('📁 Collection name:', COLLECTION_NAME)
+
   
   const { status, data: sales } = useFirestoreCollectionData(salesQuery, {
     idField: 'id',
   })
   
-  console.log('📊 Status de la consulta:', status)
-  console.log('📦 Data recibida:', sales)
-  console.log('🔢 Cantidad de ventas:', sales?.length || 0)
 
   const createSale = async (saleData: Partial<TSale> & {
     number: string;

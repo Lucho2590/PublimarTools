@@ -33,3 +33,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# firebase
+functions/node_modules/
+.firebase/
+
+# scripts con credenciales
+update-sales-counters.js

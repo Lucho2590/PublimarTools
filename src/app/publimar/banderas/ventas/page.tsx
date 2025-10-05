@@ -5,6 +5,8 @@ import { collection, query, orderBy } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { DateRange } from "react-day-picker";
 import {
   Table,
   TableBody,
@@ -24,29 +26,29 @@ import collections from "@/lib/collections";
 import { EPaymentMethod, TSale } from "@/types/sale";
 import { useRouter } from "next/navigation";
 import { formatearPrecio, redondearADecena } from "@/lib/utils";
-import { NuevaVentaModal } from "./modalVentas/newSaleModal";
+// import { NuevaVentaModal } from "./modalVentas/newSaleModal";
 import { SaleDetailsModal } from "./modalVentas/saleDetailsModal";
-import { Edit, Eye, X } from "lucide-react";
+import { Eye, Trophy } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-// import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, Sector } from "recharts";
-import { TProduct, TProductCategory } from "@/types/product";
+import { TProduct } from "@/types/product";
 
 const BANCOS = ["Galicia", "Frances"];
 
 export default function VentasPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("all");
   const [selectedInvoiced, setSelectedInvoiced] = useState<string>("all");
-  const today = new Date().toISOString().split('T')[0];
-  const [startDate, setStartDate] = useState<string>(today);
-  const [endDate, setEndDate] = useState<string>(today);
+  const today = new Date();
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({
+    from: today,
+    to: today,
+  });
   const [selectedBank, setSelectedBank] = useState<string>("all");
-  const [showNewSaleModal, setShowNewSaleModal] = useState(false);
+  // const [showNewSaleModal, setShowNewSaleModal] = useState(false);
   const [showSaleDetailsModal, setShowSaleDetailsModal] = useState(false);
   const [selectedVentaId, setSelectedVentaId] = useState<string | null>(null);
   const router = useRouter();
   const firestore = useFirestore();
-  const [timeFilter, setTimeFilter] = useState<"week" | "month" | "year">("week");
 
   // Consulta a Firestore
   const salesCollection = collection(firestore, collections.SALES);
@@ -58,25 +60,11 @@ export default function VentasPage() {
 //  console.log(sales)
 
 
-  // Obtener productos para acceder a sus categorías
+  // Obtener productos para el Top 5
   const productsCollection = collection(firestore, collections.PRODUCTS);
   const { data: products } = useFirestoreCollectionData(productsCollection, {
     idField: "id",
   });
-
-  // Obtener categorías
-  const categoriesCollection = collection(firestore, collections.products.CATEGORIES);
-  const { data: categories } = useFirestoreCollectionData(categoriesCollection, {
-    idField: "id",
-  });
-
-  // console.log('Categorías:', categories);
-
-  // Función para obtener el nombre de la categoría
-  const getCategoryName = (categoryId: string) => {
-    const category = categories?.find(c => c.id === categoryId);
-    return category ? (category as unknown as TProductCategory).name : null
-  };
 
   // Filtrar ventas según los filtros seleccionados
   const filteredSales = sales?.filter((sale) => {
@@ -104,10 +92,19 @@ export default function VentasPage() {
     }
     if (!saleDate) return false;
 
-    const matchesStartDate = !startDate || saleDate >= new Date(startDate);
-    const matchesEndDate = !endDate || saleDate <= new Date(endDate + 'T23:59:59');
+    // Filtrar por rango de fechas
+    let matchesDateRange = true;
+    if (dateRange?.from && dateRange?.to) {
+      const startOfDay = new Date(dateRange.from);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(dateRange.to);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      matchesDateRange = saleDate >= startOfDay && saleDate <= endOfDay;
+    }
 
-    return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesStartDate && matchesEndDate;
+    return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesDateRange;
   });
 
   // Calcular total de ventas filtradas
@@ -116,12 +113,12 @@ export default function VentasPage() {
     return sum + typedSale.total;
   }, 0) || 0;
 
-  // Limpiar todos los filtros
+  // Limpiar todos los filtros y volver al día actual
   const limpiarFiltros = () => {
+    const hoy = new Date();
     setSelectedPaymentMethod("all");
     setSelectedInvoiced("all");
-    setStartDate(today);
-    setEndDate(today);
+    setDateRange({ from: hoy, to: hoy });
     setSelectedBank("all");
   };
 
@@ -175,9 +172,9 @@ export default function VentasPage() {
     }
   };
 
-  // Función para obtener las ventas por categoría según el filtro temporal
-  const getSalesByCategory = (period: "month" | "year") => {
-    if (!sales || !products || !categories) return [];
+  // Función para obtener el Top 5 de productos más vendidos según período
+  const getTopProducts = (period: "month" | "year") => {
+    if (!sales || !products) return [];
 
     const now = new Date();
     let startDate: Date;
@@ -193,6 +190,7 @@ export default function VentasPage() {
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     }
 
+    // Filtrar ventas del período
     const filteredSales = sales.filter((sale) => {
       if (!sale.createdAt) return false;
       
@@ -202,27 +200,35 @@ export default function VentasPage() {
       return saleDate >= startDate;
     });
 
-    // Agrupar ventas por categoría
-    const categorySales = new Map<string, number>();
+    // Contar productos vendidos en el período
+    const productSales = new Map<string, { name: string, quantity: number, salesCount: number }>();
     
-    // console.log(filteredSales)
     filteredSales.forEach((sale) => {
       const typedSale = sale as unknown as TSale;
       typedSale.items?.forEach((item) => {
-        const product = products.find(p => p.id === item.productId) as unknown as TProduct;
-        const categoryId = product?.categories?.[0];
-        const categoryName = categoryId ? getCategoryName(categoryId) : null;
-        if (categoryName) {
-          const currentTotal = categorySales.get(categoryName) || 0;
-          categorySales.set(categoryName, currentTotal + (item.total || 0));
+        const productId = item.productId;
+        const productName = item.productName || "Producto desconocido";
+        
+        if (productId) {
+          const current = productSales.get(productId) || { name: productName, quantity: 0, salesCount: 0 };
+          productSales.set(productId, {
+            name: productName,
+            quantity: current.quantity + (item.quantity || 0),
+            salesCount: current.salesCount + 1,
+          });
         }
       });
     });
 
-    return Array.from(categorySales.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value) // Ordenar de mayor a menor
-      .slice(0, 5); // Tomar solo los Top 5
+    return Array.from(productSales.values())
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 5)
+      .map((product, index) => ({
+        name: product.name,
+        totalSales: product.quantity,
+        salesCount: product.salesCount,
+        position: index + 1,
+      }));
   };
 
   // Función para obtener las ventas por método de pago
@@ -244,8 +250,6 @@ export default function VentasPage() {
       .slice(0, 5); // Tomar solo los Top 5
   };
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
-
   const handleViewSale = (saleId: string) => {
     setSelectedVentaId(saleId);
     setShowSaleDetailsModal(true);
@@ -256,20 +260,13 @@ export default function VentasPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Ventas</h1>
         <Button
-          onClick={() => setShowNewSaleModal(true)}
+          onClick={() => router.push("/publimar/banderas/ventas/nueva")}
           className="bg-blue-900 hover:bg-blue-900 hover:text-white"
         >
           Nueva Venta
         </Button>
       </div>
 
-      <NuevaVentaModal
-        open={showNewSaleModal}
-        onOpenChange={setShowNewSaleModal}
-        onSuccess={() => {
-          setShowNewSaleModal(false);
-        }}
-      />
 
       <SaleDetailsModal
         open={showSaleDetailsModal}
@@ -281,195 +278,85 @@ export default function VentasPage() {
         }}
       />
       
-      <Card className="mb-6">
-        <CardContent className="pt-2">
-          <Tabs defaultValue="month" className="w-full">
-            <TabsList className="mb-4">
-              <TabsTrigger value="month">Mensual</TabsTrigger>
-              <TabsTrigger value="year">Anual</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="month">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Ventas por Categoría - Mensual */}
-                <Card>
-                  <CardContent className="pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Top 5 Categorías - Este Mes</h3>
-                    <div className="space-y-4">
-                      {getSalesByCategory("month").map((category, index) => (
-                        <div key={category.name} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                            />
-                            <span className="text-sm">{category.name}</span>
-                          </div>
-                          <span className="font-medium">{formatearPrecio(category.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Métodos de Pago - Mensual */}
-                <Card>
-                  <CardContent className="pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Top 5 Métodos de Pago - Este Mes</h3>
-                    <div className="space-y-4">
-                      {getSalesByPaymentMethod().map((method, index) => (
-                        <div key={method.name} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                            />
-                            <span className="text-sm">{method.name}</span>
-                          </div>
-                          <span className="font-medium">{formatearPrecio(method.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="year">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Ventas por Categoría - Anual */}
-                <Card>
-                  <CardContent className="pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Top 5 Categorías - Este Año</h3>
-                    <div className="space-y-4">
-                      {getSalesByCategory("year").map((category, index) => (
-                        <div key={category.name} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                            />
-                            <span className="text-sm">{category.name}</span>
-                          </div>
-                          <span className="font-medium">{formatearPrecio(category.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Métodos de Pago - Anual */}
-                <Card>
-                  <CardContent className="pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Top 5 Métodos de Pago - Este Año</h3>
-                    <div className="space-y-4">
-                      {getSalesByPaymentMethod().map((method, index) => (
-                        <div key={method.name} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className="w-3 h-3 rounded-full" 
-                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                            />
-                            <span className="text-sm">{method.name}</span>
-                          </div>
-                          <span className="font-medium">{formatearPrecio(method.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
 
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <Select
-              value={selectedPaymentMethod}
-              onValueChange={(value) => {
-                setSelectedPaymentMethod(value);
-                if (value !== "transfer") setSelectedBank("all");
-              }}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Método de pago" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los métodos</SelectItem>
-                <SelectItem value={EPaymentMethod.CASH}>Efectivo</SelectItem>
-                <SelectItem value={EPaymentMethod.CREDIT_CARD}>Tarjeta de Crédito</SelectItem>
-                <SelectItem value={EPaymentMethod.DEBIT_CARD}>Tarjeta de Débito</SelectItem>
-                <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
-                <SelectItem value={EPaymentMethod.MERCADOPAGO}>MercadoPago</SelectItem>
-                <SelectItem value={EPaymentMethod.CHECK}>Cheque</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Filtro de banco solo si es transferencia */}
-            {selectedPaymentMethod === "transfer" && (
+          <div className="space-y-4">
+            {/* Fila 1: Filtros principales */}
+            <div className="flex flex-wrap gap-3">
               <Select
-                value={selectedBank}
-                onValueChange={setSelectedBank}
+                value={selectedPaymentMethod}
+                onValueChange={(value) => {
+                  setSelectedPaymentMethod(value);
+                  if (value !== "transfer") setSelectedBank("all");
+                }}
               >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Banco" />
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Método de pago" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los bancos</SelectItem>
-                  {BANCOS.map((banco) => (
-                    <SelectItem key={banco} value={banco}>{banco}</SelectItem>
-                  ))}
+                  <SelectItem value="all">Todos los métodos</SelectItem>
+                  <SelectItem value={EPaymentMethod.CASH}>Efectivo</SelectItem>
+                  <SelectItem value={EPaymentMethod.CREDIT_CARD}>Tarjeta de Crédito</SelectItem>
+                  <SelectItem value={EPaymentMethod.DEBIT_CARD}>Tarjeta de Débito</SelectItem>
+                  <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
+                  <SelectItem value={EPaymentMethod.MERCADOPAGO}>MercadoPago</SelectItem>
+                  <SelectItem value={EPaymentMethod.CHECK}>Cheque</SelectItem>
                 </SelectContent>
               </Select>
-            )}
 
-            <Select
-              value={selectedInvoiced}
-              onValueChange={setSelectedInvoiced}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Facturación" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas</SelectItem>
-                <SelectItem value="yes">Facturadas</SelectItem>
-                <SelectItem value="no">No facturadas</SelectItem>
-              </SelectContent>
-            </Select>
+              {selectedPaymentMethod === "transfer" && (
+                <Select
+                  value={selectedBank}
+                  onValueChange={setSelectedBank}
+                >
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Banco" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los bancos</SelectItem>
+                    {BANCOS.map((banco) => (
+                      <SelectItem key={banco} value={banco}>{banco}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
 
-            <div className="flex gap-2">
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-[200px]"
+              <Select
+                value={selectedInvoiced}
+                onValueChange={setSelectedInvoiced}
+              >
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Facturación" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="yes">Facturadas</SelectItem>
+                  <SelectItem value="no">No facturadas</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <DateRangePicker
+                value={dateRange}
+                onChange={setDateRange}
               />
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-[200px]"
-              />
+
+              <Button
+                variant="outline"
+                onClick={limpiarFiltros}
+                size="icon"
+                title="Limpiar filtros"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+              </Button>
             </div>
 
-            <Button
-              variant="outline"
-              onClick={limpiarFiltros}
-              className="flex items-center gap-2"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-              </svg>
-            </Button>
-          </div>
-
-          <div className="mt-4 p-4 bg-slate-50 rounded-lg">
-            <div className="flex justify-between items-center">
+            {/* Resumen de totales */}
+            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-lg">
               <div>
-                <p className="text-sm text-slate-500">Total de ventas filtradas</p>
+                <p className="text-sm text-slate-500">Total de ventas</p>
                 <p className="text-2xl font-bold">{formatearPrecio(totalVentas)}</p>
               </div>
               <div>
