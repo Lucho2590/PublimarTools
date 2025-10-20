@@ -43,7 +43,7 @@ import {
   ChevronDown,
   Edit,
 } from "lucide-react";
-import { formatearPrecio, formatDate } from "@/lib/utils";
+import { formatearPrecio, formatDate, formatDateString } from "@/lib/utils";
 import { toast } from "sonner";
 import { EOrderStatus, TPaymentHistory, TFactura } from "@/types/order";
 import { EPaymentMethod } from "@/types/sale";
@@ -199,13 +199,16 @@ export default function OrderDetailsPage({
       return;
     }
 
-    const nuevaFactura = {
+    const nuevaFactura: any = {
       id: `factura-${Date.now()}`,
       tipo: newFacturaTipo,
       numero: newFacturaNumero,
       fecha: newFacturaFecha,
-      monto: newFacturaMonto ? parseFloat(newFacturaMonto) : undefined,
     };
+    
+    if (newFacturaMonto) {
+      nuevaFactura.monto = parseFloat(newFacturaMonto);
+    }
 
     const nuevasFacturas = [...facturas, nuevaFactura];
     setFacturas(nuevasFacturas);
@@ -248,7 +251,7 @@ export default function OrderDetailsPage({
             tipo: newFacturaTipo,
             numero: newFacturaNumero,
             fecha: newFacturaFecha,
-            monto: newFacturaMonto ? parseFloat(newFacturaMonto) : undefined,
+            ...(newFacturaMonto && { monto: parseFloat(newFacturaMonto) }),
           }
         : factura
     );
@@ -599,7 +602,7 @@ export default function OrderDetailsPage({
   };
 
 
-  const BANCOS = ["Galicia", "Frances", "Mercado Pago"];
+  const BANCOS = ["Galicia", "Frances"];
 
   // Manejar item manual
   const handleAddManualItem = () => {
@@ -1778,7 +1781,7 @@ export default function OrderDetailsPage({
                               </span>
                               <span>N° {factura.numero}</span>
                               <span>
-                                {new Date(factura.fecha).toLocaleDateString()}
+                                {formatDateString(factura.fecha)}
                               </span>
                               {factura.monto && (
                                 <span className="text-green-600 font-medium">
@@ -1856,7 +1859,7 @@ export default function OrderDetailsPage({
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label>Monto (Opcional)</Label>
+                          <Label>Monto </Label>
                           <Input
                             type="number"
                             step="0.01"

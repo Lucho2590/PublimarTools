@@ -429,12 +429,10 @@ export default function VentasPage() {
                             {formatPaymentMethod(typedSale.paymentMethod)}
                           </TableCell>
                           <TableCell>
-                            {typedSale.isInvoiced ? (
-                              <span className={typedSale.invoiceNumber ? "text-green-600" : "text-red-600"}>
-                                Sí
-                              </span>
+                            {typedSale.isInvoiced ||(typedSale.facturas && typedSale.facturas.length > 0) ? (
+                              <span className="text-green-600">Sí</span>
                             ) : (
-                              <span className="text-slate-500">No</span>
+                              <span className="text-red-600">No</span>
                             )}
                           </TableCell>
                           <TableCell className="text-right">

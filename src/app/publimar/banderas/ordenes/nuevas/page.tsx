@@ -41,7 +41,7 @@ import {
   FileText,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { formatDate, formatearPrecio, redondearTotal } from "@/lib/utils";
+import { formatDate, formatearPrecio, redondearTotal, formatDateString } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TProduct, TProductVariant } from "@/types/product";
 import { toast } from "sonner";
@@ -167,13 +167,16 @@ export default function NuevasOrdenesPage() {
       return;
     }
 
-    const nuevaFactura = {
+    const nuevaFactura: any = {
       id: `factura-${Date.now()}`,
       tipo: newFacturaTipo,
       numero: newFacturaNumero,
       fecha: newFacturaFecha,
-      monto: newFacturaMonto ? parseFloat(newFacturaMonto) : undefined,
     };
+    
+    if (newFacturaMonto) {
+      nuevaFactura.monto = parseFloat(newFacturaMonto);
+    }
 
     setFacturas(prev => [...prev, nuevaFactura]);
     
@@ -212,7 +215,7 @@ export default function NuevasOrdenesPage() {
             tipo: newFacturaTipo,
             numero: newFacturaNumero,
             fecha: newFacturaFecha,
-            monto: newFacturaMonto ? parseFloat(newFacturaMonto) : undefined,
+            ...(newFacturaMonto && { monto: parseFloat(newFacturaMonto) }),
           }
         : factura
     ));
@@ -755,21 +758,21 @@ const total = subtotal - totalDiscountAmount;
         notes: detalle,
         paymentMethod: formaPago as any,
         isInvoiced: facturado,
-        invoiceNumber: facturas.length > 0 ? facturas[0].numero : undefined,
-        invoiceDate: facturas.length > 0 && facturas[0].fecha ? new Date(facturas[0].fecha) : undefined,
+        ...(facturas.length > 0 && { invoiceNumber: facturas[0].numero }),
+        ...(facturas.length > 0 && facturas[0].fecha && { invoiceDate: new Date(facturas[0].fecha) }),
         discountPercentage: discountPercentage,
         discountAmount: totalDiscountAmount,
         manualDiscount: manualDiscount,
         // Agregar array de facturas
-        facturas: facturas.length > 0 ? facturas : undefined,
-        estimatedDeliveryDate: fechaEntrega ? new Date(fechaEntrega).getTime() : undefined,
+        facturas: facturas.length > 0 ? facturas : [],
+        ...(fechaEntrega && { estimatedDeliveryDate: new Date(fechaEntrega).getTime() }),
         // Nueva forma: seña en paymentHistory
         paymentHistory: paymentHistory,
-        balance: parseFloat(saldo) || undefined,
+        balance: parseFloat(saldo) || 0,
         // Datos del cliente (solo referencias, no duplicar datos)
-        clientId: cliente || null, // Referencia a la DB del cliente
-        clientName: clienteInput || undefined, // Solo el nombre para mostrar
-        reference: referencia || undefined, // Referencia del cliente
+        ...(cliente && { clientId: cliente }), // Referencia a la DB del cliente
+        ...(clienteInput && { clientName: clienteInput }), // Solo el nombre para mostrar
+        ...(referencia && { reference: referencia }), // Referencia del cliente
       });
 
       // Si el cliente no existe y no hay un ID seleccionado, preguntar si crear nuevo
@@ -1799,7 +1802,7 @@ const total = subtotal - totalDiscountAmount;
                         <div className="flex items-center gap-4 text-sm">
                           <span className="font-medium">{factura.tipo}</span>
                           <span>N° {factura.numero}</span>
-                          <span>{new Date(factura.fecha).toLocaleDateString()}</span>
+                          <span>{formatDateString(factura.fecha)}</span>
                           {factura.monto && (
                             <span className="text-green-600 font-medium">
                               ${factura.monto.toFixed(2)}
@@ -1869,7 +1872,7 @@ const total = subtotal - totalDiscountAmount;
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Monto (Opcional)</Label>
+                      <Label>Monto</Label>
                       <Input
                         type="number"
                         step="0.01"

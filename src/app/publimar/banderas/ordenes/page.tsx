@@ -30,6 +30,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { formatearPrecio } from "@/lib/utils";
+import {
   Pagination,
   PaginationContent,
   PaginationEllipsis,
@@ -71,6 +77,7 @@ export default function PedidosPage() {
     try {
       // Transformar items de orden a items de venta
       const saleItems = order.items.map(item => ({
+        description: item.description || undefined,
         productId: item.productId || undefined,
         variantId: item.variantId || undefined,
         productName: item.productName || undefined,
@@ -87,6 +94,8 @@ export default function PedidosPage() {
 
       // Crear la venta basada en la orden usando el hook
       const saleData = {
+        clientName: order.clientName || undefined,
+        client: order.clientId || undefined,
         number: order.number, // Prefijo para distinguir de la orden
         items: saleItems,
         subtotal: order.subtotal,
@@ -371,7 +380,7 @@ export default function PedidosPage() {
                          {order.clientReference || order.client?.reference || order.reference || "-"}
                         </TableCell>
                         <TableCell>{formatDate(order.createdAt)}</TableCell>
-                        <TableCell>${order.total.toFixed(2)}</TableCell>
+                        <TableCell>{formatearPrecio(order.total)}</TableCell>
                         <TableCell>
                           {order.status === EOrderStatus.COMPLETED ? (
                             // Badge estático para órdenes entregadas
@@ -424,26 +433,60 @@ export default function PedidosPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           {(() => {
-                            if (order.paymentHistory?.reduce((sum: number, payment: any) => sum + payment.amount, 0) === order.total) {
+                            if (order.paymentHistory?.reduce((sum: number, payment: any) => sum + payment.amount, 0) === order.total || order.balance === 0) {
                               // Pagado - Verde
                               return (
-                                <div className="flex justify-center" title="Pagado">
-                                  <Receipt className="h-5 w-5 text-green-600" />
-                                </div>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                      <Receipt className="h-5 w-5 text-green-600" />
+                                    </button>
+                                  </PopoverTrigger>
+                                </Popover>
                               );
                             } else if (order.balance === order.total) {
                               // Pendiente - Gris
                               return (
-                                <div className="flex justify-center" title="Pendiente">
-                                  <Receipt className="h-5 w-5 text-gray-400" />
-                                </div>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                      <Receipt className="h-5 w-5 text-gray-400" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-3">
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-medium text-gray-600">Sin Pagos</p>
+                                      <p className="text-sm">
+                                        <span className="text-gray-600">Saldo pendiente:</span>
+                                      </p>
+                                      <p className="text-lg font-bold text-red-600">
+                                        {formatearPrecio(order.balance)}
+                                      </p>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                               );
                             } else {
                               // Parcial - Ámbar
                               return (
-                                <div className="flex justify-center" title="Pago parcial">
-                                  <Receipt className="h-5 w-5 text-amber-500" />
-                                </div>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                      <Receipt className="h-5 w-5 text-amber-500" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-3">
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-medium text-amber-600">Pago Parcial</p>
+                                      <p className="text-sm">
+                                        <span className="text-gray-600">Saldo pendiente:</span>
+                                      </p>
+                                      <p className="text-lg font-bold text-amber-600">
+                                        {formatearPrecio(order.balance)}
+                                      </p>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
                               );
                             }
                           })()}

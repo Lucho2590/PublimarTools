@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import {
@@ -37,6 +37,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Save,
   ArrowLeft,
   FileText,
@@ -47,7 +48,8 @@ import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
 import { EPaymentMethod, TFactura } from "@/types/sale";
-import { formatearPrecio, redondearADecena, redondearTotal } from "@/lib/utils";
+import { formatearPrecio, redondearADecena, redondearTotal, formatDateString } from "@/lib/utils";
+import { useClients } from "@/hooks/useClients";
 
 interface SaleItem {
   id: string;
@@ -61,6 +63,13 @@ interface SaleItem {
 export default function NuevaVentaPage() {
   const router = useRouter();
   const firestore = useFirestore();
+
+  // Hook de clientes
+  const { 
+    clients, 
+    loading: clientsLoading,
+    createClient 
+  } = useClients();
 
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -108,6 +117,20 @@ export default function NuevaVentaPage() {
     discount: 0,
     notes: "",
   });
+
+  // Estados para el cliente
+  const [cliente, setCliente] = useState("");
+  const [clienteInput, setClienteInput] = useState("");
+  const [personaContacto, setPersonaContacto] = useState("");
+  const [direccion, setDireccion] = useState("");
+  const [email, setEmail] = useState("");
+  const [cuit, setCuit] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false);
+  const [highlightedClientIndex, setHighlightedClientIndex] = useState(-1);
+  const clienteInputRef = useRef<HTMLInputElement>(null);
+  const dropdownClientRef = useRef<HTMLUListElement>(null);
+  const [isClientExpanded, setIsClientExpanded] = useState(false);
 
   // Cálculos simples sin useMemo para evitar problemas
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
@@ -157,6 +180,100 @@ export default function NuevaVentaPage() {
     setDiscountPercentage(0);
     setManualTotal(null);
     setManualDiscount(0);
+    // Limpiar datos del cliente
+    setCliente("");
+    setClienteInput("");
+    setPersonaContacto("");
+    setDireccion("");
+    setEmail("");
+    setCuit("");
+    setTelefono("");
+    setFacturas([]);
+  };
+
+  // Funciones de manejo del cliente
+  const handleSelectClient = (clientId: string) => {
+    setCliente(clientId);
+    // Precargar datos del cliente
+    const selectedClient = clients?.find((c: any) => c.id === clientId);
+    if (selectedClient) {
+      setPersonaContacto(selectedClient.contacts?.[0]?.name || "");
+      setDireccion(selectedClient.address || "");
+      setEmail(selectedClient.email || "");
+      setTelefono(selectedClient.phone || "");
+      setCuit(selectedClient.cuit || "");
+      // Expandir la card para mostrar los datos precargados
+      setIsClientExpanded(true);
+    }
+  };
+
+  const handleClientInputChange = (value: string) => {
+    setClienteInput(value);
+    setShowClienteDropdown(true);
+    setHighlightedClientIndex(-1);
+    // Si el valor no coincide con ningún cliente existente, limpiar el clientId
+    const clientExists = clients?.some(
+      (c: any) => c.name.toLowerCase().trim() === value.toLowerCase().trim()
+    );
+    if (!clientExists) {
+      setCliente(""); // Limpiar el ID si es un cliente nuevo/manual
+    }
+  };
+
+  const handleClientKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const filteredClients = clients?.filter((c: any) =>
+      c.name.toLowerCase().includes(clienteInput.toLowerCase())
+    ) || [];
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedClientIndex((prev) =>
+        prev < filteredClients.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedClientIndex((prev) => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === "Enter" && highlightedClientIndex >= 0) {
+      e.preventDefault();
+      const selectedClient = filteredClients[highlightedClientIndex];
+      handleSelectClient(selectedClient.id);
+      setClienteInput(selectedClient.name);
+      setShowClienteDropdown(false);
+      setHighlightedClientIndex(-1);
+      if (clienteInputRef.current) clienteInputRef.current.blur();
+    }
+  };
+
+  const handleCreateClient = async () => {
+    if (!clienteInput.trim()) {
+      toast.error("El nombre del cliente es requerido");
+      return;
+    }
+
+    try {
+      // Preparar datos del cliente
+      const clientData: any = {
+        name: clienteInput.trim(),
+        type: "individual",
+        status: "active",
+        contacts: personaContacto || email || telefono ? [{
+          name: personaContacto || clienteInput,
+          email: email || "",
+          phone: telefono || "",
+        }] : [],
+      };
+
+      const newClientId = await createClient(clientData);
+      
+      // Actualizar el cliente seleccionado
+      setCliente(newClientId);
+      setShowClienteDropdown(false);
+      setIsClientExpanded(true);
+      toast.success(`Cliente "${clienteInput}" creado exitosamente`);
+    } catch (error) {
+      console.error('Error al crear cliente:', error);
+      toast.error("Error al crear el cliente");
+    }
   };
 
   // Obtener productos
@@ -397,7 +514,7 @@ export default function NuevaVentaPage() {
                 tipo: newFacturaTipo,
                 numero: newFacturaNumero,
                 fecha: newFacturaFecha,
-                monto: newFacturaMonto ? parseFloat(newFacturaMonto) : undefined,
+                ...(newFacturaMonto && { monto: parseFloat(newFacturaMonto) }),
               }
             : f
         )
@@ -410,7 +527,7 @@ export default function NuevaVentaPage() {
         tipo: newFacturaTipo,
         numero: newFacturaNumero,
         fecha: newFacturaFecha,
-        monto: newFacturaMonto ? parseFloat(newFacturaMonto) : undefined,
+        ...(newFacturaMonto && { monto: parseFloat(newFacturaMonto) }),
       };
       setFacturas(prev => [...prev, nuevaFactura]);
       toast.success("Factura agregada correctamente");
@@ -541,9 +658,34 @@ export default function NuevaVentaPage() {
       const currentTotal =
         manualTotal !== null ? manualTotal : currentCalculatedTotal;
 
+      // Construir objeto de datos del cliente solo si hay información
+      const clientData: any = {};
+      if (cliente) {
+        clientData.clientId = cliente;
+      }
+      if (clienteInput) {
+        clientData.clientName = clienteInput;
+      }
+      if (personaContacto) {
+        clientData.contact = { name: personaContacto };
+      }
+      if (direccion) {
+        clientData.direccion = direccion;
+      }
+      if (email) {
+        clientData.email = email;
+      }
+      if (telefono) {
+        clientData.telefono = telefono;
+      }
+      if (cuit) {
+        clientData.cuit = cuit;
+      }
+
       const saleData = {
         number: new Date().getTime().toString(),
         items: items.map((item) => ({
+          description: item.product.description,
           productId: item.product.id,
           variantId: item.variant.id,
           productName: item.product.name,
@@ -567,6 +709,8 @@ export default function NuevaVentaPage() {
         isInvoiced,
         invoiceNumber: isInvoiced ? invoiceNumber : null,
         facturas: facturas.length > 0 ? facturas : [],
+        // Datos del cliente (solo se incluyen si tienen valor)
+        ...clientData,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -643,6 +787,160 @@ export default function NuevaVentaPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Sección Cliente */}
+        <Card>
+          <CardHeader 
+            className="cursor-pointer hover:bg-gray-50 transition-colors"
+            onClick={() => setIsClientExpanded(!isClientExpanded)}
+          >
+            <div className="flex items-center justify-between">
+              <CardTitle>Cliente </CardTitle>
+              <ChevronDown 
+                className={`h-5 w-5 transition-transform duration-200 ${
+                  isClientExpanded ? 'rotate-180' : ''
+                }`}
+              />
+            </div>
+          </CardHeader>
+          {isClientExpanded && (
+            <CardContent className="space-y-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1" style={{ position: "relative" }}>
+                <Label>Cliente</Label>
+                <Input
+                  ref={clienteInputRef}
+                  placeholder="Buscar o escribir cliente..."
+                  value={clienteInput}
+                  onChange={(e) => handleClientInputChange(e.target.value)}
+                  onKeyDown={handleClientKeyDown}
+                  onFocus={() => {
+                    setShowClienteDropdown(true);
+                    setHighlightedClientIndex(-1);
+                  }}
+                  onBlur={() =>
+                    setTimeout(() => {
+                      setShowClienteDropdown(false);
+                      setHighlightedClientIndex(-1);
+                    }, 150)
+                  }
+                />
+                {showClienteDropdown &&
+                  clients &&
+                  clients.length > 0 &&
+                  clienteInput && (
+                    <ul
+                      ref={dropdownClientRef}
+                      style={{
+                        position: "absolute",
+                        zIndex: 10,
+                        background: "white",
+                        border: "1px solid #e5e7eb",
+                        padding: 6,
+                        borderRadius: 6,
+                        width: "100%",
+                        maxHeight: 180,
+                        overflowY: "auto",
+                        marginTop: 2,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                      }}
+                    >
+                      {clients
+                        .filter((c: any) =>
+                          c.name
+                            .toLowerCase()
+                            .includes(clienteInput.toLowerCase())
+                        )
+                        .map((c: any, index: number) => (
+                          <li
+                            key={c.id}
+                            style={{
+                              padding: 8,
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              backgroundColor:
+                                index === highlightedClientIndex
+                                  ? "#f1f5f9"
+                                  : "transparent",
+                              transition: "background-color 0.15s ease",
+                            }}
+                            onMouseEnter={() => setHighlightedClientIndex(index)}
+                            onMouseDown={() => {
+                              handleSelectClient(c.id);
+                              setClienteInput(c.name);
+                              setShowClienteDropdown(false);
+                              setHighlightedClientIndex(-1);
+                              if (clienteInputRef.current)
+                                clienteInputRef.current.blur();
+                            }}
+                          >
+                            {c.name}
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+              </div>
+              <div className="flex-1">
+                <Label>Persona de contacto</Label>
+                <Input
+                  placeholder="Persona de contacto..."
+                  value={personaContacto}
+                  onChange={(e) => setPersonaContacto(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Dirección</Label>
+                <Input
+                  value={direccion}
+                  onChange={(e) => setDireccion(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Teléfono</Label>
+                <Input
+                  value={telefono}
+                  onChange={(e) => setTelefono(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>CUIT</Label>
+                <Input
+                  value={cuit}
+                  onChange={(e) => setCuit(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {clienteInput && !cliente && (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  onClick={handleCreateClient}
+                  className="bg-gray-600 hover:bg-gray-700"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Agregar Cliente
+                </Button>
+           
+              </div>
+            )}
+            </CardContent>
+          )}
+        </Card>
+
         {/* Búsqueda de productos - Nueva UI Híbrida */}
         <Card>
           <CardHeader>
@@ -1268,20 +1566,7 @@ export default function NuevaVentaPage() {
                   }
                 />
               </div>
-              <div>
-                <Label>Notas</Label>
-                <Textarea
-                  value={manualItem.notes}
-                  onChange={(e) =>
-                    setManualItem((prev) => ({
-                      ...prev,
-                      notes: e.target.value,
-                    }))
-                  }
-                  placeholder="Notas adicionales"
-                  rows={2}
-                />
-              </div>
+            
               {/* Preview del subtotal */}
               {manualItem.unitPrice > 0 && (
                 <div className="bg-gray-50 p-3 rounded">
@@ -1424,7 +1709,7 @@ export default function NuevaVentaPage() {
                             {factura.tipo} - {factura.numero}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {new Date(factura.fecha).toLocaleDateString("es-AR")}
+                            {formatDateString(factura.fecha)}
                             {factura.monto && ` - $${factura.monto.toFixed(2)}`}
                           </p>
                         </div>
@@ -1494,7 +1779,7 @@ export default function NuevaVentaPage() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs">Monto (opcional)</Label>
+                        <Label className="text-xs">Monto</Label>
                         <Input
                           type="number"
                           value={newFacturaMonto}

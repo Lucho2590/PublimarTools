@@ -32,6 +32,21 @@ export const formatDate = (timestamp: any) => {
 };
 
 /**
+ * Formatea una fecha en formato string (YYYY-MM-DD) sin problemas de zona horaria
+ * @param dateString - La fecha en formato string (ej: "2025-10-18")
+ * @returns La fecha formateada en formato argentino (ej: "18/10/2025")
+ * @example
+ * formatDateString("2025-10-18") // "18/10/2025"
+ */
+export const formatDateString = (dateString: string): string => {
+  if (!dateString) return "-";
+  // Agregar 'T12:00:00' para interpretar la fecha en hora local (mediodía)
+  // Esto evita problemas de zona horaria cuando la fecha viene sin hora
+  const dateWithTime = `${dateString}T12:00:00`;
+  return new Date(dateWithTime).toLocaleDateString("es-AR");
+};
+
+/**
  * Redondea un número primero en centavos y luego a la decena más cercana
  * @param num - El número a redondear
  * @returns El número redondeado
