@@ -4,8 +4,12 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   typescript: {
-    ignoreBuildErrors: true,  // ← Ignorar errores de TypeScript durante build
+    ignoreBuildErrors: true,
   },
+  // Configuración para SSR con Firebase
+  reactStrictMode: true,
+  swcMinify: true,
+  // No usar output: 'export' porque queremos SSR
 };
 
 module.exports = nextConfig;
