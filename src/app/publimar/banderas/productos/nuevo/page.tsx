@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData, useUser } from "reactfire";
 import { collection, addDoc, serverTimestamp, doc } from "firebase/firestore";
@@ -134,18 +135,18 @@ export default function NuevoProductoPage() {
         <h1 className="text-2xl font-bold">Crear nuevo producto</h1>
         <div className="flex gap-2">
           <Button
+            asChild
             variant="outline"
-            onClick={() => router.push("/publimar/banderas/categorias")}
             className="bg-blue-900 hover:bg-blue-900 hover:text-white  text-white"
           >
-            Gestionar Categorías
+            <Link href="/publimar/banderas/categorias">Gestionar Categorías</Link>
           </Button>
           <Button
+            asChild
             variant="outline"
-            onClick={() => router.push("/publimar/banderas/productos")}
             className="bg-blue-900 hover:bg-blue-900 hover:text-white  text-white"
           >
-            Cancelar
+            <Link href="/publimar/banderas/productos">Cancelar</Link>
           </Button>
         </div>
       </div>
@@ -367,12 +368,12 @@ export default function NuevoProductoPage() {
         <Card>
           <CardFooter className="flex justify-between pt-6">
             <Button
+              asChild
               variant="outline"
-              onClick={() => router.push("/publimar/banderas/productos")}
               disabled={loading}
               className="bg-blue-900 hover:bg-blue-900 hover:text-white  text-white"
             >
-              Cancelar
+              <Link href="/publimar/banderas/productos">Cancelar</Link>
             </Button>
             <Button type="submit" disabled={loading} className="bg-blue-900 hover:bg-blue-900 hover:text-white  text-white">
               {loading ? "Guardando..." : "Guardar producto"}

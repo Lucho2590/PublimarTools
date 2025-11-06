@@ -18,6 +18,7 @@ export type TFactura = {
 }
 
 export interface TSaleItem {
+  isManual?: boolean;
   description: string;
   productName: string;
   variantName: any;

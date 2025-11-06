@@ -19,7 +19,7 @@ import collections from "@/lib/collections";
 import { EOrderStatus, TOrder } from "@/types/order";
 import { useSales } from "@/hooks/useSales";
 import { EPaymentMethod } from "@/types/sale";
-import { redirect, useRouter } from "next/navigation";
+import { redirect } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -61,7 +61,6 @@ export default function PedidosPage() {
   const [orderToConvert, setOrderToConvert] = useState<TOrder | null>(null);
   const [newStatusToSet, setNewStatusToSet] = useState<EOrderStatus | null>(null);
   const firestore = useFirestore();
-  const router = useRouter();
   
   // Hook para manejar ventas
   const { createSale, generateSaleNumber } = useSales();
@@ -77,6 +76,7 @@ export default function PedidosPage() {
     try {
       // Transformar items de orden a items de venta
       const saleItems = order.items.map(item => ({
+        isManual: item.isManual || false,
         description: item.description || undefined,
         productId: item.productId || undefined,
         variantId: item.variantId || undefined,
@@ -278,10 +278,10 @@ export default function PedidosPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Ordenes de trabajo</h1>
         <Button
+          asChild
           className="bg-blue-900 hover:bg-blue-900 hover:text-white"
-          onClick={() => router.push("/publimar/banderas/ordenes/nuevas")}
         >
-          Nueva Orden
+          <Link href="/publimar/banderas/ordenes/nuevas">Nueva Orden</Link>
         </Button>
       </div>
 
@@ -503,13 +503,15 @@ export default function PedidosPage() {
                                 <Eye className="h-4 w-4" />
                               </Button> */}
                               <Button
+                                asChild
                                 variant="ghost"
                                 size="icon"
                                 title="Editar orden (Página)"
                                 className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                onClick={() => router.push(`/publimar/banderas/ordenes/${order.id}`)}
                               >
-                                <Edit className="h-4 w-4" />
+                                <Link href={`/publimar/banderas/ordenes/${order.id}`}>
+                                  <Edit className="h-4 w-4" />
+                                </Link>
                               </Button>
                           </div>
                         </TableCell>

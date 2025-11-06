@@ -341,6 +341,7 @@ export function SaleDetailsModal({
       quantity,
       unitPrice,
       total: quantity * unitPrice,
+    
       // variantName: undefined
     };
 
@@ -373,6 +374,7 @@ export function SaleDetailsModal({
       quantity: manualItem.quantity,
       unitPrice: manualItem.unitPrice,
       total: itemSubtotal,
+      isManual: true,
     };
 
     const newItems = [...items, newItem];
@@ -658,11 +660,12 @@ export function SaleDetailsModal({
         manualDiscount: redondearTotal(manualDiscount),
         // Sistema de múltiples facturas
         facturas: facturas.length > 0 ? facturas : [],
-        // Fecha editada
-        // createdAt: editedDate
-        //   ? new Date(editedDate + "T00:00:00")
-        //   : typedSale?.createdAt,
       };
+      
+      // Fecha editada (mismo formato que facturas)
+      if (editedDate) {
+        updateData.createdAt = new Date(editedDate + "T00:00:00");
+      }
       if (paymentMethod) {
         updateData.paymentMethod = paymentMethod;
         if (paymentMethod === EPaymentMethod.TRANSFER && selectedBank) {
@@ -1488,8 +1491,8 @@ export function SaleDetailsModal({
                               {products[item.productId]?.name ||
                                 item.productName ||
                                 "Producto no encontrado"}
-                              {item.description && (
-                                <p className="text-sm text-gray-600 size-2">
+                              {item.isManual || item.productId.includes("manual") && (
+                                <p className="text-sm text-gray-400 size-1">
                                   {item.description}
                                 </p>
                               )}

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from "react";
+import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,6 @@ import {
 } from "@/components/ui/select";
 import collections from "@/lib/collections";
 import { EPaymentMethod, TSale } from "@/types/sale";
-import { useRouter } from "next/navigation";
 import { formatearPrecio, redondearADecena } from "@/lib/utils";
 // import { NuevaVentaModal } from "./modalVentas/newSaleModal";
 import { SaleDetailsModal } from "./modalVentas/saleDetailsModal";
@@ -47,7 +47,6 @@ export default function VentasPage() {
   // const [showNewSaleModal, setShowNewSaleModal] = useState(false);
   const [showSaleDetailsModal, setShowSaleDetailsModal] = useState(false);
   const [selectedVentaId, setSelectedVentaId] = useState<string | null>(null);
-  const router = useRouter();
   const firestore = useFirestore();
 
   // Consulta a Firestore
@@ -260,10 +259,10 @@ export default function VentasPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Ventas</h1>
         <Button
-          onClick={() => router.push("/publimar/banderas/ventas/nueva")}
+          asChild
           className="bg-blue-900 hover:bg-blue-900 hover:text-white"
         >
-          Nueva Venta
+          <Link href="/publimar/banderas/ventas/nueva">Nueva Venta</Link>
         </Button>
       </div>
 

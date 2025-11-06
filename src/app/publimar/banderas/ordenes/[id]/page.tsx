@@ -405,14 +405,6 @@ export default function OrderDetailsPage({
     }
   };
 
-  // const handleUpdateClient = async () => {
-  //   if (!editedOrder) return;
-  //   await updateClient(
-  //     editedOrder.clientId as string,
-  //     editedOrder.client as TClient
-  //   );
-  //   toast.success("Cliente actualizado correctamente");
-  // };
 
   const handleSave = async (facturasOverride?: TFactura[]) => {
     if (!editedOrder || !user) return;
@@ -453,6 +445,7 @@ export default function OrderDetailsPage({
         total: newTotal,
         balance: newBalance,
         discountAmount: newDiscountAmount,
+        estimatedDeliveryDate: editedOrder.estimatedDeliveryDate ? new Date(editedOrder.estimatedDeliveryDate).getTime() : undefined,
       };
 
       // Usar facturas del parámetro o del estado
@@ -803,28 +796,6 @@ export default function OrderDetailsPage({
                   placeholder="Persona de contacto"
                 />
               </div>
-
-              {/* <div>
-                <Label>Email</Label>
-                <Input
-                  type="email"
-                  value={
-                    editedOrder?.email ||
-                    editedOrder?.contact?.email ||
-                    selectedClient?.email ||
-                    order?.client?.email ||
-                    ""
-                  }
-                  onChange={(e) =>
-                    setEditedOrder((prev: any) => ({
-                      ...prev!,
-                      email: e.target.value,
-                    }))
-                  }
-                  placeholder="email@ejemplo.com"
-                />
-              </div> */}
-
               <div>
                 <Label>Teléfono</Label>
                 <Input
@@ -849,25 +820,6 @@ export default function OrderDetailsPage({
                   placeholder="Teléfono"
                 />
               </div>
-
-              {/* <div>
-                <Label>Dirección</Label>
-                <Input
-                  value={
-                    editedOrder?.direccion ||
-                    selectedClient?.address ||
-                    order?.client?.address ||
-                    ""
-                  }
-                  onChange={(e) =>
-                    setEditedOrder((prev: any) => ({
-                      ...prev!,
-                      direccion: e.target.value,
-                    }))
-                  }
-                  placeholder="Dirección completa"
-                />
-              </div> */}
 
               <div>
                 <Label>CUIT/CUIL</Label>
@@ -1090,7 +1042,7 @@ export default function OrderDetailsPage({
                       ? new Date(editedOrder.estimatedDeliveryDate)
                           .toISOString()
                           .split("T")[0]
-                      : ""
+                      : " "
                   }
                   onChange={(e) =>
                     setEditedOrder((prev: any) => ({
@@ -1102,52 +1054,6 @@ export default function OrderDetailsPage({
                   }
                 />
               </div>
-
-              {/* <div>
-                <Label>Método de Pago</Label>
-                <Select
-                  value={editedOrder?.paymentMethod || ""}
-                  onValueChange={(value) =>
-                    setEditedOrder((prev: any) => ({
-                      ...prev!,
-                      paymentMethod: value as EPaymentMethod,
-                    }))
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar método" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={EPaymentMethod.CASH}>
-                      Efectivo
-                    </SelectItem>
-                    <SelectItem value={EPaymentMethod.CREDIT_CARD}>
-                      Tarjeta de Crédito
-                    </SelectItem>
-                    <SelectItem value={EPaymentMethod.DEBIT_CARD}>
-                      Tarjeta de Débito
-                    </SelectItem>
-                    <SelectItem value={EPaymentMethod.TRANSFER}>
-                      Transferencia
-                    </SelectItem>
-                    <SelectItem value={EPaymentMethod.CHECK}>Cheque</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {editedOrder?.paymentMethod === EPaymentMethod.TRANSFER && (
-                <div>
-                  <Label>Banco</Label>
-                  <Input
-                    value={editedOrder?.bank}
-                    onChange={(e) =>
-                      setEditedOrder((prev: any) => ({
-                        ...prev!,
-                        bank: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              )} */}
 
               <div>
                 <Label>Notas</Label>

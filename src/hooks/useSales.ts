@@ -12,28 +12,54 @@ import {
   orderBy,
   query,
   where,
+  limit,
   serverTimestamp,
   getDoc
 } from 'firebase/firestore'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { TSale, TSaleItem, EPaymentMethod } from '@/types/sale'
 import collections from '@/lib/collections'
 
 const COLLECTION_NAME = collections.SALES
 
-export function useSales() {
-  const firestore = useFirestore()
-  const salesCollection = collection(firestore, COLLECTION_NAME)
-  const salesQuery = query(salesCollection, orderBy('createdAt', 'desc'))
-  
+interface UseSalesOptions {
+  pageSize?: number; // Tamaño de página para paginación (limita cantidad de documentos)
+  orderByField?: string; // Campo por el cual ordenar (default: "createdAt")
+  orderDirection?: 'asc' | 'desc'; // Dirección del orden (default: "desc")
+}
 
+export function useSales(options?: UseSalesOptions) {
+  const firestore = useFirestore()
+  const pageSize = options?.pageSize
+  const orderByField = options?.orderByField || "createdAt"
+  const orderDirection = options?.orderDirection || "desc"
+  
+  // Memoizar la collection para evitar recrearla en cada render
+  const salesCollection = useMemo(
+    () => collection(firestore, COLLECTION_NAME),
+    [firestore]
+  )
+  
+  // Memoizar la query con paginación opcional
+  const salesQuery = useMemo(() => {
+    const baseQuery = query(
+      salesCollection, 
+      orderBy(orderByField, orderDirection)
+    )
+    
+    // Si se especifica pageSize, limitar los resultados
+    if (pageSize) {
+      return query(baseQuery, limit(pageSize))
+    }
+    
+    return baseQuery
+  }, [salesCollection, orderByField, orderDirection, pageSize])
   
   const { status, data: sales } = useFirestoreCollectionData(salesQuery, {
     idField: 'id',
   })
-  
 
-  const createSale = async (saleData: Partial<TSale> & {
+  const createSale = useCallback(async (saleData: Partial<TSale> & {
     number: string;
     items: TSaleItem[];
     subtotal: number;
@@ -93,9 +119,9 @@ export function useSales() {
       console.error('Datos que se intentaron guardar:', cleanSaleData)
       throw new Error(`Error al crear venta: ${error instanceof Error ? error.message : 'Error desconocido'}`)
     }
-  }
+  }, [salesCollection])
 
-  const updateSale = async (id: string, sale: Partial<Omit<TSale, 'id' | 'createdAt' | 'updatedAt'>>) => {
+  const updateSale = useCallback(async (id: string, sale: Partial<Omit<TSale, 'id' | 'createdAt' | 'updatedAt'>>) => {
     // Función para limpiar valores undefined recursivamente
     const cleanData = (obj: any, seen = new WeakSet()): any => {
       if (obj === null || obj === undefined) return null;
@@ -144,31 +170,31 @@ export function useSales() {
       })
     } catch (error) {
       console.error('Error al actualizar venta:', error)
-      throw new Error('Error al actualizar venta')
+      throw new Error(`Error al actualizar venta: ${error instanceof Error ? error.message : 'Error desconocido'}`)
     }
-  }
+  }, [firestore])
 
-  const deleteSale = async (id: string) => {
+  const deleteSale = useCallback(async (id: string) => {
     try {
       const docRef = doc(firestore, COLLECTION_NAME, id)
       await deleteDoc(docRef)
       return true
     } catch (error) {
       console.error('Error al eliminar venta:', error)
-      throw new Error('Error al eliminar venta')
+      throw new Error(`Error al eliminar venta: ${error instanceof Error ? error.message : 'Error desconocido'}`)
     }
-  }
+  }, [firestore])
 
   // Función auxiliar para generar número de venta
-  const generateSaleNumber = () => {
+  const generateSaleNumber = useCallback(() => {
     const saleNumber = `V-${new Date().getFullYear()}-${Math.floor(
       1000 + Math.random() * 9000
     )}`;
     return saleNumber
-  }
+  }, [])
 
   // Función helper para crear una venta con valores por defecto
-  const createSaleWithDefaults = (partialSale: Partial<TSale>) => {
+  const createSaleWithDefaults = useCallback((partialSale: Partial<TSale>) => {
     const defaults: Partial<TSale> = {
       items: [],
       subtotal: 0,
@@ -189,7 +215,7 @@ export function useSales() {
     if (!defaults.paymentMethod) defaults.paymentMethod = EPaymentMethod.CASH
 
     return defaults
-  }
+  }, [generateSaleNumber])
 
   // Función para obtener una venta específica por ID (async para páginas)
   const getSaleById = useCallback(async (id: string): Promise<TSale | null> => {

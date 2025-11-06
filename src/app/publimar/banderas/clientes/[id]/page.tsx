@@ -1,5 +1,6 @@
 'use client';
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   useFirestore,
@@ -57,9 +58,8 @@ export default function ClienteDetallePage({
         <Button
           asChild
           className="mt-4"
-          onClick={() => router.push("/publimar/banderas/clientes")}
         >
-          Volver a clientes
+          <Link href="/publimar/banderas/clientes">Volver a clientes</Link>
         </Button>
       </div>
     );
@@ -80,13 +80,11 @@ export default function ClienteDetallePage({
             Volver
           </Button>
           <Button
+            asChild
             className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
             variant="outline"
-            onClick={() =>
-              router.push(`/publimar/banderas/clientes/${params.id}/editar`)
-            }
           >
-            Editar
+            <Link href={`/publimar/banderas/clientes/${params.id}/editar`}>Editar</Link>
           </Button>
         </div>
       </div>
@@ -231,26 +229,18 @@ export default function ClienteDetallePage({
                         </div>
                         <div className="flex gap-2">
                           <Button
+                            asChild
                             variant="ghost"
                             size="sm"
-                            onClick={() =>
-                              router.push(
-                                `/publimar/banderas/presupuestos/${quote.id}`
-                              )
-                            }
                           >
-                            Ver
+                            <Link href={`/publimar/banderas/presupuestos/${quote.id}`}>Ver</Link>
                           </Button>
                           <Button
+                            asChild
                             variant="ghost"
                             size="sm"
-                            onClick={() =>
-                              router.push(
-                                `/publimar/banderas/presupuestos/${quote.id}/editar`
-                              )
-                            }
                           >
-                            Editar
+                            <Link href={`/publimar/banderas/presupuestos/${quote.id}/editar`}>Editar</Link>
                           </Button>
                         </div>
                       </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import {
   collection,
@@ -40,7 +40,6 @@ export default function CategoriasPage() {
     id: string;
     name: string;
   } | null>(null);
-  const router = useRouter();
   const firestore = useFirestore();
 
   const categoriesCollection = collection(
@@ -122,10 +121,10 @@ export default function CategoriasPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Categorías</h1>
         <Button
+          asChild
           variant="outline"
-          onClick={() => router.push("/publimar/banderas/productos")}
         >
-          Volver a Productos
+          <Link href="/publimar/banderas/productos">Volver a Productos</Link>
         </Button>
       </div>
 

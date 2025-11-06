@@ -54,6 +54,7 @@ import collections from "@/lib/collections";
 // Hooks personalizados
 import { useOrders } from "@/hooks/useOrders";
 import { useClients } from "@/hooks/useClients";
+import { EClientStatus } from "@/types/client";
 
 export default function NuevasOrdenesPage() {
   const router = useRouter();
@@ -373,6 +374,7 @@ const total = subtotal - totalDiscountAmount;
     try {
       // Preparar datos del cliente
       const clientData: any = {
+        status: EClientStatus.ACTIVE,
         name: clienteInput.trim(),
         email: email || undefined,
         phone: telefono || undefined,

@@ -8,7 +8,6 @@ import { useSigninCheck } from "reactfire";
 import { Button } from "@/components/ui/button";
 import { signOut } from "firebase/auth";
 import { useAuth, useFirestore } from "reactfire";
-import { useRouter } from "next/navigation";
 import { getDoc, doc } from "firebase/firestore";
 import collections from "@/lib/collections";
 
@@ -29,7 +28,6 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
   const pathname = usePathname();
   const auth = useAuth();
   const { status, data: signInCheckResult } = useSigninCheck();
-  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [userRole, setUserRole] = useState<string | null>(null);
   const firestore = useFirestore();
@@ -379,10 +377,6 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                             ? "bg-blue-700 text-white"
                             : "text-blue-300 hover:bg-blue-900 hover:text-white"
                         }`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          router.push(item.href);
-                        }}
                       >
                         {item.icon}
                         {isSidebarOpen && <span className="ml-3">{item.name}</span>}
@@ -422,10 +416,6 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                                   ? "bg-blue-700 text-white"
                                   : "text-blue-300 hover:bg-blue-900 hover:text-white"
                               }`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                router.push(subItem.href);
-                              }}
                             >
                               {subItem.icon}
                               <span className="ml-3">{subItem.name}</span>
@@ -443,10 +433,6 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                         ? "bg-blue-700 text-white"
                         : "text-blue-300 hover:bg-blue-900 hover:text-white"
                     }`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      router.push(item.href);
-                    }}
                   >
                     {item.icon}
                     {isSidebarOpen && <span className="ml-3">{item.name}</span>}

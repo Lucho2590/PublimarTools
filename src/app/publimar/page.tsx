@@ -3,12 +3,11 @@
 import { useSigninCheck } from "reactfire";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Flag, Settings, Building2 } from "lucide-react";
 
 export default function DashboardPage() {
   const { status, data: signInCheckResult } = useSigninCheck();
-  const router = useRouter();
 
   if (status === "loading") {
     return <div>Cargando...</div>;
@@ -36,11 +35,11 @@ export default function DashboardPage() {
                 Banderas
               </h2>
               <Button 
+                asChild
                 size="lg" 
                 className="w-full py-3 text-lg font-semibold bg-blue-600 hover:bg-blue-700"
-                onClick={() => router.push('/publimar/banderas')}
               >
-                Acceder a Banderas
+                <Link href="/publimar/banderas">Acceder a Banderas</Link>
               </Button>
             </CardContent>
           </Card>
@@ -55,11 +54,11 @@ export default function DashboardPage() {
                 Administración
               </h2>
               <Button 
+                asChild
                 size="lg" 
                 className="w-full py-3 text-lg font-semibold bg-green-600 hover:bg-green-700"
-                onClick={() => router.push('/publimar/administracion')}
               >
-                Acceder a Admin
+                <Link href="/publimar/administracion">Acceder a Admin</Link>
               </Button>
             </CardContent>
           </Card>
@@ -74,11 +73,11 @@ export default function DashboardPage() {
                 Vía Pública
               </h2>
               <Button 
+                asChild
                 size="lg" 
                 className="w-full py-3 text-lg font-semibold bg-purple-600 hover:bg-purple-700"
-                onClick={() => router.push('/publimar/viaPublica')}
               >
-                Acceder a Vía Pública
+                <Link href="/publimar/viaPublica">Acceder a Vía Pública</Link>
               </Button>
             </CardContent>
           </Card>
