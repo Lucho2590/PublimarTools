@@ -317,7 +317,9 @@ export default function NuevoPresupuestoPage() {
         validUntil: new Date(formData.validUntil),
         notes: formData.notes || "",
         comments: [],
-        publicUrl: `${window.location.origin}/presupuestos/${quoteNumber}`,
+        publicUrl: typeof window !== 'undefined'
+          ? `${window.location.origin}/presupuestos/${quoteNumber}`
+          : `https://${process.env.NEXT_PUBLIC_VERCEL_URL || 'publimartools.vercel.app'}/presupuestos/${quoteNumber}`,
         createdBy: doc(firestore, `users/${user.uid}`),
         updatedBy: doc(firestore, `users/${user.uid}`),
         createdAt: serverTimestamp(),

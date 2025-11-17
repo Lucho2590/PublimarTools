@@ -3,7 +3,7 @@
 import React, { ReactNode, useState, } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { redirect, usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useSigninCheck } from "reactfire";
 import { Button } from "@/components/ui/button";
 import { signOut } from "firebase/auth";
@@ -26,6 +26,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = usePathname();
+  const router = useRouter();
   const auth = useAuth();
   const { status, data: signInCheckResult } = useSigninCheck();
   const [mounted, setMounted] = useState(false);
@@ -283,16 +284,13 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
     );
   }
 
+  // El AuthGuard ya maneja la redirección, solo mostrar loading si no está autenticado
   if (!signInCheckResult.signedIn) {
-    return redirect(`/login`)
-    // return (
-    //   <div className="flex flex-col items-center justify-center h-screen">
-    //     <p className="mb-4">Debes iniciar sesión para acceder a esta sección</p>
-    //     <Button asChild>
-    //       <Link href="/login">Iniciar sesión</Link>
-    //     </Button>
-    //   </div>
-    // );
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
   }
 
   return (

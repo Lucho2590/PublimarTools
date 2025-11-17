@@ -10,6 +10,9 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   // No usar output: 'export' porque queremos SSR
+  // Configuración para Firebase Hosting
+  poweredByHeader: false,
+  compress: true,
 };
 
 module.exports = nextConfig;

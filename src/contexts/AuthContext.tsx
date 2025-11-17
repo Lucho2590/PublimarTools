@@ -1,16 +1,15 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
+import { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import {
+  getAuth,
+  signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   User
 } from 'firebase/auth';
 import { app } from '@/lib/firebase';
-import Cookies from 'js-cookie';
 
 interface AuthContextType {
   user: User | null;
@@ -31,14 +30,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setLoading(false);
-      
-      if (user) {
-        // Cuando el usuario está autenticado, establecemos la cookie
-        Cookies.set('auth', 'true', { expires: 7 }); // Expira en 7 días
-      } else {
-        // Cuando el usuario cierra sesión, eliminamos la cookie
-        Cookies.remove('auth');
-      }
     });
 
     return () => unsubscribe();
@@ -63,14 +54,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       await signOut(auth);
-      Cookies.remove('auth');
     } catch (error) {
       throw error;
     }
   };
 
+  // Memorizar el valor del contexto para evitar re-renders innecesarios
+  const value = useMemo(
+    () => ({ user, loading, signIn, signUp, logout }),
+    [user, loading]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

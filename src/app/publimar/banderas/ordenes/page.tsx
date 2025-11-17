@@ -509,7 +509,12 @@ export default function PedidosPage() {
                                 title="Editar orden (Página)"
                                 className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                               >
-                                <Link href={`/publimar/banderas/ordenes/${order.id}`}>
+                                <Link
+                                  href={`/publimar/banderas/ordenes/${order.id}`}
+                                  prefetch={true}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
                                   <Edit className="h-4 w-4" />
                                 </Link>
                               </Button>

@@ -20,13 +20,14 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!loading) {
       if (!user && !isLoginPage) {
         // Usuario no autenticado y no está en login -> redirigir a login
-        router.push('/login');
+        router.replace('/login');
       } else if (user && isLoginPage) {
         // Usuario autenticado y está en login -> redirigir al dashboard
-        router.push('/publimar');
+        router.replace('/publimar');
       }
     }
-  }, [user, loading, isLoginPage, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loading, isLoginPage]);
 
   // Mostrar loading mientras verifica autenticación
   if (loading) {

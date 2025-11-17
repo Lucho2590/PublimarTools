@@ -1,7 +1,9 @@
 'use client';
 
-import { FirebaseAppProvider } from "reactfire";
+import { FirebaseAppProvider, AuthProvider as ReactFireAuthProvider, FirestoreProvider } from "reactfire";
 import { app } from "@/lib/firebase";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AuthGuard from "@/components/auth/AuthGuard";
 
@@ -10,12 +12,19 @@ export default function ClientProviders({
 }: {
   children: React.ReactNode;
 }) {
+  const auth = getAuth(app);
+  const firestore = getFirestore(app);
+
   return (
     <FirebaseAppProvider firebaseApp={app}>
       <AuthProvider>
-        <AuthGuard>
-          {children}
-        </AuthGuard>
+        <ReactFireAuthProvider sdk={auth}>
+          <FirestoreProvider sdk={firestore}>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+          </FirestoreProvider>
+        </ReactFireAuthProvider>
       </AuthProvider>
     </FirebaseAppProvider>
   );
