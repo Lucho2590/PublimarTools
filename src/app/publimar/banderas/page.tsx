@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 // import { Calendar } from "@/components/ui/calendar";
 import {
   Table,
@@ -40,6 +41,8 @@ import {
   Package,
   X,
   Plus,
+  ClipboardList,
+  Receipt,
 } from "lucide-react";
 import {
   Dialog,
@@ -48,6 +51,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import collections from "@/lib/collections";
 // import { Label } from "@/components/ui/label";
 // import { Input } from "@/components/ui/input";
@@ -63,6 +71,8 @@ export default function DashboardPage() {
     new Date()
   );
   const [monthlySales, setMonthlySales] = useState<number>(0);
+  const [yearlySales, setYearlySales] = useState<number>(0);
+  const [showYearlySales, setShowYearlySales] = useState<boolean>(false);
 //   const [loading, setLoading] = useState(true);
   const [sortedEvents, setSortedEvents] = useState<any[]>([]);
   const [showEventModal, setShowEventModal] = useState(false);
@@ -80,19 +90,27 @@ export default function DashboardPage() {
   const quotesCollection = collection(firestore, collections.QUOTES);
   const expiringQuotesQuery = query(
     quotesCollection,
-    where("validUntil", ">=", Timestamp.now()),
-    where(
-      "validUntil",
-      "<=",
-      Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
-    ),
-    where("status", "==", EQuoteStatus.SENT),
-    orderBy("validUntil", "asc")
+    where("status", "==", EQuoteStatus.SENT)
   );
-  const { data: expiringQuotes } = useFirestoreCollectionData(
+  const { data: allQuotesData, status: expiringQuotesStatus } = useFirestoreCollectionData(
     expiringQuotesQuery,
     { idField: "id" }
   );
+
+  // Filtrar y ordenar del lado del cliente
+  const expiringQuotes = allQuotesData
+    ?.filter((quote: any) => {
+      if (!quote.validUntil) return false;
+      const validUntilDate = quote.validUntil?.toDate?.() || new Date(quote.validUntil);
+      const now = new Date();
+      const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      return validUntilDate >= now && validUntilDate <= sevenDaysFromNow;
+    })
+    ?.sort((a: any, b: any) => {
+      const dateA = a.validUntil?.toDate?.() || new Date(a.validUntil);
+      const dateB = b.validUntil?.toDate?.() || new Date(b.validUntil);
+      return dateA.getTime() - dateB.getTime();
+    });
 
   // Consulta últimos clientes
   const clientsCollection = collection(firestore, collections.CLIENTS);
@@ -101,30 +119,41 @@ export default function DashboardPage() {
     orderBy("createdAt", "desc"),
     limit(5)
   );
-  const { data: recentClients } = useFirestoreCollectionData(
+  const { data: recentClients, status: recentClientsStatus } = useFirestoreCollectionData(
     recentClientsQuery,
     { idField: "id" }
   );
 
   // Consulta productos con bajo stock
   const productsCollection = collection(firestore, collections.PRODUCTS);
-  const { data: allProducts } = useFirestoreCollectionData(productsCollection, {
+  const { data: allProducts, status: allProductsStatus } = useFirestoreCollectionData(productsCollection, {
     idField: "id",
   });
 
   // Filtrar productos con bajo stock en el cliente
   const lowStockProducts = allProducts?.filter((product) =>
-    product.variants?.some((variant: { stock: number }) => variant.stock <= 5)
+    product.variants?.some((variant: { stock: number }) => variant.stock <= 3)
   );
 
-  // Consulta últimas órdenes de trabajo
+  // Consulta últimas órdenes de trabajo en proceso
   const ordersCollection = collection(firestore, collections.ORDERS);
   const recentOrdersQuery = query(
     ordersCollection,
+    where("status", "==", EOrderStatus.IN_PROCESS),
     orderBy("createdAt", "desc"),
     limit(5)
   );
-  const { data: recentOrders } = useFirestoreCollectionData(recentOrdersQuery, {
+  const { data: recentOrders, status: recentOrdersStatus } = useFirestoreCollectionData(recentOrdersQuery, {
+    idField: "id",
+  });
+
+  // Consulta órdenes en proceso
+  const inProcessOrdersQuery = query(
+    ordersCollection,
+    where("status", "==", EOrderStatus.IN_PROCESS),
+    orderBy("createdAt", "desc")
+  );
+  const { data: inProcessOrders, status: inProcessOrdersStatus } = useFirestoreCollectionData(inProcessOrdersQuery, {
     idField: "id",
   });
 
@@ -155,13 +184,25 @@ export default function DashboardPage() {
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
+  // Calcular ventas del año
+  const startOfYear = new Date();
+  startOfYear.setMonth(0, 1);
+  startOfYear.setHours(0, 0, 0, 0);
+
   const salesCollection = collection(firestore, collections.SALES);
   const monthlySalesQuery = query(
     salesCollection,
     where("createdAt", ">=", Timestamp.fromDate(startOfMonth))
   );
-  const { data: monthlySalesData } =
+  const { data: monthlySalesData, status: monthlySalesStatus } =
     useFirestoreCollectionData(monthlySalesQuery);
+
+  const yearlySalesQuery = query(
+    salesCollection,
+    where("createdAt", ">=", Timestamp.fromDate(startOfYear))
+  );
+  const { data: yearlySalesData, status: yearlySalesStatus } =
+    useFirestoreCollectionData(yearlySalesQuery);
 
   useEffect(() => {
     if (monthlySalesData) {
@@ -172,6 +213,16 @@ export default function DashboardPage() {
       setMonthlySales(total);
     }
   }, [monthlySalesData]);
+
+  useEffect(() => {
+    if (yearlySalesData) {
+      const total = yearlySalesData.reduce(
+        (sum, sale) => sum + (sale.total || 0),
+        0
+      );
+      setYearlySales(total);
+    }
+  }, [yearlySalesData]);
 
   const handleCreateEvent = async () => {
     if (!newEvent.title || !newEvent.time) return;
@@ -228,85 +279,72 @@ export default function DashboardPage() {
 
       {/* Resumen de métricas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Dialog>
-          <DialogTrigger asChild>
-            <Card className="cursor-pointer hover:bg-slate-50 transition-colors">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Ventas del Mes</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatearPrecio(monthlySales)}</div>
-              </CardContent>
-            </Card>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>Detalle de Ventas del Mes</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {monthlySalesData?.map((sale: any) => (
-                    <TableRow key={sale.id}>
-                      <TableCell>{sale.number}</TableCell>
-                      <TableCell>{formatDate(sale.createdAt)}</TableCell>
-                      <TableCell>{formatearPrecio(sale.total)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        <Card
+          className="cursor-pointer hover:bg-slate-50 transition-all hover:shadow-md"
+          onClick={() => setShowYearlySales(!showYearlySales)}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div className="flex flex-col">
+              <CardTitle className="text-sm font-medium">
+                {showYearlySales ? "Ventas del Año" : "Ventas del Mes"}
+              </CardTitle>
+              {/* <span className="text-xs text-muted-foreground mt-1">
+                Click para {showYearlySales ? "ver mes" : "ver año"}
+              </span> */}
             </div>
-          </DialogContent>
-        </Dialog>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {monthlySalesStatus === 'loading' || yearlySalesStatus === 'loading' ? (
+              <Skeleton className="h-8 w-32" />
+            ) : (
+              <div
+                key={showYearlySales ? 'yearly' : 'monthly'}
+                className="text-2xl font-bold animate-flip"
+                style={{
+                  animation: 'flipIn 0.8s ease-in-out'
+                }}
+              >
+                {formatearPrecio(showYearlySales ? yearlySales : monthlySales)}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        <Dialog>
-          <DialogTrigger asChild>
-            <Card className="cursor-pointer hover:bg-slate-50 transition-colors">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Presupuestos por Vencer</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{expiringQuotes?.length || 0}</div>
-              </CardContent>
-            </Card>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>Presupuestos por Vencer</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Vence</TableHead>
-                    <TableHead>Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {expiringQuotes?.map((quote: any) => (
-                    <TableRow key={quote.id}>
-                      <TableCell>{quote.number}</TableCell>
-                      <TableCell>{quote.client.name}</TableCell>
-                      <TableCell>{formatDate(quote.validUntil)}</TableCell>
-                      <TableCell>{formatearPrecio(quote.total)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <style jsx>{`
+          @keyframes flipIn {
+            0% {
+              transform: rotateX(90deg);
+              opacity: 0;
+            }
+            50% {
+              transform: rotateX(-10deg);
+            }
+            100% {
+              transform: rotateX(0deg);
+              opacity: 1;
+            }
+          }
+          .animate-flip {
+            transform-origin: center;
+          }
+        `}</style>
+
+        <Link href="/publimar/banderas/ordenes">
+          <Card className="cursor-pointer hover:bg-slate-50 transition-colors">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Órdenes en Proceso</CardTitle>
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              {inProcessOrdersStatus === 'loading' ? (
+                <Skeleton className="h-8 w-12" />
+              ) : (
+                <div className="text-2xl font-bold">{inProcessOrders?.length || 0}</div>
+              )}
+            </CardContent>
+          </Card>
+        </Link>
 
         <Dialog>
           <DialogTrigger asChild>
@@ -316,11 +354,15 @@ export default function DashboardPage() {
                 <Package className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">
-                  {lowStockProducts?.reduce((count, product) => 
-                    count + (product.variants?.filter((variant: any) => variant.stock <= 3).length || 0), 0
-                  ) || 0}
-                </div>
+                {allProductsStatus === 'loading' ? (
+                  <Skeleton className="h-8 w-12" />
+                ) : (
+                  <div className="text-2xl font-bold">
+                    {lowStockProducts?.reduce((count, product) =>
+                      count + (product.variants?.filter((variant: any) => variant.stock <= 3).length || 0), 0
+                    ) || 0}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </DialogTrigger>
@@ -335,24 +377,16 @@ export default function DashboardPage() {
                     <TableHead>Producto</TableHead>
                     <TableHead>Variante</TableHead>
                     <TableHead>Stock</TableHead>
-                    <TableHead className="text-right">Acción</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {lowStockProducts?.map((product: any) =>
-                    product.variants?.filter((variant: any) => variant.stock <= 5).map(
+                    product.variants?.filter((variant: any) => variant.stock <= 3).map(
                       (variant: any) => (
                         <TableRow key={`${product.id}-${variant.id}`}>
                           <TableCell>{product.name}</TableCell>
                           <TableCell>{variant.size}</TableCell>
                           <TableCell>{variant.stock}</TableCell>
-                          <TableCell className="text-right">
-                            <Link href={`/publimar/banderas/productos/${product.id}/editar`}>
-                              <Button variant="outline" size="sm">
-                                Reponer
-                              </Button>
-                            </Link>
-                          </TableCell>
                         </TableRow>
                       )
                     )
@@ -371,7 +405,11 @@ export default function DashboardPage() {
                 <Users className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{recentClients?.length || 0}</div>
+                {recentClientsStatus === 'loading' ? (
+                  <Skeleton className="h-8 w-12" />
+                ) : (
+                  <div className="text-2xl font-bold">{recentClients?.length || 0}</div>
+                )}
               </CardContent>
             </Card>
           </DialogTrigger>
@@ -384,7 +422,7 @@ export default function DashboardPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nombre</TableHead>
-                    <TableHead>Email</TableHead>
+                    {/* <TableHead>Email</TableHead> */}
                     <TableHead>Teléfono</TableHead>
                     <TableHead className="text-right">Acción</TableHead>
                   </TableRow>
@@ -393,7 +431,7 @@ export default function DashboardPage() {
                   {recentClients?.map((client: any) => (
                     <TableRow key={client.id}>
                       <TableCell>{client.name}</TableCell>
-                      <TableCell>{client.email}</TableCell>
+                      {/* <TableCell>{client.email}</TableCell> */}
                       <TableCell>{client.phone}</TableCell>
                       <TableCell className="text-right">
                         <Link href={`/publimar/banderas/clientes/${client.id}`}>
@@ -481,44 +519,99 @@ export default function DashboardPage() {
                   <TableRow>
                     <TableHead>Número</TableHead>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Estado</TableHead>
+                    <TableHead>Pagos</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recentOrders?.map((order: any) => (
-                    <TableRow key={order.id}>
-                      <TableCell>{order.number}</TableCell>
-                      <TableCell>{order.clientName||order.client?.name}</TableCell>
-                      <TableCell>
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            order.status === EOrderStatus.IN_PROCESS
-                              ? "bg-amber-100 text-amber-800"
-                              : order.status === EOrderStatus.COMPLETED
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {order.status === EOrderStatus.IN_PROCESS
-                            ? "En proceso"
-                            : order.status === EOrderStatus.COMPLETED
-                            ? "Entregada"
-                            : "Cancelada"}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => handleViewOrder(order.id)}
-                          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {recentOrdersStatus === 'loading' ? (
+                    Array.from({ length: 3 }).map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                        <TableCell className="text-center"><Skeleton className="h-5 w-5 mx-auto" /></TableCell>
+                        <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    recentOrders?.map((order: any) => (
+                      <TableRow key={order.id}>
+                        <TableCell>{order.number}</TableCell>
+                        <TableCell>{order.clientName||order.client?.name}</TableCell>
+                        <TableCell className="text-center">
+                          {(() => {
+                            if (order.paymentHistory?.reduce((sum: number, payment: any) => sum + payment.amount, 0) === order.total || order.balance === 0) {
+                              // Pagado - Verde
+                              return (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                      <Receipt className="h-5 w-5 text-green-600" />
+                                    </button>
+                                  </PopoverTrigger>
+                                </Popover>
+                              );
+                            } else if (order.balance === order.total) {
+                              // Pendiente - Gris
+                              return (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                      <Receipt className="h-5 w-5 text-gray-400" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-3">
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-medium text-gray-600">Sin Pagos</p>
+                                      <p className="text-sm">
+                                        <span className="text-gray-600">Saldo pendiente:</span>
+                                      </p>
+                                      <p className="text-lg font-bold text-red-600">
+                                        {formatearPrecio(order.balance)}
+                                      </p>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              );
+                            } else {
+                              // Parcial - Ámbar
+                              return (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                      <Receipt className="h-5 w-5 text-amber-500" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-3">
+                                    <div className="space-y-1">
+                                      <p className="text-xs font-medium text-amber-600">Pago Parcial</p>
+                                      <p className="text-sm">
+                                        <span className="text-gray-600">Saldo pendiente:</span>
+                                      </p>
+                                      <p className="text-lg font-bold text-amber-600">
+                                        {formatearPrecio(order.balance)}
+                                      </p>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              );
+                            }
+                          })()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Link href={`/publimar/banderas/ordenes/${order.id}`}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -539,24 +632,42 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {expiringQuotes?.map((quote: any) => (
-                    <TableRow key={quote.id}>
-                      <TableCell>{quote.number}</TableCell>
-                      <TableCell>{quote.client.name}</TableCell>
-                      <TableCell>{formatDate(quote.validUntil)}</TableCell>
-                      <TableCell>{formatearPrecio(quote.total)}</TableCell>
-                      <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          onClick={() => handleViewQuote(quote.id)}
-                          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                  {expiringQuotesStatus === 'loading' ? (
+                    Array.from({ length: 3 }).map((_, index) => (
+                      <TableRow key={index}>
+                        <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-32" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                        <TableCell><Skeleton className="h-5 w-24" /></TableCell>
+                        <TableCell className="text-right"><Skeleton className="h-8 w-8 ml-auto" /></TableCell>
+                      </TableRow>
+                    ))
+                  ) : expiringQuotes && expiringQuotes.length > 0 ? (
+                    expiringQuotes.map((quote: any) => (
+                      <TableRow key={quote.id}>
+                        <TableCell>{quote.number}</TableCell>
+                        <TableCell>{quote.client.name}</TableCell>
+                        <TableCell>{formatDate(quote.validUntil)}</TableCell>
+                        <TableCell>{formatearPrecio(quote.total)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleViewQuote(quote.id)}
+                            className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-slate-500">
+                        No hay presupuestos próximos a vencer
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
