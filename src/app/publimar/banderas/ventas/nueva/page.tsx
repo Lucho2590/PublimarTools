@@ -750,6 +750,7 @@ export default function NuevaVentaPage() {
 
       toast.success("Venta registrada con éxito");
       router.push("/publimar/banderas/ventas");
+      
     } catch (error) {
       console.error("Error al registrar la venta:", error);
       toast.error("Error al registrar la venta");

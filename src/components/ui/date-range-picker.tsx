@@ -29,6 +29,11 @@ export function DateRangePicker({
   const [date, setDate] = React.useState<DateRange | undefined>(value);
   const [isOpen, setIsOpen] = React.useState(false);
 
+  // Sincronizar estado interno con prop value cuando cambia
+  React.useEffect(() => {
+    setDate(value);
+  }, [value]);
+
   const handleSelect = (range: DateRange | undefined) => {
     setDate(range);
     if (onChange) {

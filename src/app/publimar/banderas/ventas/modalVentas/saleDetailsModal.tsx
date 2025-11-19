@@ -6,6 +6,7 @@ import {
   collection,
   getDocs,
   deleteDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import {
   Dialog,
@@ -664,7 +665,7 @@ export function SaleDetailsModal({
       
       // Fecha editada (mismo formato que facturas)
       if (editedDate) {
-        updateData.createdAt = new Date(editedDate + "T00:00:00");
+        updateData.updatedAt = serverTimestamp() as unknown as Date;
       }
       if (paymentMethod) {
         updateData.paymentMethod = paymentMethod;
@@ -678,7 +679,6 @@ export function SaleDetailsModal({
           updateData.invoiceNumber = invoiceNumber;
         }
       }
-
       // Datos del cliente
       if (clientName) {
         updateData.clientName = clientName;
@@ -1491,7 +1491,7 @@ export function SaleDetailsModal({
                               {products[item.productId]?.name ||
                                 item.productName ||
                                 "Producto no encontrado"}
-                              {item.isManual || item.productId.includes("manual") && (
+                              {item.isManual || item.productId?.includes("manual") && (
                                 <p className="text-sm text-gray-400 size-1">
                                   {item.description}
                                 </p>

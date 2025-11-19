@@ -44,6 +44,7 @@ export default function VentasPage() {
     to: today,
   });
   const [selectedBank, setSelectedBank] = useState<string>("all");
+  const [searchProductTerm, setSearchProductTerm] = useState("");
   // const [showNewSaleModal, setShowNewSaleModal] = useState(false);
   const [showSaleDetailsModal, setShowSaleDetailsModal] = useState(false);
   const [selectedVentaId, setSelectedVentaId] = useState<string | null>(null);
@@ -96,14 +97,22 @@ export default function VentasPage() {
     if (dateRange?.from && dateRange?.to) {
       const startOfDay = new Date(dateRange.from);
       startOfDay.setHours(0, 0, 0, 0);
-      
+
       const endOfDay = new Date(dateRange.to);
       endOfDay.setHours(23, 59, 59, 999);
-      
+
       matchesDateRange = saleDate >= startOfDay && saleDate <= endOfDay;
     }
 
-    return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesDateRange;
+    // Filtrar por producto
+    let matchesProduct = true;
+    if (searchProductTerm.trim() !== "") {
+      matchesProduct = typedSale.items?.some((item) =>
+        item.productName?.toLowerCase().includes(searchProductTerm.toLowerCase())
+      ) || false;
+    }
+
+    return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesDateRange && matchesProduct;
   });
 
   // Calcular total de ventas filtradas
@@ -119,6 +128,7 @@ export default function VentasPage() {
     setSelectedInvoiced("all");
     setDateRange({ from: hoy, to: hoy });
     setSelectedBank("all");
+    setSearchProductTerm("");
   };
 
   // Formatear fecha
@@ -283,6 +293,12 @@ export default function VentasPage() {
           <div className="space-y-4">
             {/* Fila 1: Filtros principales */}
             <div className="flex flex-wrap gap-3">
+              <Input
+                placeholder="Buscar producto..."
+                value={searchProductTerm}
+                onChange={(e) => setSearchProductTerm(e.target.value)}
+                className="w-[200px]"
+              />
               <Select
                 value={selectedPaymentMethod}
                 onValueChange={(value) => {
