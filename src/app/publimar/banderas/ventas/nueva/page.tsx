@@ -1019,8 +1019,8 @@ export default function NuevaVentaPage() {
               {/* Botón agregar - solo cuando hay selección */}
               {/* {selectedProducts.size > 0 && ( */}
               <Button
-                disabled={selectedProducts.size === 0}
                 type="button"
+                disabled={selectedProducts.size === 0}
                 className="bg-green-600 hover:bg-green-700 text-white"
                 onClick={handleAddSelectedProducts}
                 size="sm"
@@ -1029,6 +1029,7 @@ export default function NuevaVentaPage() {
                 Agregar ({selectedProducts.size})
               </Button>
               <Button
+                type="button"
                 size="sm"
                 variant="outline"
                 className="bg-gray-600 hover:bg-gray-400 text-white"
@@ -1269,6 +1270,7 @@ export default function NuevaVentaPage() {
                 </div>
                 <div className="flex items-center gap-1">
                   <Button
+                    type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => handlePageChange(currentPage - 1)}
@@ -1281,6 +1283,7 @@ export default function NuevaVentaPage() {
                     {currentPage}/{totalPages}
                   </span>
                   <Button
+                    type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => handlePageChange(currentPage + 1)}
@@ -1594,12 +1597,14 @@ export default function NuevaVentaPage() {
             </div>
             <DialogFooter>
               <Button
+                type="button"
                 variant="outline"
                 onClick={() => setShowManualItemDialog(false)}
               >
                 Cancelar
               </Button>
               <Button
+                type="button"
                 onClick={handleAddManualItem}
                 disabled={
                   !manualItem.productName || !manualItem.unitPrice
