@@ -772,6 +772,12 @@ const total = subtotal - totalDiscountAmount;
         paymentHistory: paymentHistory,
         balance: parseFloat(saldo) || 0,
         // Datos del cliente (solo referencias, no duplicar datos)
+        contact: {
+          name: contactoNombre || undefined,
+          position: contactoPosicion || undefined,
+          email: contactoEmail || undefined,
+          phone: contactoTelefono || undefined,
+        },
         ...(cliente && { clientId: cliente }), // Referencia a la DB del cliente
         ...(clienteInput && { clientName: clienteInput }), // Solo el nombre para mostrar
         ...(referencia && { reference: referencia }), // Referencia del cliente

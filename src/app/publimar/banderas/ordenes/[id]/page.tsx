@@ -384,7 +384,8 @@ export default function OrderDetailsPage({
     try {
       await deleteOrder(params.id);
       toast.success("Orden eliminada correctamente");
-      router.push("/publimar/banderas/ordenes");
+      // Cerrar la pestaña actual del navegador
+      window.close();
     } catch (error) {
       toast.error("Error al eliminar la orden");
     }
@@ -700,10 +701,10 @@ export default function OrderDetailsPage({
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => router.back()}>
+          {/* <Button variant="ghost" onClick={() => router.back()}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Volver
-          </Button>
+          </Button> */}
           <div>
             <h1 className="text-2xl font-bold">Orden {order.number}</h1>
             <p className="text-muted-foreground">
@@ -891,6 +892,10 @@ export default function OrderDetailsPage({
                         value={
                           editedOrder?.contact?.email ||
                           order?.client?.contacts?.[0]?.email ||
+                          editedOrder?.contact?.name ||
+                          editedOrder?.contact?.position ||
+                          editedOrder?.contact?.email ||
+                          editedOrder?.contact?.phone ||
                           ""
                         }
                         onChange={async (e) => {
@@ -1394,20 +1399,6 @@ export default function OrderDetailsPage({
                               discount: parseFloat(e.target.value) ,
                             }))
                           }
-                        />
-                      </div>
-                      <div>
-                        <Label>Notas</Label>
-                        <Textarea
-                          value={manualItem.notes}
-                          onChange={(e) =>
-                            setManualItem((prev) => ({
-                              ...prev,
-                              notes: e.target.value,
-                            }))
-                          }
-                          placeholder="Notas adicionales"
-                          rows={2}
                         />
                       </div>
                       {/* Preview del subtotal */}
