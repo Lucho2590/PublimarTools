@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,7 @@ import { Edit, Eye } from "lucide-react";
 import ClientDetailsModal from "./modalClientes/clientDetailsModal";
 
 export default function ClientesPage() {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,8 +56,7 @@ export default function ClientesPage() {
   // console.log(clients);
 
   const handleViewClient = (clientId: string) => {
-    setSelectedClientId(clientId);
-    setIsModalOpen(true);
+    window.open(`/publimar/banderas/clientes/${clientId}`, '_blank');
   };
 
   const handleCloseModal = () => {

@@ -11,6 +11,7 @@ export enum EOrderStatus {
   IN_PROCESS = "in_process",
   COMPLETED = "completed",
   CANCELLED = "cancelled",
+  
 }
 
 // Heredar de TQuoteItem para mantener consistencia

@@ -13,7 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import collections from "@/lib/collections";
 import { EClientType, TClient, TClientContact } from "@/types/client";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatearPrecio } from "@/lib/utils";
+import { EOrderStatus } from "@/types/order";
+import { EPaymentMethod } from "@/types/sale";
+import { EyeIcon } from "lucide-react";
 
 export default function ClienteDetallePage({
   params,
@@ -37,6 +40,23 @@ export default function ClienteDetallePage({
     { idField: "id" }
   );
 
+  // Obtener órdenes del cliente
+  const { status: ordersStatus, data: orders } = useFirestoreCollectionData(
+    query(
+      collection(firestore, collections.ORDERS),
+      where("client.id", "==", params.id)
+    ),
+    { idField: "id" }
+  );
+
+  // Obtener ventas del cliente
+  const { status: salesStatus, data: sales } = useFirestoreCollectionData(
+    query(
+      collection(firestore, collections.SALES),
+      where("client.id", "==", params.id)
+    ),
+    { idField: "id" }
+  );
 
   if (status === "loading") {
     return (
@@ -70,35 +90,28 @@ export default function ClienteDetallePage({
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Detalle del Cliente</h1>
-        <div className="flex gap-2">
-          <Button
-            className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
-            variant="outline"
-            onClick={() => router.back()}
-          >
-            Volver
-          </Button>
-          <Button
-            asChild
-            className="bg-blue-900 hover:bg-blue-600 hover:text-white text-white"
-            variant="outline"
-          >
-            <Link href={`/publimar/banderas/clientes/${params.id}/editar`}>Editar</Link>
-          </Button>
-        </div>
+        <h1 className="text-2xl font-bold">Detalle del Cliente: {typedClient.name}</h1>
       </div>
 
       <Tabs defaultValue="info" className="space-y-4">
         <TabsList>
           <TabsTrigger value="info">Información</TabsTrigger>
           <TabsTrigger value="presupuestos">Presupuestos</TabsTrigger>
+          <TabsTrigger value="ordenes">Órdenes</TabsTrigger>
+          <TabsTrigger value="ventas">Ventas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="info" className="space-y-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Información General</CardTitle>
+              <Button
+                asChild
+                size="sm"
+                className="bg-blue-900 hover:bg-blue-700 text-white"
+              >
+                <Link href={`/publimar/banderas/clientes/${params.id}/editar`}>Editar</Link>
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -227,22 +240,16 @@ export default function ClienteDetallePage({
                             Válido hasta: {formatDate(quote.validUntil)}
                           </p>
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            asChild
-                            variant="ghost"
-                            size="sm"
-                          >
-                            <Link href={`/publimar/banderas/presupuestos/${quote.id}`}>Ver</Link>
-                          </Button>
-                          <Button
-                            asChild
-                            variant="ghost"
-                            size="sm"
-                          >
-                            <Link href={`/publimar/banderas/presupuestos/${quote.id}/editar`}>Editar</Link>
-                          </Button>
-                        </div>
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="sm"
+                          className="bg-blue-900 hover:bg-blue-700 text-white"
+                          title="Ver presupuesto"
+                        >
+                          {/* <EyeIcon className="h-4 w-4" /> */}
+                          <Link href={`/publimar/banderas/presupuestos/${quote.id}`}><EyeIcon className="h-4 w-4" /></Link>
+                        </Button>
                       </div>
                       <div className="mt-2">
                         <span
@@ -271,6 +278,163 @@ export default function ClienteDetallePage({
               ) : (
                 <div className="text-center py-4 text-slate-500">
                   No hay presupuestos asociados a este cliente
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ordenes">
+          <Card>
+            <CardHeader>
+              <CardTitle>Órdenes de Trabajo</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {ordersStatus === "loading" ? (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
+                </div>
+              ) : orders && orders.length > 0 ? (
+                <div className="space-y-4">
+                  {orders.map((order: any) => (
+                    <div
+                      key={order.id}
+                      className="border rounded-lg p-4 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-medium">
+                            Orden #{order.number}
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            Fecha de creación: {formatDate(order.createdAt)}
+                          </p>
+                          {order.startDate && (
+                            <p className="text-sm text-slate-500">
+                              Fecha de inicio: {formatDate(order.startDate)}
+                            </p>
+                          )}
+                          {order.deliveryDate && (
+                            <p className="text-sm text-slate-500">
+                              Fecha de entrega: {formatDate(order.deliveryDate)}
+                            </p>
+                          )}
+                          <p className="text-sm font-semibold mt-2">
+                            Total: {formatearPrecio(order.total || 0)}
+                          </p>
+                        </div>
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="sm"
+                          className="bg-blue-900 hover:bg-blue-700 text-white"
+                        >
+                          <Link href={`/publimar/banderas/ordenes/${order.id}`}><EyeIcon className="h-4 w-4" /></Link>
+                        </Button>
+                      </div>
+                      <div className="mt-2">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            order.status === EOrderStatus.IN_PROCESS
+                              ? "bg-blue-100 text-blue-800"
+                              : order.status === EOrderStatus.COMPLETED
+                              ? "bg-green-100 text-green-800"
+                              : order.status === EOrderStatus.CANCELLED
+                              ? "bg-purple-100 text-purple-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {order.status === EOrderStatus.IN_PROCESS
+                            ? "En Proceso"
+                            : order.status === EOrderStatus.COMPLETED
+                            ? "Finalizado"
+                            : order.status === EOrderStatus.COMPLETED
+                            ? "Entregado"
+                            : "Cancelado"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-4 text-slate-500">
+                  No hay órdenes asociadas a este cliente
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ventas">
+          <Card>
+            <CardHeader>
+              <CardTitle>Ventas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {salesStatus === "loading" ? (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
+                </div>
+              ) : sales && sales.length > 0 ? (
+                <div className="space-y-4">
+                  {sales.map((sale: any) => (
+                    <div
+                      key={sale.id}
+                      className="border rounded-lg p-4 hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-medium">
+                            Venta #{sale.number || sale.id.substring(0, 8)}
+                          </h3>
+                          <p className="text-sm text-slate-500">
+                            Fecha: {formatDate(sale.saleDate || sale.createdAt)}
+                          </p>
+                          <p className="text-sm text-slate-500">
+                            Método de pago: {
+                              sale.paymentMethod === EPaymentMethod.CASH
+                                ? "Efectivo"
+                                : sale.paymentMethod === EPaymentMethod.TRANSFER
+                                ? "Transferencia"
+                                : sale.paymentMethod === EPaymentMethod.CREDIT_CARD
+                                ? "Tarjeta"
+                                : sale.paymentMethod === EPaymentMethod.CHECK
+                                ? "Cheque"
+                                : sale.paymentMethod === EPaymentMethod.MERCADOPAGO
+                                ? "Otro"
+                                : "-"
+                            }
+                          </p>
+                          <p className="text-sm font-semibold mt-2">
+                            Total: {formatearPrecio(sale.total || 0)}
+                          </p>
+                        </div>
+                        <Button
+                          asChild
+                          variant="ghost"
+                          size="sm"
+                          className="bg-blue-900 hover:bg-blue-700 text-white"
+                        >
+                          <Link href={`/publimar/banderas/ventas`}><EyeIcon className="h-4 w-4" /></Link>
+                        </Button>
+                      </div>
+                      <div className="mt-2">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            sale.invoiced
+                              ? "bg-green-100 text-green-800"
+                              : "bg-slate-100 text-slate-800"
+                          }`}
+                        >
+                          {sale.invoiced ? "Facturado" : "Sin Facturar"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-4 text-slate-500">
+                  No hay ventas asociadas a este cliente
                 </div>
               )}
             </CardContent>
