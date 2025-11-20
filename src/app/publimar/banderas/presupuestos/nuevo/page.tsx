@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData, useUser } from "reactfire";
 import {
@@ -21,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   Table,
@@ -38,7 +39,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Search, Plus, Trash2, Edit, ArrowLeft } from "lucide-react";
+import { Search, Plus, Trash2, Edit, ArrowLeft, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import collections from "@/lib/collections";
 import { EQuoteStatus } from "@/types/quote";
 import { TClient, EClientType, EClientStatus } from "@/types/client";
@@ -50,7 +51,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, redondearTotal } from "@/lib/utils";
 
 // Tipo para los items del presupuesto
 type QuoteItem = {
@@ -69,19 +70,29 @@ export default function NuevoPresupuestoPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [selectedClient, setSelectedClient] = useState<TClient | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
   const [productSearchTerm, setProductSearchTerm] = useState("");
-  const [isManualClientEntry, setIsManualClientEntry] = useState(false);
-  const [manualClientData, setManualClientData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    address: "",
-    cuit: "",
-    type: "individual" as "individual" | "company",
-  });
-  const [showSaveClientDialog, setShowSaveClientDialog] = useState(false);
-  const [tempClientForSave, setTempClientForSave] = useState<any>(null);
+
+  // Estados para cliente con autocomplete (igual que nueva orden)
+  const [clienteInput, setClienteInput] = useState("");
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false);
+  const clienteInputRef = useRef<HTMLInputElement>(null);
+  const [highlightedClientIndex, setHighlightedClientIndex] = useState(-1);
+  const dropdownClientRef = useRef<HTMLUListElement>(null);
+
+  // Estados de datos del cliente
+  const [personaContacto, setPersonaContacto] = useState("");
+  const [direccion, setDireccion] = useState("");
+  const [email, setEmail] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [cuit, setCuit] = useState("");
+  const [referencia, setReferencia] = useState("");
+
+  // Estados para contacto adicional (opcional)
+  const [contactoNombre, setContactoNombre] = useState("");
+  const [contactoEmail, setContactoEmail] = useState("");
+  const [contactoTelefono, setContactoTelefono] = useState("");
+  const [contactoPosicion, setContactoPosicion] = useState("");
+  const [isContactDetailsCollapsed, setIsContactDetailsCollapsed] = useState(true);
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -90,7 +101,21 @@ export default function NuevoPresupuestoPage() {
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
   const [itemNotes, setItemNotes] = useState("");
+  const [customUnitPrice, setCustomUnitPrice] = useState<number | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+
+  // Estados para item manual
+  const [showManualItemDialog, setShowManualItemDialog] = useState(false);
+  const [manualItemName, setManualItemName] = useState("");
+  const [manualItemMeasure, setManualItemMeasure] = useState("");
+  const [manualItemDescription, setManualItemDescription] = useState("");
+  const [manualItemQuantity, setManualItemQuantity] = useState(1);
+  const [manualItemPrice, setManualItemPrice] = useState(0);
+
+  // Estados para totales y descuentos
+  const [applyIVA, setApplyIVA] = useState(false);
+  const [discountPercentage, setDiscountPercentage] = useState(0);
+  const [manualDiscount, setManualDiscount] = useState(0);
 
   const firestore = useFirestore();
   const { data: user } = useUser();
@@ -126,20 +151,10 @@ export default function NuevoPresupuestoPage() {
   const [formData, setFormData] = useState({
     number: "", // Will be auto-generated
     notes: "",
-    validUntil: new Date(new Date().setDate(new Date().getDate() + 30))
+    validUntil: new Date(new Date().setDate(new Date().getDate() + 7 ))
       .toISOString()
       .split("T")[0], // 30 days from now
     taxRate: 21, // Default tax rate
-  });
-
-  // Filter clients based on search
-  const filteredClients = clients?.filter((client: DocumentData) => {
-    if (!client) return false;
-    return (
-      client.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.phone?.includes(searchTerm)
-    );
   });
 
   // Filter products based on search
@@ -155,8 +170,23 @@ export default function NuevoPresupuestoPage() {
 
   // Calculate totals
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-  const taxAmount = subtotal * (Number(formData.taxRate) / 100);
-  const total = subtotal + taxAmount;
+
+  // Calcular IVA desde precio final cuando aplica
+  let taxAmount = 0;
+  let subtotalSinIVA = subtotal;
+
+  if (applyIVA) {
+    const taxRate = parseFloat(formData.taxRate.toString());
+    taxAmount = subtotal * (taxRate / (100 + taxRate));
+    subtotalSinIVA = subtotal - taxAmount;
+  }
+
+  // Calcular descuentos
+  const generalDiscountAmount = subtotalSinIVA * (discountPercentage / 100);
+  const totalDiscountAmount = generalDiscountAmount + manualDiscount;
+
+  // Total final
+  const total = subtotal - totalDiscountAmount;
 
   // Calcular precio con IVA
   const calculatePriceWithTax = (price: number, taxRate: number) => {
@@ -194,9 +224,11 @@ export default function NuevoPresupuestoPage() {
   const addItemToQuote = () => {
     if (!selectedProduct) return;
 
-    const price = Number(selectedVariant
-      ? selectedVariant.price
-      : selectedProduct.price || 0);
+    // Usar precio personalizado si existe, sino usar precio del producto/variante
+    const price = customUnitPrice !== null
+      ? customUnitPrice
+      : Number(selectedVariant ? selectedVariant.price : selectedProduct.price || 0);
+
     const discountAmount = (price * itemDiscount) / 100;
     const priceAfterDiscount = price - discountAmount;
     const subtotal = priceAfterDiscount * itemQuantity;
@@ -228,6 +260,7 @@ export default function NuevoPresupuestoPage() {
     setItemQuantity(1);
     setItemDiscount(0);
     setItemNotes("");
+    setCustomUnitPrice(null);
     setProductSearchTerm("");
     setEditingItemId(null);
     setIsAddingProduct(false);
@@ -239,6 +272,7 @@ export default function NuevoPresupuestoPage() {
     setItemQuantity(item.quantity);
     setItemDiscount(item.discount);
     setItemNotes(item.notes);
+    setCustomUnitPrice(item.unitPrice); // Cargar precio actual del item
     setEditingItemId(item.id);
     setIsAddingProduct(true);
   };
@@ -247,11 +281,65 @@ export default function NuevoPresupuestoPage() {
     setItems(items.filter((item) => item.id !== itemId));
   };
 
+  // Manejar item manual
+  const handleAddManualItem = () => {
+    if (!manualItemName || !manualItemQuantity || !manualItemPrice) {
+      toast.error("Nombre, cantidad y precio son requeridos");
+      return;
+    }
+
+    const itemSubtotal = manualItemQuantity * manualItemPrice;
+
+    const newItem: QuoteItem = {
+      id: crypto.randomUUID(),
+      product: {
+        id: `manual-${Date.now()}`,
+        name: manualItemName,
+        description: manualItemDescription,
+        sku: "",
+        categories: [],
+        variants: [],
+        salesCount: 0,
+        totalSales: 0,
+        price: manualItemPrice,
+        stock: Infinity,
+        imageUrls: [],
+        hasVariants: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as TProduct,
+      variant: {
+        id: `manual-variant-${Date.now()}`,
+        size: manualItemMeasure || "Sin medida",
+        sku: "",
+        price: manualItemPrice,
+        stock: Infinity,
+      } as TProductVariant,
+      quantity: manualItemQuantity,
+      unitPrice: manualItemPrice,
+      discount: 0,
+      subtotal: itemSubtotal,
+      notes: "",
+    };
+
+    setItems((prev) => [...prev, newItem]);
+
+    // Reset manual item form
+    setManualItemName("");
+    setManualItemMeasure("");
+    setManualItemDescription("");
+    setManualItemQuantity(1);
+    setManualItemPrice(0);
+
+    setShowManualItemDialog(false);
+    toast.success("Item manual agregado");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
-    if (!selectedClient) {
-      toast.error("Debes seleccionar un cliente");
+    if (!clienteInput.trim()) {
+      toast.error("Debes ingresar un cliente");
       return;
     }
     if (!user) {
@@ -292,28 +380,69 @@ export default function NuevoPresupuestoPage() {
         notes: item.notes || "",
       }));
 
+      // Preparar datos del cliente (usar selectedClient si existe, sino usar campos manuales)
+      const clientData = selectedClient
+        ? {
+            id: selectedClient.id,
+            name: selectedClient.name,
+            type: selectedClient.type,
+            status: selectedClient.status,
+            email: email || selectedClient.email || "",
+            phone: telefono || selectedClient.phone || "",
+            address: direccion || selectedClient.address || "",
+            taxId: cuit || selectedClient.cuit || "",
+            notes: selectedClient.notes || "",
+            contacts:
+              contactoNombre || contactoEmail || contactoTelefono
+                ? [
+                    {
+                      name: contactoNombre || personaContacto || "",
+                      email: contactoEmail || "",
+                      phone: contactoTelefono || "",
+                      position: contactoPosicion || "",
+                    },
+                  ]
+                : selectedClient.contacts || [],
+            createdAt: selectedClient.createdAt,
+            updatedAt: selectedClient.updatedAt,
+          }
+        : {
+            id: "",
+            name: clienteInput,
+            type: "individual",
+            status: "active",
+            email: email || "",
+            phone: telefono || "",
+            address: direccion || "",
+            taxId: cuit || "",
+            notes: "",
+            contacts:
+              contactoNombre || contactoEmail || contactoTelefono
+                ? [
+                    {
+                      name: contactoNombre || personaContacto || "",
+                      email: contactoEmail || "",
+                      phone: contactoTelefono || "",
+                      position: contactoPosicion || "",
+                    },
+                  ]
+                : [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+
       const quoteData = {
         number: quoteNumber,
-        client: {
-          id: selectedClient.id,
-          name: selectedClient.name,
-          type: selectedClient.type,
-          status: selectedClient.status,
-          email: selectedClient.email || "",
-          phone: selectedClient.phone || "",
-          address: selectedClient.address || "",
-          taxId: selectedClient.cuit || "",
-          notes: selectedClient.notes || "",
-          contacts: selectedClient.contacts || [],
-          createdAt: selectedClient.createdAt,
-          updatedAt: selectedClient.updatedAt,
-        },
+        client: clientData,
         status: EQuoteStatus.DRAFT,
         items: sanitizedItems,
-        subtotal: subtotal,
+        subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal),
         taxRate: parseFloat(formData.taxRate.toString()),
-        taxAmount: taxAmount,
-        total: total,
+        taxAmount: redondearTotal(taxAmount),
+        total: redondearTotal(total),
+        applyIVA,
+        discountPercentage,
+        manualDiscount,
         validUntil: new Date(formData.validUntil),
         notes: formData.notes || "",
         comments: [],
@@ -324,7 +453,7 @@ export default function NuevoPresupuestoPage() {
         updatedBy: doc(firestore, `users/${user.uid}`),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        tax: taxAmount,
+        tax: redondearTotal(taxAmount),
       };
 
       const quotesCollection = collection(firestore, collections.QUOTES);
@@ -344,120 +473,92 @@ export default function NuevoPresupuestoPage() {
     }
   };
 
-  const handleSelectClient = (client: TClient) => {
-    setSelectedClient(client);
-    setSearchTerm("");
+  const handleSelectClient = (clientId: string) => {
+    const client = clients?.find((c: any) => c.id === clientId);
+    if (!client) return;
+
+    setSelectedClient(client as TClient);
+    const contacto = client?.contacts?.[0];
+
+    // Precargar datos del cliente
+    setPersonaContacto(contacto?.name || "");
+    setDireccion(client?.address || "");
+    setEmail(contacto?.email || client?.email || "");
+    setTelefono(client?.phone || "");
+    setCuit(client?.cuit || "");
+    setReferencia(client?.reference || "");
+
+    // Precargar datos del contacto
+    setContactoNombre(contacto?.name || "");
+    setContactoEmail(contacto?.email || "");
+    setContactoTelefono(contacto?.phone || "");
+    setContactoPosicion(contacto?.position || "");
   };
 
-  const handleManualClientChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    const { name, value } = e.target;
-    setManualClientData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-  };
+  // Manejar cuando se escribe manualmente un cliente (sin seleccionar del dropdown)
+  const handleClientInputChange = (value: string) => {
+    setClienteInput(value);
 
-  const checkIfClientExists = (email: string, cuit: string) => {
-    if (!clients) return null;
-    return clients.find((client: any) => 
-      (email && client.email === email) || 
-      (cuit && client.cuit === cuit)
+    // Si el valor no coincide con ningún cliente existente, limpiar el cliente seleccionado
+    const existingClient = clients?.find((c: any) =>
+      c.name.toLowerCase() === value.toLowerCase()
     );
-  };
 
-  const handleUseManualClient = async () => {
-    if (!manualClientData.name.trim()) {
-      toast.error("El nombre del cliente es requerido");
-      return;
+    if (!existingClient) {
+      setSelectedClient(null); // Limpiar si es un cliente nuevo/manual
     }
+  };
 
-    // Verificar si el cliente ya existe
-    const existingClient = checkIfClientExists(manualClientData.email, manualClientData.cuit);
-    
-    if (existingClient) {
-      const shouldUseExisting = window.confirm(
-        `Ya existe un cliente con ${existingClient.email === manualClientData.email ? 'este email' : 'este CUIT'}. ¿Quieres usar el cliente existente?`
-      );
-      
-      if (shouldUseExisting) {
-        setSelectedClient(existingClient as TClient);
-        setIsManualClientEntry(false);
-        return;
-      }
+  // Manejar teclas en el input de cliente
+  const handleClientKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showClienteDropdown) return;
+
+    const filteredClients = clients?.filter((c: any) =>
+      c.name.toLowerCase().includes(clienteInput.toLowerCase())
+    ) || [];
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setHighlightedClientIndex((prev) =>
+          prev < filteredClients.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setHighlightedClientIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (highlightedClientIndex >= 0 && highlightedClientIndex < filteredClients.length) {
+          const selectedClient = filteredClients[highlightedClientIndex];
+          handleSelectClient(selectedClient.id);
+          setClienteInput(selectedClient.name);
+          setShowClienteDropdown(false);
+          if (clienteInputRef.current) clienteInputRef.current.blur();
+        }
+        break;
+      case "Escape":
+        e.preventDefault();
+        setShowClienteDropdown(false);
+        setHighlightedClientIndex(-1);
+        break;
     }
-
-    // Crear cliente temporal para el presupuesto
-    const tempClient = {
-      id: `temp_${Date.now()}`,
-      name: manualClientData.name,
-      type: manualClientData.type === "company" ? "company" as const : "individual" as const,
-      status: "active" as const,
-      email: manualClientData.email || undefined,
-      phone: manualClientData.phone || undefined,
-      address: manualClientData.address || undefined,
-      cuit: manualClientData.cuit || undefined,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    setSelectedClient(tempClient as TClient);
-    setTempClientForSave(tempClient);
-    setShowSaveClientDialog(true);
   };
 
-  const handleSaveClientToDB = async () => {
-    if (!tempClientForSave) return;
-
-    try {
-      const clientData = {
-        name: tempClientForSave.name,
-        type: tempClientForSave.type,
-        status: tempClientForSave.status,
-        email: tempClientForSave.email || "",
-        phone: tempClientForSave.phone || "",
-        address: tempClientForSave.address || "",
-        cuit: tempClientForSave.cuit || "",
-        notes: "",
-        contacts: [],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      const clientRef = await addDoc(collection(firestore, collections.CLIENTS), clientData);
-      
-      // Actualizar el cliente seleccionado con el ID real
-      const updatedClient = {
-        ...tempClientForSave,
-        id: clientRef.id,
-      };
-      
-      setSelectedClient(updatedClient);
-      toast.success("Cliente guardado en la base de datos");
-      
-    } catch (error) {
-      console.error("Error al guardar cliente:", error);
-      toast.error("Error al guardar el cliente");
-    }
-    
-    setShowSaveClientDialog(false);
-    setTempClientForSave(null);
-  };
-
-  const handleSkipSaveClient = () => {
-    setShowSaveClientDialog(false);
-    setTempClientForSave(null);
-    toast.success("Cliente configurado solo para este presupuesto");
-  };
 
   const handleProductSelect = (product: TProduct, variant?: TProductVariant) => {
     setSelectedProduct(product);
     setSelectedVariant(variant || null);
+    // Cargar precio inicial del producto o variante
+    const initialPrice = variant ? Number(variant.price) : Number(product.price || 0);
+    setCustomUnitPrice(initialPrice);
   };
 
   const handleVariantSelect = (variant: TProductVariant) => {
     setSelectedVariant(variant);
+    // Actualizar precio cuando cambia la variante
+    setCustomUnitPrice(Number(variant.price));
   };
 
   const handleResetProductSelection = () => {
@@ -466,6 +567,7 @@ export default function NuevoPresupuestoPage() {
     setItemQuantity(1);
     setItemDiscount(0);
     setItemNotes("");
+    setCustomUnitPrice(null);
   };
 
   return (
@@ -513,222 +615,198 @@ export default function NuevoPresupuestoPage() {
       <form onSubmit={handleSubmit}>
         <Card className="mb-6">
           <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Cliente</CardTitle>
-              {!selectedClient && (
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={!isManualClientEntry ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setIsManualClientEntry(false)}
-                    className={!isManualClientEntry ? "bg-blue-900 text-white" : ""}
-                  >
-                    Buscar existente
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={isManualClientEntry ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setIsManualClientEntry(true)}
-                    className={isManualClientEntry ? "bg-blue-900 text-white" : ""}
-                  >
-                    Ingresar manualmente
-                  </Button>
-                </div>
+            <CardTitle>Cliente</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex-1" style={{ position: "relative" }}>
+                <Label>Cliente</Label>
+                <Input
+                  ref={clienteInputRef}
+                  placeholder="Buscar o escribir cliente..."
+                  value={clienteInput}
+                  onChange={(e) => handleClientInputChange(e.target.value)}
+                  onKeyDown={handleClientKeyDown}
+                  onFocus={() => {
+                    setShowClienteDropdown(true);
+                    setHighlightedClientIndex(-1);
+                  }}
+                  onBlur={() =>
+                    setTimeout(() => {
+                      setShowClienteDropdown(false);
+                      setHighlightedClientIndex(-1);
+                    }, 150)
+                  }
+                />
+                {showClienteDropdown &&
+                  clients &&
+                  clients.length > 0 &&
+                  clienteInput && (
+                    <ul
+                      ref={dropdownClientRef}
+                      style={{
+                        position: "absolute",
+                        zIndex: 10,
+                        background: "white",
+                        border: "1px solid #e5e7eb",
+                        padding: 6,
+                        borderRadius: 6,
+                        width: "100%",
+                        maxHeight: 180,
+                        overflowY: "auto",
+                        marginTop: 2,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                      }}
+                    >
+                      {clients
+                        .filter((c: any) =>
+                          c.name
+                            .toLowerCase()
+                            .includes(clienteInput.toLowerCase())
+                        )
+                        .map((c: any, index: number) => (
+                          <li
+                            key={c.id}
+                            style={{
+                              padding: 8,
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              backgroundColor:
+                                index === highlightedClientIndex
+                                  ? "#f1f5f9"
+                                  : "transparent",
+                              transition: "background-color 0.15s ease",
+                            }}
+                            onMouseEnter={() => setHighlightedClientIndex(index)}
+                            onMouseDown={() => {
+                              handleSelectClient(c.id);
+                              setClienteInput(c.name);
+                              setShowClienteDropdown(false);
+                              setHighlightedClientIndex(-1);
+                              if (clienteInputRef.current)
+                                clienteInputRef.current.blur();
+                            }}
+                          >
+                            {c.name}
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+              </div>
+              <div className="flex-1">
+                <Label>Persona de contacto</Label>
+                <Input
+                  placeholder="Persona de contacto..."
+                  value={personaContacto}
+                  onChange={(e) => setPersonaContacto(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Dirección</Label>
+                <Input
+                  value={direccion}
+                  onChange={(e) => setDireccion(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Teléfono</Label>
+                <Input
+                  value={telefono}
+                  onChange={(e) => setTelefono(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>CUIT/CUIL</Label>
+                <Input value={cuit} onChange={(e) => setCuit(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Referencia</Label>
+                <Input
+                  value={referencia}
+                  onChange={(e) => setReferencia(e.target.value)}
+                  placeholder="Referencia del cliente..."
+                />
+              </div>
+            </div>
+
+            {/* Sección de Contacto */}
+            <div className="border-t pt-4 mt-4">
+              <div className="flex items-center gap-2 mb-3">
+                <h4 className="text-sm font-medium text-gray-700">
+                  Datos del Contacto (Opcional)
+                </h4>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setIsContactDetailsCollapsed(!isContactDetailsCollapsed)
+                  }
+                  className="p-1 h-6 w-6"
+                >
+                  {isContactDetailsCollapsed ? (
+                    <ChevronDown className="h-3 w-3" />
+                  ) : (
+                    <ChevronUp className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+              {!isContactDetailsCollapsed && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Nombre del contacto</Label>
+                      <Input
+                        value={contactoNombre}
+                        onChange={(e) => setContactoNombre(e.target.value)}
+                        placeholder="Nombre completo..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Posición/Cargo</Label>
+                      <Input
+                        value={contactoPosicion}
+                        onChange={(e) => setContactoPosicion(e.target.value)}
+                        placeholder="Ej: Gerente, Encargado..."
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div className="space-y-2">
+                      <Label>Email del contacto</Label>
+                      <Input
+                        type="email"
+                        value={contactoEmail}
+                        onChange={(e) => setContactoEmail(e.target.value)}
+                        placeholder="email@ejemplo.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Teléfono del contacto</Label>
+                      <Input
+                        value={contactoTelefono}
+                        onChange={(e) => setContactoTelefono(e.target.value)}
+                        placeholder="Teléfono directo..."
+                      />
+                    </div>
+                  </div>
+                </>
               )}
             </div>
-          </CardHeader>
-          <CardContent>
-            {selectedClient ? (
-              <div className="bg-slate-50 p-4 rounded-md">
-                <div className="flex justify-between">
-                  <div>
-                    <h3 className="font-medium text-lg">
-                      {selectedClient.name}
-                    </h3>
-                    <p className="text-slate-500">
-                      {selectedClient.email || "No email"} |{" "}
-                      {selectedClient.phone || "No teléfono"}
-                    </p>
-                    {selectedClient.address && (
-                      <p className="text-slate-500">{selectedClient.address}</p>
-                    )}
-                    {selectedClient.cuit && (
-                      <p className="text-slate-500">CUIT: {selectedClient.cuit}</p>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setSelectedClient(null);
-                      setIsManualClientEntry(false);
-                      setManualClientData({
-                        name: "",
-                        email: "",
-                        phone: "",
-                        address: "",
-                        cuit: "",
-                        type: "individual",
-                      });
-                    }}
-                    type="button"
-                  >
-                    Cambiar
-                  </Button>
-                </div>
-              </div>
-            ) : isManualClientEntry ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="clientName">Nombre / Razón Social *</Label>
-                    <Input
-                      id="clientName"
-                      name="name"
-                      value={manualClientData.name}
-                      onChange={handleManualClientChange}
-                      placeholder="Nombre del cliente"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="clientType">Tipo de Cliente</Label>
-                    <Select
-                      value={manualClientData.type}
-                      onValueChange={(value) =>
-                        setManualClientData((prev) => ({
-                          ...prev,
-                          type: value as "individual" | "company",
-                        }))
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="individual">Persona Física</SelectItem>
-                        <SelectItem value="company">Empresa</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="clientEmail">Email</Label>
-                    <Input
-                      id="clientEmail"
-                      name="email"
-                      type="email"
-                      value={manualClientData.email}
-                      onChange={handleManualClientChange}
-                      placeholder="email@ejemplo.com"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="clientPhone">Teléfono</Label>
-                    <Input
-                      id="clientPhone"
-                      name="phone"
-                      value={manualClientData.phone}
-                      onChange={handleManualClientChange}
-                      placeholder="11-1234-5678"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="clientCuit">CUIT/CUIL</Label>
-                    <Input
-                      id="clientCuit"
-                      name="cuit"
-                      value={manualClientData.cuit}
-                      onChange={handleManualClientChange}
-                      placeholder="20-12345678-9"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="clientAddress">Dirección</Label>
-                    <Input
-                      id="clientAddress"
-                      name="address"
-                      value={manualClientData.address}
-                      onChange={handleManualClientChange}
-                      placeholder="Calle y número, Ciudad"
-                    />
-                  </div>
-                </div>
-                <div className="pt-4">
-                  <Button
-                    type="button"
-                    onClick={handleUseManualClient}
-                    disabled={!manualClientData.name.trim()}
-                    className="bg-blue-900 hover:bg-blue-700 text-white"
-                  >
-                    Usar este cliente
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="mb-4 relative">
-                  <Search
-                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
-                    size={16}
-                  />
-                  <Input
-                    placeholder="Buscar cliente por nombre, email o teléfono..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-
-                {searchTerm && clientsStatus !== "loading" && (
-                  <div className="border rounded-md">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Nombre</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Teléfono</TableHead>
-                          <TableHead></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredClients && filteredClients.length > 0 ? (
-                          filteredClients.map((client: DocumentData) => (
-                            <TableRow key={client.id}>
-                              <TableCell>{client.name}</TableCell>
-                              <TableCell>{client.email || "-"}</TableCell>
-                              <TableCell>{client.phone || "-"}</TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  size="sm"
-                                  onClick={() =>
-                                    handleSelectClient(client as TClient)
-                                  }
-                                  type="button"
-                                >
-                                  Seleccionar
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={4} className="text-center py-4">
-                              No se encontraron clientes con el término de
-                              búsqueda.
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -749,7 +827,7 @@ export default function NuevoPresupuestoPage() {
                   required
                 />
               </div>
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <Label htmlFor="taxRate">Tasa de impuesto (%)</Label>
                 <Input
                   id="taxRate"
@@ -759,7 +837,7 @@ export default function NuevoPresupuestoPage() {
                   onChange={handleChange}
                   required
                 />
-              </div>
+              </div> */}
             </div>
             <div className="space-y-2">
               <Label htmlFor="notes">Notas</Label>
@@ -778,19 +856,123 @@ export default function NuevoPresupuestoPage() {
         <Card className="mb-6">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Productos</CardTitle>
-            <Dialog open={isAddingProduct} onOpenChange={setIsAddingProduct}>
+            <div className="flex gap-2">
+            <Dialog open={showManualItemDialog} onOpenChange={setShowManualItemDialog}>
               <DialogTrigger asChild>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsAddingProduct(true)}
-                  disabled={!selectedClient}
-                  className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                  className="bg-gray-600 hover:bg-gray-700 text-white"
                 >
-                  <Plus className="mr-2 h-4 w-4" /> Agregar producto
+                  <FileText className="h-4 w-4 mr-2" />
+                  Item Manual
                 </Button>
               </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                  <DialogTitle>Agregar item manual</DialogTitle>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="manualName">Nombre del producto</Label>
+                      <Input
+                        id="manualName"
+                        placeholder="Ej: Bandera personalizada"
+                        value={manualItemName}
+                        onChange={(e) => setManualItemName(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="manualMeasure">Medida</Label>
+                      <Input
+                        id="manualMeasure"
+                        placeholder="Ej: 90x1,40"
+                        value={manualItemMeasure}
+                        onChange={(e) => setManualItemMeasure(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="manualDescription">Descripción</Label>
+                    <Textarea
+                      id="manualDescription"
+                      placeholder="Descripción del producto..."
+                      value={manualItemDescription}
+                      onChange={(e) => setManualItemDescription(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="manualQuantity">Cantidad</Label>
+                      <Input
+                        id="manualQuantity"
+                        type="number"
+                        min="1"
+                        placeholder="1"
+                        value={manualItemQuantity}
+                        onChange={(e) => setManualItemQuantity(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="manualPrice">Precio unitario</Label>
+                      <Input
+                        id="manualPrice"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={manualItemPrice}
+                        onChange={(e) => setManualItemPrice(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">Precio total:</span>
+                      <span className="text-lg font-bold text-blue-600">
+                        {formatearPrecio(manualItemQuantity * manualItemPrice)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowManualItemDialog(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={handleAddManualItem}
+                    disabled={!manualItemName || !manualItemQuantity || !manualItemPrice}
+                    className="bg-blue-900 hover:bg-blue-700 text-white"
+                  >
+                    Agregar item
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Dialog open={isAddingProduct} onOpenChange={setIsAddingProduct}>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsAddingProduct(true)}
+                    className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> Agregar producto
+                  </Button>
+                </DialogTrigger>
               <DialogContent className="sm:max-w-[700px]">
                 <DialogHeader>
                   <DialogTitle>
@@ -941,7 +1123,7 @@ export default function NuevoPresupuestoPage() {
                         </div>
                       )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="quantity">Cantidad</Label>
                           <Input
@@ -951,6 +1133,19 @@ export default function NuevoPresupuestoPage() {
                             value={itemQuantity}
                             onChange={(e) =>
                               setItemQuantity(parseInt(e.target.value) || 1)
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="customPrice">Precio Unitario</Label>
+                          <Input
+                            id="customPrice"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={customUnitPrice || 0}
+                            onChange={(e) =>
+                              setCustomUnitPrice(parseFloat(e.target.value) || 0)
                             }
                           />
                         </div>
@@ -973,18 +1168,12 @@ export default function NuevoPresupuestoPage() {
                         <div className="flex justify-between items-center">
                           <div>
                             <p className="text-sm">
-                              Precio unitario: {formatearPrecio(selectedVariant
-                                ? Number(selectedVariant.price)
-                                : Number(selectedProduct.price || 0))}
+                              Precio unitario: {formatearPrecio(customUnitPrice || 0)}
                             </p>
                             {itemDiscount > 0 && (
                               <p className="text-sm">
                                 Descuento: {itemDiscount}% ({formatearPrecio(
-                                  ((selectedVariant
-                                    ? Number(selectedVariant.price)
-                                    : Number(selectedProduct.price || 0)) *
-                                    itemDiscount) /
-                                  100
+                                  ((customUnitPrice || 0) * itemDiscount) / 100
                                 )})
                               </p>
                             )}
@@ -994,14 +1183,8 @@ export default function NuevoPresupuestoPage() {
                             <p className="text-lg font-semibold">
                               Subtotal: {formatearPrecio(
                                 itemQuantity *
-                                ((selectedVariant
-                                  ? Number(selectedVariant.price)
-                                  : Number(selectedProduct.price || 0)) -
-                                  ((selectedVariant
-                                    ? Number(selectedVariant.price)
-                                    : Number(selectedProduct.price || 0)) *
-                                    itemDiscount) /
-                                    100)
+                                ((customUnitPrice || 0) -
+                                  ((customUnitPrice || 0) * itemDiscount) / 100)
                               )}
                             </p>
                             <p className="text-sm text-slate-400 text-right">+ IVA</p>
@@ -1022,6 +1205,7 @@ export default function NuevoPresupuestoPage() {
                       setItemQuantity(1);
                       setItemDiscount(0);
                       setItemNotes("");
+                      setCustomUnitPrice(null);
                       setProductSearchTerm("");
                       setEditingItemId(null);
                     }}
@@ -1043,6 +1227,7 @@ export default function NuevoPresupuestoPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            </div>
           </CardHeader>
           <CardContent>
             {items.length === 0 ? (
@@ -1126,22 +1311,106 @@ export default function NuevoPresupuestoPage() {
           </CardContent>
         </Card>
 
+        {/* Totales */}
         <Card className="mb-6">
           <CardContent className="p-6">
-            <div className="space-y-3 divide-y">
-              <div className="flex justify-between py-2">
-                <span className="text-slate-600">Subtotal:</span>
-                <span className="font-medium">{formatearPrecio(subtotal)}</span>
-              </div>
-              <div className="flex justify-between py-2">
-                <span className="text-slate-600">
-                  IVA ({formData.taxRate}%):
-                </span>
-                <span className="font-medium">{formatearPrecio(taxAmount)}</span>
-              </div>
-              <div className="flex justify-between py-3">
-                <span className="text-lg font-semibold">Total:</span>
-                <span className="text-lg font-bold">{formatearPrecio(total)}</span>
+            <div className="border-t pt-4">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <p className="text-gray-700">Subtotal</p>
+                  <p className="font-semibold">{formatearPrecio(subtotal)}</p>
+                </div>
+
+                <div className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="applyIVA"
+                      checked={applyIVA}
+                      onCheckedChange={(checked) =>
+                        setApplyIVA(checked as boolean)
+                      }
+                      className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+                    />
+                    <Label htmlFor="applyIVA" className="text-sm text-gray-700">
+                      Desglosar IVA ({formData.taxRate}%)
+                    </Label>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {applyIVA
+                      ? `${formatearPrecio(redondearTotal(taxAmount))}`
+                      : "$ 0,00"}
+                  </p>
+                </div>
+
+                {applyIVA && (
+                  <div className="flex justify-between items-center text-sm pl-6">
+                    <p className="text-gray-600">Subtotal sin IVA</p>
+                    <p className="font-medium">
+                      {formatearPrecio(redondearTotal(subtotalSinIVA))}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Label
+                      htmlFor="discount"
+                      className="text-sm text-gray-700 w-24"
+                    >
+                      Descuento (%)
+                    </Label>
+                    <Input
+                      id="discount"
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={discountPercentage}
+                      onChange={(e) =>
+                        setDiscountPercentage(Number(e.target.value))
+                      }
+                      className="w-16 h-8 text-center text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <p className="text-red-600">
+                    -{formatearPrecio(redondearTotal(totalDiscountAmount))}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Label
+                      htmlFor="manualDiscount"
+                      className="text-sm text-gray-700 w-24"
+                    >
+                      Descuento ($)
+                    </Label>
+                    <Input
+                      id="manualDiscount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={manualDiscount}
+                      onChange={(e) =>
+                        setManualDiscount(Number(e.target.value))
+                      }
+                      className="w-20 h-8 text-center text-sm"
+                      placeholder="0"
+                    />
+                  </div>
+                  <p className="text-red-600">
+                    -{formatearPrecio(redondearTotal(manualDiscount))}
+                  </p>
+                </div>
+
+                <div className="border-t pt-3">
+                  <div className="flex justify-between items-center">
+                    <p className="text-lg font-semibold">Total</p>
+                    <p className="text-xl font-bold">
+                      {formatearPrecio(redondearTotal(total))}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1175,50 +1444,6 @@ export default function NuevoPresupuestoPage() {
           </CardFooter>
         </Card>
       </form>
-
-      {/* Modal para guardar cliente en la BD */}
-      <Dialog open={showSaveClientDialog} onOpenChange={setShowSaveClientDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>¿Guardar cliente en la base de datos?</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-slate-600 mb-4">
-              Has ingresado los datos de un cliente nuevo. ¿Te gustaría guardarlo en la base de datos para futuras consultas?
-            </p>
-            {tempClientForSave && (
-              <div className="bg-slate-50 p-3 rounded-md space-y-1">
-                <p><strong>Nombre:</strong> {tempClientForSave.name}</p>
-                {tempClientForSave.email && (
-                  <p><strong>Email:</strong> {tempClientForSave.email}</p>
-                )}
-                {tempClientForSave.phone && (
-                  <p><strong>Teléfono:</strong> {tempClientForSave.phone}</p>
-                )}
-                {tempClientForSave.cuit && (
-                  <p><strong>CUIT:</strong> {tempClientForSave.cuit}</p>
-                )}
-              </div>
-            )}
-          </div>
-          <DialogFooter className="space-x-2">
-            <Button
-              variant="outline"
-              onClick={handleSkipSaveClient}
-              type="button"
-            >
-              Omitir
-            </Button>
-            <Button
-              onClick={handleSaveClientToDB}
-              className="bg-blue-900 hover:bg-blue-700 text-white"
-              type="button"
-            >
-              Agregar cliente
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

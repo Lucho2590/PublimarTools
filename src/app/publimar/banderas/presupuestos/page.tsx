@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy } from "firebase/firestore";
+import { collection, query, orderBy, doc, updateDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -42,6 +43,7 @@ import { formatearPrecio } from "@/lib/utils";
 import QuoteDetailsModal from "./modalPresupuestos/quoteDetailsModal";
 
 export default function PresupuestosPage() {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<EQuoteStatus | "all">("all");
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -51,10 +53,9 @@ export default function PresupuestosPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const firestore = useFirestore();
 
-  // Función para manejar la vista de presupuesto en modal
+  // Función para manejar la vista de presupuesto - abrir en nueva pestaña
   const handleViewQuote = (quoteId: string) => {
-    setSelectedQuoteId(quoteId);
-    setShowModal(true);
+    window.open(`/publimar/banderas/presupuestos/${quoteId}`, '_blank');
   };
 
   // Función para cerrar el modal y limpiar el estado
@@ -64,6 +65,21 @@ export default function PresupuestosPage() {
     setTimeout(() => {
       setSelectedQuoteId(null);
     }, 150);
+  };
+
+  // Función para actualizar el estado del presupuesto
+  const handleStatusChange = async (quoteId: string, newStatus: EQuoteStatus) => {
+    try {
+      const quoteRef = doc(firestore, collections.QUOTES, quoteId);
+      await updateDoc(quoteRef, {
+        status: newStatus,
+        updatedAt: new Date(),
+      });
+      toast.success("Estado actualizado correctamente");
+    } catch (error) {
+      console.error("Error al actualizar estado:", error);
+      toast.error("Error al actualizar el estado");
+    }
   };
 
   // Consulta a Firestore
@@ -404,6 +420,9 @@ export default function PresupuestosPage() {
                   <SelectItem value={EQuoteStatus.CONFIRMED}>
                     Confirmado
                   </SelectItem>
+                  <SelectItem value={EQuoteStatus.REJECTED}>
+                    Rechazado
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -470,25 +489,52 @@ export default function PresupuestosPage() {
                           <TableCell>{formatDate(quote.validUntil)}</TableCell>
                           <TableCell>{formatearPrecio(quote.total)}</TableCell>
                           <TableCell>
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                quote.status === EQuoteStatus.DRAFT
-                                  ? "bg-slate-100 text-slate-800"
-                                  : quote.status === EQuoteStatus.SENT
-                                  ? "bg-blue-100 text-blue-800"
-                                  : quote.status === EQuoteStatus.CONFIRMED
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {quote.status === EQuoteStatus.DRAFT
-                                ? "Borrador"
-                                : quote.status === EQuoteStatus.SENT
-                                ? "Enviado"
-                                : quote.status === EQuoteStatus.CONFIRMED
-                                ? "Confirmado"
-                                : "Rechazado"}
-                            </span>
+                            {quote.status === EQuoteStatus.CONFIRMED || quote.status === EQuoteStatus.REJECTED ? (
+                              // Badge estático para presupuestos confirmados o rechazados
+                              <span
+                                className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium min-w-[80px] h-6 w-24 ${
+                                  quote.status === EQuoteStatus.CONFIRMED
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {quote.status === EQuoteStatus.CONFIRMED ? "Confirmado" : "Rechazado"}
+                              </span>
+                            ) : (
+                              // Select editable para presupuestos no finalizados
+                              <Select
+                                value={quote.status}
+                                onValueChange={(newStatus: EQuoteStatus) =>
+                                  handleStatusChange(quote.id, newStatus)
+                                }
+                              >
+                                <SelectTrigger
+                                  className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium border-none shadow-none cursor-pointer transition-colors min-w-[80px] h-6 ${
+                                    quote.status === EQuoteStatus.DRAFT
+                                      ? "bg-slate-100 text-slate-800 hover:bg-slate-200 w-24"
+                                      : "bg-blue-100 text-blue-800 hover:bg-blue-200 w-24"
+                                  } [&>svg]:hidden`}
+                                >
+                                  <SelectValue>
+                                    {quote.status === EQuoteStatus.DRAFT ? "Borrador" : "Enviado"}
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value={EQuoteStatus.DRAFT}>
+                                    Borrador
+                                  </SelectItem>
+                                  <SelectItem value={EQuoteStatus.SENT}>
+                                    Enviado
+                                  </SelectItem>
+                                  <SelectItem value={EQuoteStatus.CONFIRMED}>
+                                    Confirmado
+                                  </SelectItem>
+                                  <SelectItem value={EQuoteStatus.REJECTED}>
+                                    Rechazado
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex justify-center gap-2">
