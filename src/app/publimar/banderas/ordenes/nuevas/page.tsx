@@ -252,11 +252,20 @@ export default function NuevasOrdenesPage() {
   const [isOrderDetailsCollapsed, setIsOrderDetailsCollapsed] = useState(true);
   const [isContactDetailsCollapsed, setIsContactDetailsCollapsed] = useState(true);
 
-  // Filtrar productos
+  // Función para normalizar texto (quitar acentos y convertir a minúsculas)
+  const normalizeText = (text: string) => {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+  };
+
+  // Filtrar productos (case-insensitive y sin acentos)
   const filteredProducts = products?.filter((product: any) => {
+    const searchNormalized = normalizeText(productSearchTerm);
     return (
-      product.name?.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-      product.description?.toLowerCase().includes(productSearchTerm.toLowerCase())
+      normalizeText(product.name || '').includes(searchNormalized) ||
+      normalizeText(product.description || '').includes(searchNormalized)
     );
   });
 

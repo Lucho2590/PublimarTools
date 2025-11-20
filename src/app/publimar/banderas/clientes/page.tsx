@@ -36,6 +36,7 @@ import collections from "@/lib/collections";
 import { EClientType, EClientStatus } from "@/types/client";
 import { Edit, Eye } from "lucide-react";
 import ClientDetailsModal from "./modalClientes/clientDetailsModal";
+import { generateSlug } from "@/lib/utils";
 
 export default function ClientesPage() {
   const router = useRouter();
@@ -55,8 +56,9 @@ export default function ClientesPage() {
   });
   // console.log(clients);
 
-  const handleViewClient = (clientId: string) => {
-    window.open(`/publimar/banderas/clientes/${clientId}`, '_blank');
+  const handleViewClient = (clientId: string, clientName: string) => {
+    const slug = generateSlug(clientName, clientId);
+    window.open(`/publimar/banderas/clientes/${slug}`, '_blank');
   };
 
   const handleCloseModal = () => {
@@ -64,18 +66,26 @@ export default function ClientesPage() {
     setSelectedClientId(null);
   };
 
+  // Función para normalizar texto (quitar acentos y convertir a minúsculas)
+  const normalizeText = (text: string) => {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+  };
+
   // Filtrar clientes según la búsqueda y status
   const filteredClients = clients?.filter((client) => {
-    const searchLower = searchTerm.toLowerCase();
-    const matchesSearch = 
-      client.name?.toLowerCase().includes(searchLower) ||
-      client.email?.toLowerCase().includes(searchLower) ||
+    const searchNormalized = normalizeText(searchTerm);
+    const matchesSearch =
+      normalizeText(client.name || '').includes(searchNormalized) ||
+      normalizeText(client.email || '').includes(searchNormalized) ||
       client.phone?.includes(searchTerm) ||
-      client.taxId?.includes(searchTerm);
-    
+      client.cuit?.includes(searchTerm);
+
     // Filtrar por status en el cliente
     const isActive = client.status === EClientStatus.ACTIVE;
-    
+
     return matchesSearch && isActive;
   });
 
@@ -222,7 +232,7 @@ export default function ClientesPage() {
                               size="icon"
                               title="Ver"
                               className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                              onClick={() => handleViewClient(client.id)}
+                              onClick={() => handleViewClient(client.id, client.name)}
                             >
                               <Eye className="h-4 w-4" />
                             </Button>

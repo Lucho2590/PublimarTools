@@ -4,14 +4,32 @@ import { useState } from "react";
 import { useFirestore } from "reactfire";
 import { collection, addDoc, serverTimestamp, query, orderBy } from "firebase/firestore";
 import { useFirestoreCollectionData } from "reactfire";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { TProvider } from "@/types/provider";
-import { Edit } from "lucide-react";
+import { Edit, Eye, Trash2 } from "lucide-react";
 import ProviderEditModal from "./modalProveedores/providerEditModal";
+import { toast } from "sonner";
 
 export default function ProveedoresPage() {
   const firestore = useFirestore();
@@ -20,6 +38,9 @@ export default function ProveedoresPage() {
   const [showForm, setShowForm] = useState(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Obtener proveedores ordenados por nombre
   const providersCollection = collection(firestore, "providers");
@@ -32,6 +53,12 @@ export default function ProveedoresPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!form.name?.trim()) {
+      toast.error("El nombre del proveedor es requerido");
+      return;
+    }
+
     setLoading(true);
     try {
       await addDoc(providersCollection, {
@@ -41,8 +68,10 @@ export default function ProveedoresPage() {
       });
       setForm({});
       setShowForm(false);
+      toast.success("Proveedor agregado correctamente");
     } catch (error) {
-      alert("Error al guardar proveedor");
+      console.error("Error al guardar proveedor:", error);
+      toast.error("Error al guardar proveedor");
     } finally {
       setLoading(false);
     }
@@ -58,123 +87,335 @@ export default function ProveedoresPage() {
     setSelectedProviderId(null);
   };
 
+  // Función para normalizar texto (quitar acentos y convertir a minúsculas)
+  const normalizeText = (text: string) => {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+  };
+
+  // Filtrar proveedores según la búsqueda
+  const filteredProviders = providers?.filter((provider: any) => {
+    const searchNormalized = normalizeText(searchTerm);
+    return (
+      normalizeText(provider.name || '').includes(searchNormalized) ||
+      normalizeText(provider.email || '').includes(searchNormalized) ||
+      provider.phone?.includes(searchTerm) ||
+      provider.cuit?.includes(searchTerm) ||
+      normalizeText(provider.contactPerson || '').includes(searchNormalized)
+    );
+  });
+
+  // Calcular índices para la paginación
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredProviders?.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil((filteredProviders?.length || 0) / itemsPerPage);
+
+  // Generar números de página para mostrar
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    const maxPagesToShow = 5;
+
+    if (totalPages <= maxPagesToShow) {
+      for (let i = 1; i <= totalPages; i++) {
+        pageNumbers.push(i);
+      }
+    } else {
+      if (currentPage <= 3) {
+        for (let i = 1; i <= 4; i++) {
+          pageNumbers.push(i);
+        }
+        pageNumbers.push(-1);
+        pageNumbers.push(totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pageNumbers.push(1);
+        pageNumbers.push(-1);
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+          pageNumbers.push(i);
+        }
+      } else {
+        pageNumbers.push(1);
+        pageNumbers.push(-1);
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pageNumbers.push(i);
+        }
+        pageNumbers.push(-1);
+        pageNumbers.push(totalPages);
+      }
+    }
+
+    return pageNumbers;
+  };
+
   return (
-    <div className="max-w-4xl mx-auto py-8 space-y-8">
-      <div className="flex justify-between items-center">
-        <Button
-          variant="outline"
-          onClick={() => window.history.back()}
-        >
-          Volver
-        </Button>
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Proveedores</h1>
         <Button
           onClick={() => setShowForm(!showForm)}
-          variant="default"
+          className="bg-blue-900 hover:bg-blue-900 hover:text-white"
         >
           {showForm ? "Cancelar" : "Nuevo Proveedor"}
         </Button>
       </div>
 
       {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Agregar Proveedor</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>Nombre/Razón social</Label>
-                <Input name="name" value={form.name || ""} onChange={handleChange} required />
+        <Card className="mb-6">
+          <CardContent className="pt-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nombre/Razón Social *</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    value={form.name || ""}
+                    onChange={handleChange}
+                    required
+                    placeholder="Nombre del proveedor"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    value={form.email || ""}
+                    onChange={handleChange}
+                    type="email"
+                    placeholder="email@ejemplo.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Teléfono</Label>
+                  <Input
+                    id="phone"
+                    name="phone"
+                    value={form.phone || ""}
+                    onChange={handleChange}
+                    placeholder="+54 11 1234-5678"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cuit">CUIT/CUIL</Label>
+                  <Input
+                    id="cuit"
+                    name="cuit"
+                    value={form.cuit || ""}
+                    onChange={handleChange}
+                    placeholder="20-12345678-9"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="contactPerson">Persona de Contacto</Label>
+                  <Input
+                    id="contactPerson"
+                    name="contactPerson"
+                    value={form.contactPerson || ""}
+                    onChange={handleChange}
+                    placeholder="Nombre del contacto"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Dirección</Label>
+                  <Input
+                    id="address"
+                    name="address"
+                    value={form.address || ""}
+                    onChange={handleChange}
+                    placeholder="Calle 123, Ciudad"
+                  />
+                </div>
               </div>
-              <div>
-                <Label>Email</Label>
-                <Input name="email" value={form.email || ""} onChange={handleChange} type="email" />
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notas</Label>
+                <Textarea
+                  id="notes"
+                  name="notes"
+                  value={form.notes || ""}
+                  onChange={handleChange}
+                  rows={3}
+                  placeholder="Notas adicionales sobre el proveedor..."
+                />
               </div>
-              <div>
-                <Label>Teléfono</Label>
-                <Input name="phone" value={form.phone || ""} onChange={handleChange} />
-              </div>
-              <div>
-                <Label>Dirección</Label>
-                <Input name="address" value={form.address || ""} onChange={handleChange} />
-              </div>
-              <div>
-                <Label>CUIT/CUIL</Label>
-                <Input name="cuit" value={form.cuit || ""} onChange={handleChange} />
-              </div>
-              <div>
-                <Label>Persona de contacto</Label>
-                <Input name="contactPerson" value={form.contactPerson || ""} onChange={handleChange} />
-              </div>
-              <div className="md:col-span-2">
-                <Label>Notas</Label>
-                <textarea name="notes" value={form.notes || ""} onChange={handleChange} className="w-full border rounded p-2 min-h-[40px]" />
-              </div>
-              <div className="md:col-span-2 flex justify-end">
-                <Button type="submit" disabled={loading}>{loading ? "Guardando..." : "Agregar Proveedor"}</Button>
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowForm(false);
+                    setForm({});
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {loading ? "Guardando..." : "Agregar Proveedor"}
+                </Button>
               </div>
             </form>
           </CardContent>
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Proveedores Registrados</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {status === "loading" ? (
-            <p>Cargando proveedores...</p>
-          ) : (
-            <div className="overflow-x-auto ">
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
+              <Input
+                placeholder="Buscar proveedores por nombre, email, teléfono, CUIT o contacto..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {status === "loading" ? (
+        <div className="flex justify-center my-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="p-4 overflow-x-auto">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Mostrar</span>
+                  <Select
+                    value={itemsPerPage.toString()}
+                    onValueChange={(value) => {
+                      setItemsPerPage(Number(value));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-[100px]">
+                      <SelectValue placeholder="10" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="15">15</SelectItem>
+                      <SelectItem value="25">25</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-gray-500">por página</span>
+                </div>
+                <div className="text-sm text-gray-500">
+                  Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredProviders?.length || 0)} de {filteredProviders?.length || 0} proveedores
+                </div>
+              </div>
+
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Teléfono</TableHead>
-                    <TableHead>Dirección</TableHead>
-                    <TableHead>CUIT/CUIL</TableHead>
-                    <TableHead>Contacto</TableHead>
-                    <TableHead>Notas</TableHead>
-                    <TableHead>Acciones</TableHead>
+                    <TableHead className="text-left">Nombre/Razón Social</TableHead>
+                    <TableHead className="text-left">Email</TableHead>
+                    <TableHead className="text-left">Teléfono</TableHead>
+                    <TableHead className="text-left">CUIT/CUIL</TableHead>
+                    <TableHead className="text-left">Persona de Contacto</TableHead>
+                    <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {providers && providers.length > 0 ? (
-                    providers.map((prov: any) => (
-                      <TableRow key={prov.id}>
-                        <TableCell className="font-medium">{prov.name}</TableCell>
-                        <TableCell>{prov.email}</TableCell>
-                        <TableCell>{prov.phone}</TableCell>
-                        <TableCell>{prov.address}</TableCell>
-                        <TableCell>{prov.cuit}</TableCell>
-                        <TableCell>{prov.contactPerson}</TableCell>
-                        <TableCell>{prov.notes}</TableCell>
+                  {currentItems && currentItems.length > 0 ? (
+                    currentItems.map((provider: any) => (
+                      <TableRow key={provider.id}>
+                        <TableCell className="font-medium">
+                          {provider.name || "-"}
+                        </TableCell>
+                        <TableCell className="text-left">
+                          {provider.email || "-"}
+                        </TableCell>
+                        <TableCell className="text-left">
+                          {provider.phone || "-"}
+                        </TableCell>
+                        <TableCell className="text-left">
+                          {provider.cuit || "-"}
+                        </TableCell>
+                        <TableCell className="text-left">
+                          {provider.contactPerson || "-"}
+                        </TableCell>
                         <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Editar"
-                            className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                            onClick={() => handleEditProvider(prov.id)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <div className="flex justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Editar"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                              onClick={() => handleEditProvider(provider.id)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-slate-500 p-4">No hay proveedores registrados</TableCell>
+                      <TableCell
+                        colSpan={6}
+                        className="text-center py-6 text-slate-500"
+                      >
+                        {searchTerm
+                          ? "No se encontraron proveedores con los términos de búsqueda."
+                          : "No hay proveedores disponibles. ¡Añade tu primer proveedor!"}
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
+
+              {totalPages > 1 && (
+                <div className="mt-4">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+
+                      {getPageNumbers().map((pageNumber, index) => (
+                        <PaginationItem key={index}>
+                          {pageNumber === -1 ? (
+                            <PaginationEllipsis />
+                          ) : (
+                            <PaginationLink
+                              onClick={() => setCurrentPage(pageNumber)}
+                              isActive={currentPage === pageNumber}
+                              className={currentPage === pageNumber ? "bg-blue-900 text-white cursor-pointer" : "cursor-pointer"}
+                            >
+                              {pageNumber}
+                            </PaginationLink>
+                          )}
+                        </PaginationItem>
+                      ))}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <ProviderEditModal
         isOpen={isEditModalOpen}

@@ -706,7 +706,6 @@ export default function NuevaVentaPage() {
         manualDiscount: redondearTotal(manualDiscount),
         paymentMethod,
         bank: paymentMethod === EPaymentMethod.TRANSFER ? bank : null,
-        isInvoiced,
         invoiceNumber: isInvoiced ? invoiceNumber : null,
         facturas: facturas.length > 0 ? facturas : [],
         // Datos del cliente (solo se incluyen si tienen valor)

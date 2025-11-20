@@ -43,7 +43,7 @@ import {
   ChevronDown,
   Edit,
 } from "lucide-react";
-import { formatearPrecio, formatDate, formatDateString } from "@/lib/utils";
+import { formatearPrecio, formatDate, formatDateString, extractIdFromSlug } from "@/lib/utils";
 import { toast } from "sonner";
 import { EOrderStatus, TPaymentHistory, TFactura } from "@/types/order";
 import { EPaymentMethod } from "@/types/sale";
@@ -64,13 +64,16 @@ export default function OrderDetailsPage({
   const { data: user } = useUser();
   const firestore = useFirestore();
 
+  // Extraer el ID real del slug
+  const orderId = extractIdFromSlug(params.id);
+
   // Hooks
   const { updateOrder, changeOrderStatus, deleteOrder } = useOrders();
   const {
     orden: order,
     loading: orderLoading,
     error: orderError,
-  } = useOrderById(params.id);
+  } = useOrderById(orderId);
   const { clients, loading: clientsLoading, updateClient } = useClients();
 
   // Productos
@@ -482,7 +485,7 @@ export default function OrderDetailsPage({
     if (!confirmDelete) return;
     
     try {
-      await deleteOrder(params.id);
+      await deleteOrder(orderId);
       toast.success("Orden eliminada correctamente");
       // Cerrar la pestaña actual del navegador
       window.close();
@@ -613,7 +616,7 @@ export default function OrderDetailsPage({
       // Filtrar valores undefined recursivamente
       const cleanUpdateData = cleanData(updateData);
 
-      await updateOrder(params.id, cleanUpdateData);
+      await updateOrder(orderId, cleanUpdateData);
 
       toast.success("Orden actualizada exitosamente");
     } catch (error) {

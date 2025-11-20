@@ -50,6 +50,14 @@ export default function VentasPage() {
   const [selectedVentaId, setSelectedVentaId] = useState<string | null>(null);
   const firestore = useFirestore();
 
+  // Función para normalizar texto (quitar acentos y convertir a minúsculas)
+  const normalizeText = (text: string) => {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+  };
+
   // Consulta a Firestore
   const salesCollection = collection(firestore, collections.SALES);
   const salesQuery = query(salesCollection, orderBy("createdAt", "desc"));
@@ -104,11 +112,12 @@ export default function VentasPage() {
       matchesDateRange = saleDate >= startOfDay && saleDate <= endOfDay;
     }
 
-    // Filtrar por producto
+    // Filtrar por producto (case-insensitive y sin acentos)
     let matchesProduct = true;
     if (searchProductTerm.trim() !== "") {
+      const searchNormalized = normalizeText(searchProductTerm);
       matchesProduct = typedSale.items?.some((item) =>
-        item.productName?.toLowerCase().includes(searchProductTerm.toLowerCase())
+        normalizeText(item.productName || '').includes(searchNormalized)
       ) || false;
     }
 

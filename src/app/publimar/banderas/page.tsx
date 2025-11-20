@@ -30,7 +30,7 @@ import { EQuoteStatus, TQuote } from "@/types/quote";
 // import { TProduct } from "@/types/product";
 import { EOrderStatus } from "@/types/order";
 // import { TEvent } from "@/types/event";
-import { formatDate, formatearPrecio } from "@/lib/utils";
+import { formatDate, formatearPrecio, generateSlug } from "@/lib/utils";
 import { useAuth } from "reactfire";
 import Link from "next/link";
 import {
@@ -599,7 +599,7 @@ export default function DashboardPage() {
                           })()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Link href={`/publimar/banderas/ordenes/${order.id}`}>
+                          <Link href={`/publimar/banderas/ordenes/${generateSlug(order.number, order.id)}`}>
                             <Button
                               variant="ghost"
                               size="icon"

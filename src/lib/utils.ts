@@ -103,3 +103,38 @@ export const calculatePriceWithoutTax = (finalPrice: number, taxRate: number): n
   const priceWithoutTax = finalPrice / (1 + taxRate / 100);
   return redondearTotal(priceWithoutTax);
 };
+
+/**
+ * Genera un slug amigable para URLs combinando el nombre y el ID
+ * @param name - El nombre a convertir en slug
+ * @param id - El ID único del documento
+ * @returns El slug en formato "nombre-formateado-id"
+ * @example
+ * generateSlug("Juan Pérez", "abc123") // "juan-perez-abc123"
+ * generateSlug("Empresa S.A.", "xyz789") // "empresa-sa-xyz789"
+ */
+export const generateSlug = (name: string, id: string): string => {
+  const slug = name
+    .toLowerCase()
+    .normalize('NFD') // Normalizar caracteres Unicode
+    .replace(/[\u0300-\u036f]/g, '') // Quitar acentos
+    .replace(/[^\w\s-]/g, '') // Quitar caracteres especiales
+    .replace(/\s+/g, '-') // Convertir espacios a guiones
+    .replace(/-+/g, '-') // Eliminar guiones múltiples
+    .substring(0, 50); // Limitar longitud
+
+  return `${slug}-${id}`;
+};
+
+/**
+ * Extrae el ID de un slug generado con generateSlug
+ * @param slug - El slug en formato "nombre-formateado-id"
+ * @returns El ID extraído del slug
+ * @example
+ * extractIdFromSlug("juan-perez-abc123") // "abc123"
+ * extractIdFromSlug("empresa-sa-xyz789") // "xyz789"
+ */
+export const extractIdFromSlug = (slug: string): string => {
+  const parts = slug.split('-');
+  return parts[parts.length - 1];
+};

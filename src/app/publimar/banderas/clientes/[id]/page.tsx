@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,10 +14,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import collections from "@/lib/collections";
 import { EClientType, TClient, TClientContact } from "@/types/client";
-import { formatDate, formatearPrecio } from "@/lib/utils";
+import { formatDate, formatearPrecio, extractIdFromSlug, generateSlug } from "@/lib/utils";
 import { EOrderStatus } from "@/types/order";
 import { EPaymentMethod } from "@/types/sale";
 import { EyeIcon } from "lucide-react";
+import { SaleDetailsModal } from "../../ventas/modalVentas/saleDetailsModal";
 
 export default function ClienteDetallePage({
   params,
@@ -26,7 +28,10 @@ export default function ClienteDetallePage({
   const firestore = useFirestore();
   const router = useRouter();
 
-  const clientRef = doc(firestore, collections.CLIENTS, params.id);
+  // Extraer el ID real del slug
+  const clientId = extractIdFromSlug(params.id);
+
+  const clientRef = doc(firestore, collections.CLIENTS, clientId);
   const { status, data: client } = useFirestoreDocData(clientRef, {
     idField: "id",
   });
@@ -35,7 +40,7 @@ export default function ClienteDetallePage({
   const { status: quotesStatus, data: quotes } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.QUOTES),
-      where("client.id", "==", params.id)
+      where("client.id" , "==", clientId ), 
     ),
     { idField: "id" }
   );
@@ -44,7 +49,7 @@ export default function ClienteDetallePage({
   const { status: ordersStatus, data: orders } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.ORDERS),
-      where("client.id", "==", params.id)
+      where("clientId", "==", clientId)
     ),
     { idField: "id" }
   );
@@ -53,10 +58,26 @@ export default function ClienteDetallePage({
   const { status: salesStatus, data: sales } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.SALES),
-      where("client.id", "==", params.id)
+      where("clientId", "==", clientId)
     ),
     { idField: "id" }
   );
+
+  // Estados para el modal de ventas
+  const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
+  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
+
+  // Función para abrir el modal de venta
+  const handleViewSale = (saleId: string) => {
+    setSelectedSaleId(saleId);
+    setIsSaleModalOpen(true);
+  };
+
+  // Función para cerrar el modal
+  const handleCloseSaleModal = () => {
+    setIsSaleModalOpen(false);
+    setSelectedSaleId(null);
+  };
 
   if (status === "loading") {
     return (
@@ -110,7 +131,7 @@ export default function ClienteDetallePage({
                 size="sm"
                 className="bg-blue-900 hover:bg-blue-700 text-white"
               >
-                <Link href={`/publimar/banderas/clientes/${params.id}/editar`}>Editar</Link>
+                <Link href={`/publimar/banderas/clientes/${clientId}/editar`}>Editar</Link>
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -247,8 +268,7 @@ export default function ClienteDetallePage({
                           className="bg-blue-900 hover:bg-blue-700 text-white"
                           title="Ver presupuesto"
                         >
-                          {/* <EyeIcon className="h-4 w-4" /> */}
-                          <Link href={`/publimar/banderas/presupuestos/${quote.id}`}><EyeIcon className="h-4 w-4" /></Link>
+                          <Link href={`/publimar/banderas/presupuestos/${generateSlug(quote.number, quote.id)}`}><EyeIcon className="h-4 w-4" /></Link>
                         </Button>
                       </div>
                       <div className="mt-2">
@@ -329,7 +349,7 @@ export default function ClienteDetallePage({
                           size="sm"
                           className="bg-blue-900 hover:bg-blue-700 text-white"
                         >
-                          <Link href={`/publimar/banderas/ordenes/${order.id}`}><EyeIcon className="h-4 w-4" /></Link>
+                          <Link href={`/publimar/banderas/ordenes/${generateSlug(order.number, order.id)}`}><EyeIcon className="h-4 w-4" /></Link>
                         </Button>
                       </div>
                       <div className="mt-2">
@@ -410,23 +430,23 @@ export default function ClienteDetallePage({
                           </p>
                         </div>
                         <Button
-                          asChild
                           variant="ghost"
                           size="sm"
                           className="bg-blue-900 hover:bg-blue-700 text-white"
+                          onClick={() => handleViewSale(sale.id)}
                         >
-                          <Link href={`/publimar/banderas/ventas`}><EyeIcon className="h-4 w-4" /></Link>
+                          <EyeIcon className="h-4 w-4" />
                         </Button>
                       </div>
                       <div className="mt-2">
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            sale.invoiced
+                            sale.facturas && sale.facturas.length > 0
                               ? "bg-green-100 text-green-800"
                               : "bg-slate-100 text-slate-800"
                           }`}
                         >
-                          {sale.invoiced ? "Facturado" : "Sin Facturar"}
+                          {sale.facturas && sale.facturas.length > 0 ? "Facturado" : "Sin Facturar"}
                         </span>
                       </div>
                     </div>
@@ -441,6 +461,14 @@ export default function ClienteDetallePage({
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Modal de detalles de venta */}
+      <SaleDetailsModal
+        open={isSaleModalOpen}
+        onOpenChange={setIsSaleModalOpen}
+        saleId={selectedSaleId}
+        onSuccess={handleCloseSaleModal}
+      />
     </div>
   );
 }

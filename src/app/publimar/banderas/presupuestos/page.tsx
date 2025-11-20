@@ -39,7 +39,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { toast } from "sonner";
 import { DocumentData } from "firebase/firestore";
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, generateSlug } from "@/lib/utils";
 import QuoteDetailsModal from "./modalPresupuestos/quoteDetailsModal";
 
 export default function PresupuestosPage() {
@@ -54,8 +54,9 @@ export default function PresupuestosPage() {
   const firestore = useFirestore();
 
   // Función para manejar la vista de presupuesto - abrir en nueva pestaña
-  const handleViewQuote = (quoteId: string) => {
-    window.open(`/publimar/banderas/presupuestos/${quoteId}`, '_blank');
+  const handleViewQuote = (quoteId: string, quoteNumber: string) => {
+    const slug = generateSlug(quoteNumber, quoteId);
+    window.open(`/publimar/banderas/presupuestos/${slug}`, '_blank');
   };
 
   // Función para cerrar el modal y limpiar el estado
@@ -543,7 +544,7 @@ export default function PresupuestosPage() {
                                 size="icon"
                                 title="Ver presupuesto"
                                 className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                onClick={() => handleViewQuote(quote.id)}
+                                onClick={() => handleViewQuote(quote.id, quote.number)}
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>

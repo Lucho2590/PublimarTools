@@ -34,7 +34,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, generateSlug } from "@/lib/utils";
 import {
   Pagination,
   PaginationContent,
@@ -510,7 +510,7 @@ export default function PedidosPage() {
                                 className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                               >
                                 <Link
-                                  href={`/publimar/banderas/ordenes/${order.id}`}
+                                  href={`/publimar/banderas/ordenes/${generateSlug(order.number, order.id)}`}
                                   prefetch={true}
                                   target="_blank"
                                   rel="noopener noreferrer"

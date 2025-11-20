@@ -157,14 +157,21 @@ export default function NuevoPresupuestoPage() {
     taxRate: 21, // Default tax rate
   });
 
-  // Filter products based on search
+  // Función para normalizar texto (quitar acentos y convertir a minúsculas)
+  const normalizeText = (text: string) => {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+  };
+
+  // Filter products based on search (case-insensitive y sin acentos)
   const filteredProducts = products?.filter((product: DocumentData) => {
     if (!product) return false;
+    const searchNormalized = normalizeText(productSearchTerm);
     return (
-      product.name?.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-      product.description
-        ?.toLowerCase()
-        .includes(productSearchTerm.toLowerCase())
+      normalizeText(product.name || '').includes(searchNormalized) ||
+      normalizeText(product.description || '').includes(searchNormalized)
     );
   });
 
@@ -1187,7 +1194,7 @@ export default function NuevoPresupuestoPage() {
                                   ((customUnitPrice || 0) * itemDiscount) / 100)
                               )}
                             </p>
-                            <p className="text-sm text-slate-400 text-right">+ IVA</p>
+         
                           </div>
                         </div>
                       </div>

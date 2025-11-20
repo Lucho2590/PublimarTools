@@ -41,7 +41,7 @@ import {
   FileText,
   Search,
 } from "lucide-react";
-import { formatearPrecio, formatDate, redondearTotal } from "@/lib/utils";
+import { formatearPrecio, formatDate, redondearTotal, extractIdFromSlug } from "@/lib/utils";
 import { toast } from "sonner";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -60,13 +60,16 @@ export default function QuoteDetailsPage({
   const { data: user } = useUser();
   const firestore = useFirestore();
 
+  // Extraer el ID real del slug
+  const quoteId = extractIdFromSlug(params.id);
+
   // Hooks
   const { updateQuote, changeQuoteStatus, deleteQuote } = useQuotes();
   const {
     quote,
     loading: quoteLoading,
     error: quoteError,
-  } = useQuoteById(params.id);
+  } = useQuoteById(quoteId);
 
   // Productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
@@ -151,7 +154,7 @@ export default function QuoteDetailsPage({
         discountPercentage,
         manualDiscount,
       };
-      await updateQuote(params.id, updatedQuote);
+      await updateQuote(quoteId, updatedQuote);
       toast.success("Presupuesto actualizado correctamente");
     } catch (error) {
       console.error("Error al guardar:", error);
@@ -164,7 +167,7 @@ export default function QuoteDetailsPage({
   // Manejar cambio de estado
   const handleStatusChange = async (newStatus: EQuoteStatus) => {
     try {
-      await changeQuoteStatus(params.id, newStatus);
+      await changeQuoteStatus(quoteId, newStatus);
       toast.success("Estado actualizado correctamente");
     } catch (error) {
       console.error("Error al cambiar estado:", error);
