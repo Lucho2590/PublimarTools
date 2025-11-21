@@ -131,7 +131,9 @@ export default function DashboardPage() {
   });
 
   // Filtrar productos con bajo stock en el cliente
+  // Solo mostramos productos que tengan lowStock: true Y que tengan variantes con stock <= 3
   const lowStockProducts = allProducts?.filter((product) =>
+    product.lowStock === true &&
     product.variants?.some((variant: { stock: number }) => variant.stock <= 3)
   );
 

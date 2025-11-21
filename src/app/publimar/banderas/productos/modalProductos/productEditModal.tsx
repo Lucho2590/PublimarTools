@@ -22,7 +22,7 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
-import { Trash2 } from "lucide-react";
+import { Trash2, Bell } from "lucide-react";
 
 interface ProductEditModalProps {
   isOpen: boolean;
@@ -50,6 +50,7 @@ export default function ProductEditModal({
     stock: "",
     sku: "",
     size: "",
+    lowStock: false,
     variants: [{
       id: crypto.randomUUID(),
       size: "",
@@ -71,6 +72,7 @@ export default function ProductEditModal({
       stock: "",
       sku: "",
       size: "",
+      lowStock: false,
       variants: [{
         id: crypto.randomUUID(),
         size: "",
@@ -120,7 +122,8 @@ export default function ProductEditModal({
           stock: "",
           sku: product.sku || "",
           size: "",
-          variants: Array.isArray(product.variants) && product.variants.length > 0 
+          lowStock: product.lowStock || false,
+          variants: Array.isArray(product.variants) && product.variants.length > 0
             ? product.variants.map(variant => ({
                 ...variant,
                 price: variant.price.toString(),
@@ -197,6 +200,7 @@ export default function ProductEditModal({
         stock: null,
         sku: formData.sku || "",
         size: "",
+        lowStock: formData.lowStock,
         variants: formData.variants.map(variant => ({
           id: variant.id,
           size: variant.size,
@@ -255,7 +259,23 @@ export default function ProductEditModal({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex justify-between items-center">
-            <span>Editar producto: {formData.name}</span>
+            <div className="flex items-center gap-3">
+              <span>Editar producto: {formData.name}</span>
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, lowStock: !prev.lowStock }))}
+                className="transition-all duration-200 hover:scale-110"
+                title={formData.lowStock ? "Desactivar alerta de stock bajo" : "Activar alerta de stock bajo"}
+              >
+                <Bell
+                  className={`h-5 w-5 ${
+                    formData.lowStock
+                      ? 'fill-amber-500 text-amber-500'
+                      : 'text-gray-300 hover:text-gray-400'
+                  }`}
+                />
+              </button>
+            </div>
             <div className="flex gap-2">
               <Button
                 className="bg-red-500 hover:bg-red-600 text-white"
