@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuthToken } from '@/lib/apiAuth';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { verifyAuthToken, getFirestoreAdmin } from '@/lib/apiAuth';
 import collections from '@/lib/collections';
 
-// Initialize Firebase Admin if not already initialized
-if (!getApps().length) {
-  initializeApp({
-    credential: cert({
-      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
-}
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,7 +17,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Obtener todos los productos de Firestore
-    const db = getFirestore();
+    const db = getFirestoreAdmin();
     const productsSnapshot = await db.collection(collections.PRODUCTS).get();
 
     const products = productsSnapshot.docs.map((doc) => {
