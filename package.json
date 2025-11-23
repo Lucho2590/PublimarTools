@@ -34,6 +34,7 @@
     "html2canvas": "^1.4.1",
     "js-cookie": "^3.0.5",
     "jspdf": "^3.0.1",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.294.0",
     "next": "13.4.19",
     "postcss": "^8.4.32",
@@ -41,6 +42,7 @@
     "react-day-picker": "^9.7.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.57.0",
+    "react-leaflet": "^4.2.1",
     "reactfire": "^4.2.3",
     "sonner": "^2.0.5",
     "tailwind-merge": "^2.6.0",
@@ -51,6 +53,7 @@
     "zod": "^3.25.49"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "tw-animate-css": "^1.3.3"
   }
 }

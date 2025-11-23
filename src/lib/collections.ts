@@ -20,6 +20,7 @@ const collections = {
   },
   USERS: "users",
   EVENTS: "events",
+  LOCATIONS: "locations",
 } as const;
 
 export default collections;
