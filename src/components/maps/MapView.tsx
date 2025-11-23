@@ -3,7 +3,7 @@
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useEffect } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 // Fix para los iconos de Leaflet en Next.js
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -11,6 +11,16 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+// Icono rojo para el marcador draggable
+const redIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
 });
 
 interface Location {
@@ -26,6 +36,8 @@ interface MapViewProps {
   center?: [number, number];
   zoom?: number;
   onMapClick?: (lat: number, lng: number) => void;
+  draggableMarker?: { lat: number; lng: number } | null;
+  onDraggableMarkerMove?: (lat: number, lng: number) => void;
 }
 
 function MapClickHandler({ onMapClick }: { onMapClick?: (lat: number, lng: number) => void }) {
@@ -39,11 +51,53 @@ function MapClickHandler({ onMapClick }: { onMapClick?: (lat: number, lng: numbe
   return null;
 }
 
+function DraggableMarker({
+  position,
+  onDragEnd
+}: {
+  position: [number, number];
+  onDragEnd: (lat: number, lng: number) => void;
+}) {
+  const markerRef = useRef<L.Marker>(null);
+
+  const eventHandlers = useMemo(
+    () => ({
+      dragend() {
+        const marker = markerRef.current;
+        if (marker != null) {
+          const pos = marker.getLatLng();
+          onDragEnd(pos.lat, pos.lng);
+        }
+      },
+    }),
+    [onDragEnd],
+  );
+
+  return (
+    <Marker
+      draggable={true}
+      eventHandlers={eventHandlers}
+      position={position}
+      ref={markerRef}
+      icon={redIcon}
+    >
+      <Popup>
+        <div className="p-2">
+          <p className="text-sm font-medium text-red-600">Nueva Ubicacion</p>
+          <p className="text-xs text-gray-500 mt-1">Arrastra el marcador para ajustar la posicion</p>
+        </div>
+      </Popup>
+    </Marker>
+  );
+}
+
 export default function MapView({
   locations,
   center = [-34.6037, -58.3816], // Buenos Aires por defecto
-  zoom = 13,
-  onMapClick
+  zoom = 12,
+  onMapClick,
+  draggableMarker,
+  onDraggableMarkerMove
 }: MapViewProps) {
   // Asegurar que el componente solo se renderice en el cliente
   useEffect(() => {
@@ -67,6 +121,15 @@ export default function MapView({
 
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
 
+      {/* Marcador draggable para nueva ubicación */}
+      {draggableMarker && onDraggableMarkerMove && (
+        <DraggableMarker
+          position={[draggableMarker.lat, draggableMarker.lng]}
+          onDragEnd={onDraggableMarkerMove}
+        />
+      )}
+
+      {/* Marcadores de ubicaciones existentes */}
       {locations.map((location) => (
         <Marker key={location.id} position={[location.lat, location.lng]}>
           <Popup>

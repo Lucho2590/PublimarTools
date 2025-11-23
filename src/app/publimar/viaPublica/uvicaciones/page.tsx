@@ -10,12 +10,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import {
   Table,
   TableBody,
@@ -25,13 +25,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { MapPin, Plus, Trash2, Edit } from 'lucide-react';
+import { MapPin, Plus, Trash2, Edit, X } from 'lucide-react';
 import collections from '@/lib/collections';
 
 const MapView = dynamic(() => import('@/components/maps/MapView'), {
   ssr: false,
   loading: () => (
-    <div className="h-[500px] w-full bg-gray-100 rounded-lg flex items-center justify-center">
+    <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
       <p className="text-gray-500">Cargando mapa...</p>
     </div>
   ),
@@ -49,8 +49,9 @@ interface Location {
 
 export default function UbicacionesPage() {
   const firestore = useFirestore();
-  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [draggableMarker, setDraggableMarker] = useState<{ lat: number; lng: number } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -75,13 +76,30 @@ export default function UbicacionesPage() {
     createdAt: loc.createdAt?.toDate?.(),
   })) || [];
 
-  const handleMapClick = (lat: number, lng: number) => {
-    setFormData((prev) => ({
+  const handleNewLocation = () => {
+    // Posicion inicial del marcador (centro de Buenos Aires por defecto)
+    const initialPosition = locations.length > 0
+      ? { lat: locations[0].lat, lng: locations[0].lng }
+      : { lat: -34.6037, lng: -58.3816 };
+
+    setDraggableMarker(initialPosition);
+    setFormData({
+      name: '',
+      description: '',
+      address: '',
+      lat: initialPosition.lat.toFixed(6),
+      lng: initialPosition.lng.toFixed(6),
+    });
+    setShowDrawer(true);
+  };
+
+  const handleDraggableMarkerMove = (lat: number, lng: number) => {
+    setDraggableMarker({ lat, lng });
+    setFormData(prev => ({
       ...prev,
       lat: lat.toFixed(6),
       lng: lng.toFixed(6),
     }));
-    toast.info(`Ubicacion seleccionada: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,15 +128,7 @@ export default function UbicacionesPage() {
         toast.success('Ubicacion agregada correctamente');
       }
 
-      setFormData({
-        name: '',
-        description: '',
-        address: '',
-        lat: '',
-        lng: '',
-      });
-      setShowAddDialog(false);
-      setEditingLocation(null);
+      handleCloseDrawer();
     } catch (error) {
       console.error('Error al guardar ubicacion:', error);
       toast.error('Error al guardar la ubicacion');
@@ -127,6 +137,7 @@ export default function UbicacionesPage() {
 
   const handleEdit = (location: Location) => {
     setEditingLocation(location);
+    setDraggableMarker({ lat: location.lat, lng: location.lng });
     setFormData({
       name: location.name,
       description: location.description || '',
@@ -134,7 +145,7 @@ export default function UbicacionesPage() {
       lat: location.lat.toString(),
       lng: location.lng.toString(),
     });
-    setShowAddDialog(true);
+    setShowDrawer(true);
   };
 
   const handleDelete = async (locationId: string) => {
@@ -149,9 +160,10 @@ export default function UbicacionesPage() {
     }
   };
 
-  const handleCloseDialog = () => {
-    setShowAddDialog(false);
+  const handleCloseDrawer = () => {
+    setShowDrawer(false);
     setEditingLocation(null);
+    setDraggableMarker(null);
     setFormData({
       name: '',
       description: '',
@@ -165,120 +177,29 @@ export default function UbicacionesPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Ubicaciones</h1>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-blue-900 hover:bg-blue-800">
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva Ubicacion
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingLocation ? 'Editar Ubicacion' : 'Nueva Ubicacion'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nombre *</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Ej: Oficina Central"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="address">Direccion</Label>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Ej: Av. Corrientes 1234, CABA"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Descripcion</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Detalles adicionales sobre la ubicacion"
-                  rows={3}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="lat">Latitud *</Label>
-                  <Input
-                    id="lat"
-                    type="number"
-                    step="any"
-                    value={formData.lat}
-                    onChange={(e) => setFormData({ ...formData, lat: e.target.value })}
-                    placeholder="-34.603722"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lng">Longitud *</Label>
-                  <Input
-                    id="lng"
-                    type="number"
-                    step="any"
-                    value={formData.lng}
-                    onChange={(e) => setFormData({ ...formData, lng: e.target.value })}
-                    placeholder="-58.381592"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-sm text-blue-800">
-                  <MapPin className="h-4 w-4 inline mr-1" />
-                  Haz click en el mapa principal para seleccionar las coordenadas automaticamente
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={handleCloseDialog}>
-                  Cancelar
-                </Button>
-                <Button type="submit" className="bg-green-600 hover:bg-green-700">
-                  {editingLocation ? 'Actualizar' : 'Guardar'}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={handleNewLocation} className="bg-blue-900 hover:bg-blue-800">
+          <Plus className="h-4 w-4 mr-2" />
+          Nueva Ubicacion
+        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Mapa de Ubicaciones</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[500px] w-full">
-            {status === 'loading' ? (
-              <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
-                <p className="text-gray-500">Cargando ubicaciones...</p>
-              </div>
-            ) : (
-              <MapView
-                locations={locations}
-                center={locations.length > 0 ? [locations[0].lat, locations[0].lng] : undefined}
-                onMapClick={handleMapClick}
-              />
-            )}
+      {/* Mapa a pantalla completa */}
+      <div className="h-[calc(100vh-200px)] w-full">
+        {status === 'loading' ? (
+          <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
+            <p className="text-gray-500">Cargando ubicaciones...</p>
           </div>
-        </CardContent>
-      </Card>
+        ) : (
+          <MapView
+            locations={locations}
+            center={locations.length > 0 ? [locations[0].lat, locations[0].lng] : undefined}
+            draggableMarker={draggableMarker}
+            onDraggableMarkerMove={handleDraggableMarkerMove}
+          />
+        )}
+      </div>
 
+      {/* Lista de ubicaciones */}
       <Card>
         <CardHeader>
           <CardTitle>Ubicaciones Registradas ({locations.length})</CardTitle>
@@ -337,6 +258,133 @@ export default function UbicacionesPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Drawer lateral derecho */}
+      <Sheet open={showDrawer} onOpenChange={setShowDrawer}>
+        <SheetContent side="right" className="w-[400px] sm:w-[540px] overflow-y-auto">
+          <SheetHeader>
+            <div className="flex items-center justify-between">
+              <SheetTitle>
+                {editingLocation ? 'Editar Ubicacion' : 'Nueva Ubicacion'}
+              </SheetTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleCloseDrawer}
+                className="h-6 w-6"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <SheetDescription>
+              {editingLocation
+                ? 'Modifica los datos de la ubicacion y mueve el marcador rojo en el mapa'
+                : 'Arrastra el marcador rojo en el mapa para seleccionar la ubicacion'}
+            </SheetDescription>
+          </SheetHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-6 mt-6">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nombre *</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Ej: Oficina Central"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="address">Direccion</Label>
+              <Input
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="Ej: Av. Corrientes 1234, CABA"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Descripcion</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Detalles adicionales sobre la ubicacion"
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-4">
+              <Label>Coordenadas</Label>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm text-blue-800">
+                  <MapPin className="h-4 w-4" />
+                  <span className="font-medium">Arrastra el marcador rojo en el mapa</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mt-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="lat" className="text-xs text-gray-600">Latitud</Label>
+                    <Input
+                      id="lat"
+                      type="number"
+                      step="any"
+                      value={formData.lat}
+                      onChange={(e) => {
+                        setFormData({ ...formData, lat: e.target.value });
+                        const lat = parseFloat(e.target.value);
+                        const lng = parseFloat(formData.lng);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                          setDraggableMarker({ lat, lng });
+                        }
+                      }}
+                      className="text-sm"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="lng" className="text-xs text-gray-600">Longitud</Label>
+                    <Input
+                      id="lng"
+                      type="number"
+                      step="any"
+                      value={formData.lng}
+                      onChange={(e) => {
+                        setFormData({ ...formData, lng: e.target.value });
+                        const lat = parseFloat(formData.lat);
+                        const lng = parseFloat(e.target.value);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                          setDraggableMarker({ lat, lng });
+                        }
+                      }}
+                      className="text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseDrawer}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                {editingLocation ? 'Actualizar' : 'Guardar'}
+              </Button>
+            </div>
+          </form>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
