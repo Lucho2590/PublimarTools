@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useFirestore, useFirestoreCollectionData } from 'reactfire';
 import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
@@ -28,7 +28,6 @@ import { toast } from 'sonner';
 import { MapPin, Plus, Trash2, Edit } from 'lucide-react';
 import collections from '@/lib/collections';
 
-// Importar el mapa dinámicamente para evitar problemas con SSR
 const MapView = dynamic(() => import('@/components/maps/MapView'), {
   ssr: false,
   loading: () => (
@@ -52,7 +51,6 @@ export default function UbicacionesPage() {
   const firestore = useFirestore();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
-  const [clickedCoords, setClickedCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -62,7 +60,6 @@ export default function UbicacionesPage() {
     lng: '',
   });
 
-  // Obtener ubicaciones de Firestore
   const locationsCollection = collection(firestore, collections.LOCATIONS || 'locations');
   const { data: locationsData, status } = useFirestoreCollectionData(locationsCollection, {
     idField: 'id',
@@ -79,13 +76,12 @@ export default function UbicacionesPage() {
   })) || [];
 
   const handleMapClick = (lat: number, lng: number) => {
-    setClickedCoords({ lat, lng });
     setFormData((prev) => ({
       ...prev,
       lat: lat.toFixed(6),
       lng: lng.toFixed(6),
     }));
-    toast.info(`Ubicación seleccionada: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+    toast.info(`Ubicacion seleccionada: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -107,16 +103,13 @@ export default function UbicacionesPage() {
       };
 
       if (editingLocation) {
-        // Actualizar ubicación existente
         await updateDoc(doc(firestore, collections.LOCATIONS || 'locations', editingLocation.id), locationData);
-        toast.success('Ubicación actualizada correctamente');
+        toast.success('Ubicacion actualizada correctamente');
       } else {
-        // Crear nueva ubicación
         await addDoc(collection(firestore, collections.LOCATIONS || 'locations'), locationData);
-        toast.success('Ubicación agregada correctamente');
+        toast.success('Ubicacion agregada correctamente');
       }
 
-      // Resetear formulario
       setFormData({
         name: '',
         description: '',
@@ -124,12 +117,11 @@ export default function UbicacionesPage() {
         lat: '',
         lng: '',
       });
-      setClickedCoords(null);
       setShowAddDialog(false);
       setEditingLocation(null);
     } catch (error) {
-      console.error('Error al guardar ubicación:', error);
-      toast.error('Error al guardar la ubicación');
+      console.error('Error al guardar ubicacion:', error);
+      toast.error('Error al guardar la ubicacion');
     }
   };
 
@@ -146,14 +138,14 @@ export default function UbicacionesPage() {
   };
 
   const handleDelete = async (locationId: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta ubicación?')) return;
+    if (!confirm('Estas seguro de eliminar esta ubicacion?')) return;
 
     try {
       await deleteDoc(doc(firestore, collections.LOCATIONS || 'locations', locationId));
-      toast.success('Ubicación eliminada correctamente');
+      toast.success('Ubicacion eliminada correctamente');
     } catch (error) {
-      console.error('Error al eliminar ubicación:', error);
-      toast.error('Error al eliminar la ubicación');
+      console.error('Error al eliminar ubicacion:', error);
+      toast.error('Error al eliminar la ubicacion');
     }
   };
 
@@ -167,7 +159,6 @@ export default function UbicacionesPage() {
       lat: '',
       lng: '',
     });
-    setClickedCoords(null);
   };
 
   return (
@@ -178,13 +169,13 @@ export default function UbicacionesPage() {
           <DialogTrigger asChild>
             <Button className="bg-blue-900 hover:bg-blue-800">
               <Plus className="h-4 w-4 mr-2" />
-              Nueva Ubicación
+              Nueva Ubicacion
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>
-                {editingLocation ? 'Editar Ubicación' : 'Nueva Ubicación'}
+                {editingLocation ? 'Editar Ubicacion' : 'Nueva Ubicacion'}
               </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -200,7 +191,7 @@ export default function UbicacionesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="address">Dirección</Label>
+                <Label htmlFor="address">Direccion</Label>
                 <Input
                   id="address"
                   value={formData.address}
@@ -210,12 +201,12 @@ export default function UbicacionesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Descripción</Label>
+                <Label htmlFor="description">Descripcion</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Detalles adicionales sobre la ubicación"
+                  placeholder="Detalles adicionales sobre la ubicacion"
                   rows={3}
                 />
               </div>
@@ -250,7 +241,7 @@ export default function UbicacionesPage() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <p className="text-sm text-blue-800">
                   <MapPin className="h-4 w-4 inline mr-1" />
-                  Hacé click en el mapa principal para seleccionar las coordenadas automáticamente
+                  Haz click en el mapa principal para seleccionar las coordenadas automaticamente
                 </p>
               </div>
 
@@ -267,7 +258,6 @@ export default function UbicacionesPage() {
         </Dialog>
       </div>
 
-      {/* Mapa */}
       <Card>
         <CardHeader>
           <CardTitle>Mapa de Ubicaciones</CardTitle>
@@ -289,7 +279,6 @@ export default function UbicacionesPage() {
         </CardContent>
       </Card>
 
-      {/* Lista de ubicaciones */}
       <Card>
         <CardHeader>
           <CardTitle>Ubicaciones Registradas ({locations.length})</CardTitle>
@@ -300,7 +289,7 @@ export default function UbicacionesPage() {
               <MapPin className="h-12 w-12 mx-auto text-gray-400 mb-4" />
               <p className="text-gray-500">No hay ubicaciones registradas</p>
               <p className="text-sm text-gray-400 mt-2">
-                Agregá tu primera ubicación haciendo click en &quot;Nueva Ubicación&quot;
+                Agrega tu primera ubicacion haciendo click en Nueva Ubicacion
               </p>
             </div>
           ) : (
@@ -308,7 +297,7 @@ export default function UbicacionesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nombre</TableHead>
-                  <TableHead>Dirección</TableHead>
+                  <TableHead>Direccion</TableHead>
                   <TableHead>Coordenadas</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
