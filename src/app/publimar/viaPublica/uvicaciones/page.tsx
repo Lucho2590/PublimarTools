@@ -260,8 +260,22 @@ export default function UbicacionesPage() {
       </Card>
 
       {/* Drawer lateral derecho */}
-      <Sheet open={showDrawer} onOpenChange={setShowDrawer}>
-        <SheetContent side="right" className="w-[400px] sm:w-[540px] overflow-y-auto" hideOverlay>
+      <Sheet open={showDrawer} onOpenChange={(open) => {
+        // Solo permitir cerrar el drawer desde el boton X o Cancelar, no al hacer click afuera
+        if (!open && showDrawer) {
+          return;
+        }
+        setShowDrawer(open);
+      }}>
+        <SheetContent
+          side="right"
+          className="w-[400px] sm:w-[540px] overflow-y-auto"
+          hideOverlay
+          onInteractOutside={(e) => {
+            // Prevenir que se cierre al hacer click en el mapa
+            e.preventDefault();
+          }}
+        >
           <SheetHeader>
             <div className="flex items-center justify-between">
               <SheetTitle>
