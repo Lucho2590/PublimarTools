@@ -261,7 +261,7 @@ export default function UbicacionesPage() {
 
       {/* Drawer lateral derecho */}
       <Sheet open={showDrawer} onOpenChange={setShowDrawer}>
-        <SheetContent side="right" className="w-[400px] sm:w-[540px] overflow-y-auto">
+        <SheetContent side="right" className="w-[400px] sm:w-[540px] overflow-y-auto" hideOverlay>
           <SheetHeader>
             <div className="flex items-center justify-between">
               <SheetTitle>
