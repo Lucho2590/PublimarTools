@@ -200,7 +200,7 @@ export default function UbicacionesPage() {
       </div>
 
       {/* Mapa a pantalla completa */}
-      <div className="h-[calc(100vh-200px)] w-full">
+      <div className="h-[calc(100vh-200px)] w-full relative" style={{ pointerEvents: 'auto' }}>
         {status === 'loading' ? (
           <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
             <p className="text-gray-500">Cargando ubicaciones...</p>

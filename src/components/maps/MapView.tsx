@@ -121,7 +121,12 @@ export default function MapView({
       center={center}
       zoom={zoom}
       style={{ height: '100%', width: '100%', minHeight: '500px' }}
-      className="rounded-lg z-0"
+      className="rounded-lg"
+      scrollWheelZoom={true}
+      dragging={true}
+      touchZoom={true}
+      doubleClickZoom={true}
+      zoomControl={true}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
