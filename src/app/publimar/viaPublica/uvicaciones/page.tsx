@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useFirestore, useFirestoreCollectionData } from 'reactfire';
 import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
@@ -52,6 +52,7 @@ export default function UbicacionesPage() {
   const [showDrawer, setShowDrawer] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [draggableMarker, setDraggableMarker] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([-38.0055, -57.5426]); // Mar del Plata por defecto
 
   const [formData, setFormData] = useState({
     name: '',
@@ -60,6 +61,23 @@ export default function UbicacionesPage() {
     lat: '',
     lng: '',
   });
+
+  // Obtener ubicacion actual del dispositivo
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setMapCenter([latitude, longitude]);
+          toast.success('Ubicacion actual detectada');
+        },
+        (error) => {
+          console.log('No se pudo obtener la ubicacion, usando Mar del Plata por defecto');
+          // Ya esta seteado Mar del Plata por defecto
+        }
+      );
+    }
+  }, []);
 
   const locationsCollection = collection(firestore, collections.LOCATIONS || 'locations');
   const { data: locationsData, status } = useFirestoreCollectionData(locationsCollection, {
@@ -77,10 +95,8 @@ export default function UbicacionesPage() {
   })) || [];
 
   const handleNewLocation = () => {
-    // Posicion inicial del marcador (centro de Buenos Aires por defecto)
-    const initialPosition = locations.length > 0
-      ? { lat: locations[0].lat, lng: locations[0].lng }
-      : { lat: -34.6037, lng: -58.3816 };
+    // Posicion inicial del marcador (usar el centro actual del mapa)
+    const initialPosition = { lat: mapCenter[0], lng: mapCenter[1] };
 
     setDraggableMarker(initialPosition);
     setFormData({
@@ -192,7 +208,7 @@ export default function UbicacionesPage() {
         ) : (
           <MapView
             locations={locations}
-            center={locations.length > 0 ? [locations[0].lat, locations[0].lng] : undefined}
+            center={mapCenter}
             draggableMarker={draggableMarker}
             onDraggableMarkerMove={handleDraggableMarkerMove}
           />
