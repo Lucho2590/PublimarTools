@@ -1,9 +1,10 @@
 'use client';
 
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { TLocation } from '@/types/location';
 
 // Fix para los iconos de Leaflet en Next.js
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -13,40 +14,39 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Crear un icono personalizado rojo usando divIcon
+// Pin rojo moderno estilo Google Maps
 const redIcon = L.divIcon({
   className: 'custom-red-marker',
-  html: `<div style="
-    width: 25px;
-    height: 41px;
-    position: relative;
-    filter: hue-rotate(120deg) saturate(3);
-  ">
-    <svg width="25" height="41" viewBox="0 0 25 41" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12.5 0C5.596 0 0 5.596 0 12.5c0 9.375 12.5 28.5 12.5 28.5s12.5-19.125 12.5-28.5C25 5.596 19.404 0 12.5 0z" fill="#dc2626" stroke="#991b1b" stroke-width="1.5"/>
-      <circle cx="12.5" cy="12.5" r="6" fill="white"/>
-    </svg>
-  </div>`,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
+  html: `
+    <div style="position: relative; width: 32px; height: 43px;">
+      <svg width="32" height="43" viewBox="0 0 32 43" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Sombra -->
+        <ellipse cx="16" cy="40" rx="8" ry="3" fill="rgba(0,0,0,0.2)"/>
+        <!-- Pin principal -->
+        <path d="M16 0C9.373 0 4 5.373 4 12c0 9 12 28 12 28s12-19 12-28c0-6.627-5.373-12-12-12z"
+              fill="#dc2626"
+              stroke="#991b1b"
+              stroke-width="1.5"/>
+        <!-- Círculo interior blanco -->
+        <circle cx="16" cy="12" r="5" fill="white"/>
+        <!-- Punto central rojo -->
+        <circle cx="16" cy="12" r="2.5" fill="#dc2626"/>
+      </svg>
+    </div>
+  `,
+  iconSize: [32, 43],
+  iconAnchor: [16, 40],
+  popupAnchor: [0, -40],
 });
 
-interface Location {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  description?: string;
-}
-
 interface MapViewProps {
-  locations: Location[];
+  locations: TLocation[];
   center?: [number, number];
   zoom?: number;
   onMapClick?: (lat: number, lng: number) => void;
   draggableMarker?: { lat: number; lng: number } | null;
   onDraggableMarkerMove?: (lat: number, lng: number) => void;
+  onMapReady?: (getCenter: () => [number, number]) => void;
 }
 
 function MapClickHandler({ onMapClick }: { onMapClick?: (lat: number, lng: number) => void }) {
@@ -60,6 +60,24 @@ function MapClickHandler({ onMapClick }: { onMapClick?: (lat: number, lng: numbe
   return null;
 }
 
+function MapCenterProvider({ onMapReady }: { onMapReady?: (getCenter: () => [number, number]) => void }) {
+  const map = useMapEvents({});
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (onMapReady && map && !initializedRef.current) {
+      const getCenter = () => {
+        const center = map.getCenter();
+        return [center.lat, center.lng] as [number, number];
+      };
+      onMapReady(getCenter);
+      initializedRef.current = true;
+    }
+  }, [map, onMapReady]);
+
+  return null;
+}
+
 function DraggableMarker({
   position,
   onDragEnd
@@ -68,9 +86,22 @@ function DraggableMarker({
   onDragEnd: (lat: number, lng: number) => void;
 }) {
   const markerRef = useRef<L.Marker>(null);
+  const [localPosition, setLocalPosition] = useState(position);
+
+  // Actualizar posicion local cuando cambia la prop desde afuera
+  useEffect(() => {
+    setLocalPosition(position);
+  }, [position]);
 
   const eventHandlers = useMemo(
     () => ({
+      drag() {
+        const marker = markerRef.current;
+        if (marker != null) {
+          const pos = marker.getLatLng();
+          setLocalPosition([pos.lat, pos.lng]);
+        }
+      },
       dragend() {
         const marker = markerRef.current;
         if (marker != null) {
@@ -86,7 +117,7 @@ function DraggableMarker({
     <Marker
       draggable={true}
       eventHandlers={eventHandlers}
-      position={position}
+      position={localPosition}
       ref={markerRef}
       icon={redIcon}
     >
@@ -106,7 +137,8 @@ export default function MapView({
   zoom = 12,
   onMapClick,
   draggableMarker,
-  onDraggableMarkerMove
+  onDraggableMarkerMove,
+  onMapReady
 }: MapViewProps) {
   // Asegurar que el componente solo se renderice en el cliente
   useEffect(() => {
@@ -134,6 +166,7 @@ export default function MapView({
       />
 
       {onMapClick && <MapClickHandler onMapClick={onMapClick} />}
+      {onMapReady && <MapCenterProvider onMapReady={onMapReady} />}
 
       {/* Marcador draggable para nueva ubicación */}
       {draggableMarker && onDraggableMarkerMove && (

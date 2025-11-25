@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 import { MapPin, Plus, Trash2, Edit, X } from 'lucide-react';
 import collections from '@/lib/collections';
+import { TLocation } from '@/types/location';
 
 const MapView = dynamic(() => import('@/components/maps/MapView'), {
   ssr: false,
@@ -37,22 +38,13 @@ const MapView = dynamic(() => import('@/components/maps/MapView'), {
   ),
 });
 
-interface Location {
-  id: string;
-  name: string;
-  lat: number;
-  lng: number;
-  description?: string;
-  address?: string;
-  createdAt?: Date;
-}
-
 export default function UbicacionesPage() {
   const firestore = useFirestore();
   const [showDrawer, setShowDrawer] = useState(false);
-  const [editingLocation, setEditingLocation] = useState<Location | null>(null);
+  const [editingLocation, setEditingLocation] = useState<TLocation | null>(null);
   const [draggableMarker, setDraggableMarker] = useState<{ lat: number; lng: number } | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>([-38.0055, -57.5426]); // Mar del Plata por defecto
+  const [getMapCenter, setGetMapCenter] = useState<(() => [number, number]) | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -84,7 +76,7 @@ export default function UbicacionesPage() {
     idField: 'id',
   });
 
-  const locations: Location[] = (locationsData as any[])?.map((loc) => ({
+  const locations: TLocation[] = (locationsData as any[])?.map((loc) => ({
     id: loc.id,
     name: loc.name,
     lat: loc.lat,
@@ -95,8 +87,15 @@ export default function UbicacionesPage() {
   })) || [];
 
   const handleNewLocation = () => {
-    // Posicion inicial del marcador (usar el centro actual del mapa)
-    const initialPosition = { lat: mapCenter[0], lng: mapCenter[1] };
+    // Obtener el centro visible actual del mapa
+    let initialPosition;
+    if (getMapCenter) {
+      const currentCenter = getMapCenter();
+      initialPosition = { lat: currentCenter[0], lng: currentCenter[1] };
+    } else {
+      // Fallback al centro inicial
+      initialPosition = { lat: mapCenter[0], lng: mapCenter[1] };
+    }
 
     setDraggableMarker(initialPosition);
     setFormData({
@@ -110,6 +109,7 @@ export default function UbicacionesPage() {
   };
 
   const handleDraggableMarkerMove = (lat: number, lng: number) => {
+    // Actualizar tanto el marcador como el formulario cuando termina el drag
     setDraggableMarker({ lat, lng });
     setFormData(prev => ({
       ...prev,
@@ -151,7 +151,7 @@ export default function UbicacionesPage() {
     }
   };
 
-  const handleEdit = (location: Location) => {
+  const handleEdit = (location: TLocation) => {
     setEditingLocation(location);
     setDraggableMarker({ lat: location.lat, lng: location.lng });
     setFormData({
@@ -200,7 +200,7 @@ export default function UbicacionesPage() {
       </div>
 
       {/* Mapa a pantalla completa */}
-      <div className="h-[calc(100vh-200px)] w-full relative" style={{ pointerEvents: 'auto' }}>
+      <div className="h-[calc(100vh-200px)] w-full relative z-0" style={{ pointerEvents: 'auto' }}>
         {status === 'loading' ? (
           <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
             <p className="text-gray-500">Cargando ubicaciones...</p>
@@ -211,6 +211,7 @@ export default function UbicacionesPage() {
             center={mapCenter}
             draggableMarker={draggableMarker}
             onDraggableMarkerMove={handleDraggableMarkerMove}
+            onMapReady={(getCenterFn) => setGetMapCenter(() => getCenterFn)}
           />
         )}
       </div>
@@ -285,7 +286,7 @@ export default function UbicacionesPage() {
       }}>
         <SheetContent
           side="right"
-          className="w-[400px] sm:w-[540px] overflow-y-auto"
+          className="w-[400px] sm:w-[540px] overflow-y-auto z-[100]"
           hideOverlay
           onInteractOutside={(e) => {
             // Prevenir que se cierre al hacer click en el mapa
