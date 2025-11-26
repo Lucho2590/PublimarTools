@@ -7,6 +7,7 @@ import {
   getDocs,
   deleteDoc,
   serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import {
   Dialog,
@@ -663,8 +664,11 @@ export function SaleDetailsModal({
         facturas: facturas.length > 0 ? facturas : [],
       };
       
-      // Fecha editada (mismo formato que facturas)
+      // Fecha editada
       if (editedDate) {
+        // Convertir la fecha del input (YYYY-MM-DD) a timestamp de Firebase
+        const dateObj = new Date(editedDate);
+        updateData.createdAt = Timestamp.fromDate(dateObj) as unknown as Date;
         updateData.updatedAt = serverTimestamp() as unknown as Date;
       }
       if (paymentMethod) {
