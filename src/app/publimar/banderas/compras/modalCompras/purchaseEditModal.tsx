@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useFirestore, useFirestoreDocData, useFirestoreCollectionData } from 'reactfire';
 import { doc, updateDoc, deleteDoc, collection } from 'firebase/firestore';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from 'sonner';
-import { TPurchase } from '@/types/purchase';
+import { TPurchase, EPurchaseDepartment } from '@/types/purchase';
+import { EUserRole } from '@/types/user';
 import { Save, Trash2, X } from 'lucide-react';
 
 interface PurchaseEditModalProps {
@@ -38,6 +40,7 @@ export default function PurchaseEditModal({
   onPurchaseUpdated,
 }: PurchaseEditModalProps) {
   const firestore = useFirestore();
+  const { userRole } = useAuth();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState<Partial<TPurchase>>({
@@ -46,6 +49,7 @@ export default function PurchaseEditModal({
     providerName: '',
     description: '',
     amount: 0,
+    department: EPurchaseDepartment.BANDERAS,
   });
 
   // Obtener proveedores
@@ -62,15 +66,27 @@ export default function PurchaseEditModal({
   // Cargar datos de la compra en el formulario
   useEffect(() => {
     if (purchase && purchaseId) {
+      // Si el usuario no es administración, forzar su departamento
+      let department = purchase.department || EPurchaseDepartment.BANDERAS;
+      if (userRole === EUserRole.BANDERAS) {
+        department = EPurchaseDepartment.BANDERAS;
+      } else if (userRole === EUserRole.VIA_PUBLICA) {
+        department = EPurchaseDepartment.VIA_PUBLICA;
+      } else if (userRole === EUserRole.ADMINISTRACION) {
+        // Administración puede mantener el departamento de la compra
+        department = purchase.department || EPurchaseDepartment.ADMINISTRACION;
+      }
+      
       setFormData({
         date: purchase.date || '',
         providerId: purchase.providerId || '',
         providerName: purchase.providerName || '',
         description: purchase.description || '',
         amount: purchase.amount || 0,
+        department: department,
       });
     }
-  }, [purchase, purchaseId]);
+  }, [purchase, purchaseId, userRole]);
 
   // Resetear formulario al cerrar
   useEffect(() => {
@@ -81,6 +97,7 @@ export default function PurchaseEditModal({
         providerName: '',
         description: '',
         amount: 0,
+        department: EPurchaseDepartment.BANDERAS,
       });
     }
   }, [isOpen]);
@@ -104,11 +121,18 @@ export default function PurchaseEditModal({
     }));
   };
 
+  const handleDepartmentChange = (value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      department: value as EPurchaseDepartment,
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!purchaseId) return;
 
-    if (!formData.date || !formData.providerId || !formData.description || !formData.amount) {
+    if (!formData.date || !formData.providerId || !formData.description || !formData.amount || !formData.department) {
       toast.error('Todos los campos son requeridos');
       return;
     }
@@ -245,6 +269,36 @@ export default function PurchaseEditModal({
                   className="w-full"
                   placeholder="0.00"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="department">Departamento *</Label>
+                <Select
+                  value={formData.department || ''}
+                  onValueChange={handleDepartmentChange}
+                  required
+                  disabled={(userRole !== EUserRole.ADMINISTRACION) && (userRole !== EUserRole.ADMIN)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Seleccionar departamento" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN ? (
+                      // Administración puede ver y seleccionar todos los departamentos
+                      <>
+                        <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
+                        <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
+                        <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administración</SelectItem>
+                      </>
+                    ) : userRole === EUserRole.BANDERAS ? (
+                      // Banderas solo ve su departamento
+                      <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
+                    ) : userRole === EUserRole.VIA_PUBLICA ? (
+                      // Vía Pública solo ve su departamento
+                      <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
+                    ) : null}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

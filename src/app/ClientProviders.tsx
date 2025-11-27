@@ -4,7 +4,7 @@ import { FirebaseAppProvider, AuthProvider as ReactFireAuthProvider, FirestorePr
 import { app } from "@/lib/firebase";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProviderWithFirestore } from "@/contexts/AuthContext";
 import AuthGuard from "@/components/auth/AuthGuard";
 
 export default function ClientProviders({
@@ -17,15 +17,15 @@ export default function ClientProviders({
 
   return (
     <FirebaseAppProvider firebaseApp={app}>
-      <AuthProvider>
-        <ReactFireAuthProvider sdk={auth}>
-          <FirestoreProvider sdk={firestore}>
+      <ReactFireAuthProvider sdk={auth}>
+        <FirestoreProvider sdk={firestore}>
+          <AuthProviderWithFirestore>
             <AuthGuard>
               {children}
             </AuthGuard>
-          </FirestoreProvider>
-        </ReactFireAuthProvider>
-      </AuthProvider>
+          </AuthProviderWithFirestore>
+        </FirestoreProvider>
+      </ReactFireAuthProvider>
     </FirebaseAppProvider>
   );
 } 

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useFirestore } from "reactfire";
 import { collection, addDoc, serverTimestamp, query, orderBy } from "firebase/firestore";
+import { useAuth } from "@/contexts/AuthContext";
 import { useFirestoreCollectionData } from "reactfire";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { TPurchase } from "@/types/purchase";
+import { TPurchase, EPurchaseDepartment } from "@/types/purchase";
+import { EUserRole } from "@/types/user";
 import { formatearPrecio } from "@/lib/utils";
 import { Edit, DollarSign, X } from "lucide-react";
 import PurchaseEditModal from "./modalCompras/purchaseEditModal";
@@ -48,6 +50,7 @@ const formatDate = (timestamp: any) => {
 
 export default function ComprasPage() {
   const firestore = useFirestore();
+  const { userRole } = useAuth();
   const [form, setForm] = useState<Partial<TPurchase>>({
     date: new Date().toISOString().split("T")[0]
   });
@@ -57,6 +60,19 @@ export default function ComprasPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  // Asignar automáticamente el departamento según el rol del usuario
+  useEffect(() => {
+    if (userRole) {
+      if (userRole === EUserRole.BANDERAS) {
+        setForm(prev => ({ ...prev, department: EPurchaseDepartment.BANDERAS }));
+      } else if (userRole === EUserRole.VIA_PUBLICA) {
+        setForm(prev => ({ ...prev, department: EPurchaseDepartment.VIA_PUBLICA }));
+      } else if (userRole === EUserRole.ADMINISTRACION) {
+        setForm(prev => ({ ...prev, department: EPurchaseDepartment.ADMINISTRACION }));
+      }
+    }
+  }, [userRole]);
+
   // Estados para el modal de edición
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<string | null>(null);
@@ -64,6 +80,7 @@ export default function ComprasPage() {
   // Estados para filtros
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [selectedProvider, setSelectedProvider] = useState<string>("all");
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("all");
 
   // Obtener proveedores para el select
   const providersCollection = collection(firestore, "providers");
@@ -126,9 +143,12 @@ export default function ComprasPage() {
       // Filtro por proveedor
       const matchesProvider = selectedProvider === "all" || purchase.providerId === selectedProvider;
 
-      return matchesSearch && matchesDateRange && matchesProvider;
+      // Filtro por departamento
+      const matchesDepartment = selectedDepartment === "all" || purchase.department === selectedDepartment;
+
+      return matchesSearch && matchesDateRange && matchesProvider && matchesDepartment;
     });
-  }, [purchases, searchTerm, dateRange, selectedProvider]);
+  }, [purchases, searchTerm, dateRange, selectedProvider, selectedDepartment]);
 
   // Calcular total de compras filtradas
   const totalFiltered = useMemo(() => {
@@ -185,10 +205,14 @@ export default function ComprasPage() {
     setForm({ ...form, providerId: value });
   };
 
+  const handleDepartmentChange = (value: string) => {
+    setForm({ ...form, department: value as EPurchaseDepartment });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!form.date || !form.providerId || !form.description || !form.amount) {
+    if (!form.date || !form.providerId || !form.description || !form.amount || !form.department) {
       toast.error("Todos los campos son requeridos");
       return;
     }
@@ -204,7 +228,16 @@ export default function ComprasPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      setForm({ date: new Date().toISOString().split("T")[0] });
+      // Resetear form pero mantener el departamento según el rol
+      const resetForm: Partial<TPurchase> = { date: new Date().toISOString().split("T")[0] };
+      if (userRole === EUserRole.BANDERAS) {
+        resetForm.department = EPurchaseDepartment.BANDERAS;
+      } else if (userRole === EUserRole.VIA_PUBLICA) {
+        resetForm.department = EPurchaseDepartment.VIA_PUBLICA;
+      } else if (userRole === EUserRole.ADMINISTRACION) {
+        resetForm.department = EPurchaseDepartment.ADMINISTRACION;
+      }
+      setForm(resetForm);
       setShowForm(false);
       toast.success("Compra registrada correctamente");
     } catch (error) {
@@ -229,6 +262,7 @@ export default function ComprasPage() {
     setSearchTerm("");
     setDateRange(undefined);
     setSelectedProvider("all");
+    setSelectedDepartment("all");
     setCurrentPage(1);
   };
 
@@ -317,6 +351,35 @@ export default function ComprasPage() {
                     placeholder="0.00"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="department">Departamento *</Label>
+                  <Select
+                    value={form.department || ""}
+                    onValueChange={handleDepartmentChange}
+                    required
+                    disabled={(userRole !== EUserRole.ADMINISTRACION) && (userRole !== EUserRole.ADMIN)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar departamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN ? (
+                        // Administración puede ver y seleccionar todos los departamentos
+                        <>
+                          <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
+                          <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
+                          <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administración</SelectItem>
+                        </>
+                      ) : userRole === EUserRole.BANDERAS ? (
+                        // Banderas solo ve su departamento
+                        <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
+                      ) : userRole === EUserRole.VIA_PUBLICA ? (
+                        // Vía Pública solo ve su departamento
+                        <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
+                      ) : null}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button
@@ -324,7 +387,16 @@ export default function ComprasPage() {
                   variant="outline"
                   onClick={() => {
                     setShowForm(false);
-                    setForm({ date: new Date().toISOString().split("T")[0] });
+                    // Resetear form pero mantener el departamento según el rol
+                    const resetForm: Partial<TPurchase> = { date: new Date().toISOString().split("T")[0] };
+                    if (userRole === EUserRole.BANDERAS) {
+                      resetForm.department = EPurchaseDepartment.BANDERAS;
+                    } else if (userRole === EUserRole.VIA_PUBLICA) {
+                      resetForm.department = EPurchaseDepartment.VIA_PUBLICA;
+                    } else if (userRole === EUserRole.ADMINISTRACION) {
+                      resetForm.department = EPurchaseDepartment.ADMINISTRACION;
+                    }
+                    setForm(resetForm);
                   }}
                 >
                   Cancelar
@@ -410,6 +482,26 @@ export default function ComprasPage() {
                 }}
               />
             </div>
+            <div className="flex-1">
+              <Label className="mb-2 block">Departamento</Label>
+              <Select
+                value={selectedDepartment}
+                onValueChange={(value) => {
+                  setSelectedDepartment(value);
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Todos los departamentos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los departamentos</SelectItem>
+                  <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
+                  <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
+                  <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administración</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex md:justify-end">
               <Button
                 variant="outline"
@@ -465,6 +557,7 @@ export default function ComprasPage() {
                     <TableHead className="text-left">Fecha</TableHead>
                     <TableHead className="text-left">Proveedor</TableHead>
                     <TableHead className="text-left">Descripción</TableHead>
+                    <TableHead className="text-left">Departamento</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>
@@ -476,6 +569,12 @@ export default function ComprasPage() {
                         <TableCell className="font-medium">{formatDate(compra.date)}</TableCell>
                         <TableCell>{compra.providerName || "-"}</TableCell>
                         <TableCell>{compra.description}</TableCell>
+                        <TableCell>
+                          {compra.department === EPurchaseDepartment.BANDERAS && "Banderas"}
+                          {compra.department === EPurchaseDepartment.VIA_PUBLICA && "Vía Pública"}
+                          {compra.department === EPurchaseDepartment.ADMINISTRACION && "Administración"}
+                          {!compra.department && "-"}
+                        </TableCell>
                         <TableCell className="text-right font-semibold">
                           {formatearPrecio(Number(compra.amount))}
                         </TableCell>
@@ -497,7 +596,7 @@ export default function ComprasPage() {
                   ) : (
                     <TableRow>
                       <TableCell
-                        colSpan={5}
+                        colSpan={6}
                         className="text-center py-6 text-slate-500"
                       >
                         {searchTerm || dateRange || selectedProvider !== "all"

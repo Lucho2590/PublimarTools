@@ -3,13 +3,11 @@
 import React, { ReactNode, useState, } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSigninCheck } from "reactfire";
 import { Button } from "@/components/ui/button";
 import { signOut } from "firebase/auth";
-import { useAuth, useFirestore } from "reactfire";
-import { getDoc, doc } from "firebase/firestore";
-import collections from "@/lib/collections";
+import { useAuth } from "reactfire";
 
 interface IDashboardLayoutProps {
   children: ReactNode;
@@ -26,44 +24,13 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = usePathname();
-  const router = useRouter();
   const auth = useAuth();
   const { status, data: signInCheckResult } = useSigninCheck();
   const [mounted, setMounted] = useState(false);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const firestore = useFirestore();
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
-
-  React.useEffect(() => {
-    const fetchUserRole = async () => {
-      if (signInCheckResult?.signedIn) {
-        const userDoc = await getDoc(doc(firestore, collections.USERS, signInCheckResult.user.uid));
-        if (userDoc.exists()) {
-          const role = userDoc.data().role;
-          setUserRole(role);
-          // Establecer el menú expandido según el rol
-          switch (role) {
-            case 'banderas':
-              setExpandedItems(['Banderas']);
-              break;
-            case 'administracion':
-              setExpandedItems(['Administración']);
-              break;
-            case 'viaPublica':
-              setExpandedItems(['Vía Pública']);
-              break;
-            default:
-              setExpandedItems([]);
-          }
-        }
-      }
-    };
-
-    fetchUserRole();
-  }, [signInCheckResult, firestore]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -234,26 +201,6 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
         ],
       },
       {
-        name: "Administración",
-        href: "/publimar/administracion",
-        icon: (
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth="1.5"
-            stroke="currentColor"
-            className="size-6"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z"
-            />
-          </svg>
-        ),
-      },
-      {
         name: "Vía Pública",
         href: "/publimar/viaPublica",
         icon: (
@@ -269,6 +216,26 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
               strokeLinecap="round"
               strokeLinejoin="round"
               d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"
+            />
+          </svg>
+        ),
+      },
+      {
+        name: "Administración",
+        href: "/publimar/administracion",
+        icon: (
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth="1.5"
+            stroke="currentColor"
+            className="size-6"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6ZM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25ZM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6ZM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25Z"
             />
           </svg>
         ),
