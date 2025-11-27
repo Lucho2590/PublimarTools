@@ -36,7 +36,7 @@ import collections from "@/lib/collections";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { Edit, Eye, Download } from "lucide-react";
 import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
+import autoTable from "jspdf-autotable";
 import { toast } from "sonner";
 import { DocumentData } from "firebase/firestore";
 import { formatearPrecio, generateSlug } from "@/lib/utils";
@@ -177,197 +177,223 @@ export default function PresupuestosPage() {
     try {
       setDownloading(quote.id);
 
-      // Crear un iframe para aislar los estilos
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "absolute";
-      iframe.style.left = "-9999px";
-      iframe.style.top = "-9999px";
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) throw new Error("No se pudo crear el documento");
-
-      // Agregar estilos base
-      doc.head.innerHTML = `
-        <style>
-          body {
-            width: 210mm;
-            min-height: 297mm;
-            padding: 20mm;
-            box-sizing: border-box;
-            font-family: Arial, sans-serif;
-            background: white;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: white;
-            color: #333;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 10px;
-          }
-          th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-          }
-          th {
-            background-color: #f5f5f5;
-          }
-          .header {
-            text-align: center;
-            width: 100%;
-          }
-          .section {
-            margin-bottom: 20px;
-          }
-          .total-section {
-            margin-left: auto;
-            width: 250px;
-          }
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 8px 0;
-          }
-          .total-row.final {
-            border-top: 1px solid #ddd;
-            font-weight: bold;
-          }
-          .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            margin-bottom: 20px;
-          }
-          .header-info {
-            font-size: 12px;
-          }
-          .header-num {
-            text-align: right;
-            font-size: 14px;
-          }
-        </style>
-      `;
-
-      // Agregar el contenido
-      const hasDiscounts = quote.items.some(item => item.discount && item.discount > 0);
-
-      doc.body.innerHTML = `
-        <div class="header">
-          <img src="/imagenes/encabezado-pr.jpg" alt="Logo" style="width: 100%; max-width: 100%; height: auto; margin-bottom: 20px;" />
-        </div>
-        <div style=" justify-content: space-between; margin-left: 23px; margin-right:23px">
-        <div class="header-row">
-          <div class="header-info">
-            <h2 style="margin-bottom: 10px; font-size: 16px;">Información del Cliente</h2>
-            <div style="display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; font-size: 12px;">
-              <strong>Cliente:</strong> <span>${quote.client.name}</span>
-              ${quote.client.email ? `<strong>Email:</strong> <span>${quote.client.email}</span>` : ""}
-              ${quote.client.phone ? `<strong>Tel:</strong> <span>${quote.client.phone}</span>` : ""}
-              ${quote.client.address ? `<strong>Dir:</strong> <span>${quote.client.address}</span>` : ""}
-              ${quote.client.cuit ? `<strong>CUIT:</strong> <span>${quote.client.cuit}</span>` : ""}
-            </div>
-          </div>
-          <div class="header-num">
-            <h1 style="margin: 0; font-size: 24px; color: #000;">PRESUPUESTO</h1>
-            <p style="margin: 4px 0 0 0; font-size: 16px; font-weight: bold;">#${quote.number}</p>
-            <div style="font-size: 12px; margin-top: 8px;">
-              <div><strong>Fecha:</strong> ${formatDate(quote.createdAt)}</div>
-              <div><strong>Válido hasta:</strong> ${formatDate(quote.validUntil)}</div>
-            </div>
-          </div>
-        </div>
-        
-        <table>
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th style="text-align: right;">Precio</th>
-              <th style="text-align: center;">Cant.</th>
-              ${hasDiscounts ? '<th style="text-align: center;">Desc.</th>' : ''}
-              <th style="text-align: right;">Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${quote.items
-              .map(
-                (item) => `
-              <tr>
-                <td>
-                  <strong>${item.product.name}</strong>
-                  ${
-                    item.variant
-                      ? `<br><small>Medida: ${item.variant.size}</small>`
-                      : ""
-                  }
-                  ${item.product.description ? `<br><small>${item.product.description}</small>` : ""}
-                </td>
-                <td style="text-align: right;">${formatearPrecio(
-                  item.unitPrice
-                )}</td>
-                <td style="text-align: center;">${item.quantity}</td>
-                ${hasDiscounts ? `<td style="text-align: center;">${
-                  item.discount ? `${item.discount}%` : "-"
-                }</td>` : ''}
-                <td style="text-align: right;">${formatearPrecio(
-                  item.subtotal
-                )}</td>
-              </tr>
-            `
-              )
-              .join("")}
-          </tbody>
-        </table>
-        <div class="total-section">
-          <div class="total-row">
-            <span>Subtotal:</span>
-            <span>${formatearPrecio(quote.subtotal)}</span>
-          </div>
-          <div class="total-row">
-            <span>IVA (${quote.taxRate}%):</span>
-            <span>${formatearPrecio(quote.tax)}</span>
-          </div>
-          <div class="total-row final">
-            <span>Total:</span>
-            <span>${formatearPrecio(quote.total)}</span>
-          </div>
-        </div>
-        </div>
-      `;
-
-      // Esperar a que el iframe se cargue
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Convertir el contenido a canvas
-      const canvas = await html2canvas(doc.body, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-      });
-
       // Crear el PDF
       const pdf = new jsPDF("p", "mm", "a4");
-      const imgWidth = 210; // A4 width in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      // Márgenes más pequeños para alinear con el header que va de borde a borde
+      const margins = { top: 10, right: 10, bottom: 20, left: 10 };
 
+      // Cargar y agregar la imagen del header
+      const headerImg = new Image();
+      headerImg.src = "/imagenes/encabezado-pr.jpg";
+
+      await new Promise((resolve, reject) => {
+        headerImg.onload = resolve;
+        headerImg.onerror = reject;
+      });
+
+      // Calcular dimensiones de la imagen manteniendo aspect ratio
+      const imgAspectRatio = headerImg.width / headerImg.height;
+      const imgWidth = pageWidth; // Ocupar todo el ancho de la página
+      const imgHeight = imgWidth / imgAspectRatio;
+
+      // Agregar header
       pdf.addImage(
-        canvas.toDataURL("image/png"),
-        "PNG",
+        headerImg,
+        "JPEG",
         0,
         0,
         imgWidth,
         imgHeight
       );
 
+      let yPosition = margins.top + imgHeight + 10;
+
+      // Información del cliente y número de presupuesto
+      const leftColumnX = margins.left;
+      const rightColumnX = pageWidth - margins.right - 60;
+
+      // Columna izquierda - Info del cliente
+      pdf.setFontSize(14);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Información del Cliente", leftColumnX, yPosition);
+
+      yPosition += 7;
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "normal");
+
+      const clientInfo = [
+        { label: "Cliente:", value: quote.client.name },
+        quote.client.email ? { label: "Email:", value: quote.client.email } : null,
+        quote.client.phone ? { label: "Teléfono:", value: quote.client.phone } : null,
+        quote.client.address ? { label: "Dirección:", value: quote.client.address } : null,
+        quote.client.cuit ? { label: "CUIT/CUIL:", value: quote.client.cuit } : null,
+      ].filter(Boolean);
+
+      clientInfo.forEach((info) => {
+        if (info) {
+          pdf.setFont("helvetica", "bold");
+          pdf.text(info.label, leftColumnX, yPosition);
+          pdf.setFont("helvetica", "normal");
+          pdf.text(info.value, leftColumnX + 20, yPosition);
+          yPosition += 5;
+        }
+      });
+
+      // Columna derecha - Info del presupuesto
+      let rightYPosition = margins.top + imgHeight + 10;
+      const rightAlignX = pageWidth - margins.right;
+
+      pdf.setFontSize(20);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("PRESUPUESTO", rightAlignX, rightYPosition, { align: "right" });
+
+      rightYPosition += 7;
+      pdf.setFontSize(14);
+      pdf.text(`#${quote.number}`, rightAlignX, rightYPosition, { align: "right" });
+
+      rightYPosition += 7;
+      pdf.setFontSize(9);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`Fecha: ${formatDate(quote.createdAt)}`, rightAlignX, rightYPosition, { align: "right" });
+      rightYPosition += 4;
+      pdf.text(`Válido hasta: ${formatDate(quote.validUntil)}`, rightAlignX, rightYPosition, { align: "right" });
+
+      yPosition = Math.max(yPosition, rightYPosition) + 10;
+
+      // Preparar datos para la tabla
+      const hasDiscounts = quote.items.some(item => item.discount && item.discount > 0);
+
+      const tableHeaders = hasDiscounts
+        ? ["Producto", "Precio", "Cant.", "Desc.", "Subtotal"]
+        : ["Producto", "Precio", "Cant.", "Subtotal"];
+
+      // Guardar los nombres de productos para usar en didParseCell
+      const productNames = quote.items.map(item => item.product.name);
+
+      const tableData = quote.items.map((item) => {
+        const productName = item.product.name;
+        const variant = item.variant ? `Medida: ${item.variant.size}` : "";
+        const description = item.product.description || "";
+        const fullDescription = [productName, variant, description]
+          .filter(Boolean)
+          .join("\n");
+
+        const row = [
+          fullDescription,
+          formatearPrecio(item.unitPrice),
+          item.quantity.toString(),
+        ];
+
+        if (hasDiscounts) {
+          row.push(item.discount ? `${item.discount}%` : "-");
+        }
+
+        row.push(formatearPrecio(item.subtotal));
+
+        return row;
+      });
+
+      // Generar tabla con autoTable
+      autoTable(pdf, {
+        head: [tableHeaders],
+        body: tableData,
+        startY: yPosition,
+        margin: margins,
+        styles: {
+          fontSize: 9,
+          cellPadding: 4,
+        },
+        headStyles: {
+          fillColor: [245, 245, 245],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          halign: "left", // Por defecto izquierda
+        },
+        columnStyles: {
+          0: { cellWidth: hasDiscounts ? 90 : 105 }, // Producto - ocupa el espacio restante
+          1: { halign: "right", cellWidth: 30 }, // Precio - alineado a la derecha
+          2: { halign: "center", cellWidth: 20 }, // Cantidad - centrado
+          3: { halign: hasDiscounts ? "center" : "right", cellWidth: hasDiscounts ? 20 : 35 }, // Descuento (si existe) o Subtotal
+          ...(hasDiscounts && { 4: { halign: "right", cellWidth: 35 } }), // Subtotal cuando hay descuentos
+        },
+        tableWidth: "auto", // Que la tabla ocupe el ancho disponible entre los márgenes
+        didParseCell: (data) => {
+          // Alinear los headers de las columnas numéricas
+          if (data.section === "head") {
+            if (data.column.index === 1) {
+              // Header "Precio" - alineado a la derecha
+              data.cell.styles.halign = "right";
+            } else if (data.column.index === 2) {
+              // Header "Cant." - centrado
+              data.cell.styles.halign = "center";
+            } else if (data.column.index === 3) {
+              // Header "Desc." (si existe) o "Subtotal" - según corresponda
+              data.cell.styles.halign = hasDiscounts ? "center" : "right";
+            } else if (hasDiscounts && data.column.index === 4) {
+              // Header "Subtotal" cuando hay descuentos - alineado a la derecha
+              data.cell.styles.halign = "right";
+            }
+          }
+        },
+        rowPageBreak: "avoid", // Evita que las filas se corten entre páginas
+        didDrawCell: (data) => {
+          // Dibujar el nombre del producto en negrita encima de lo que ya se dibujó
+          if (data.section === "body" && data.column.index === 0) {
+            const productName = productNames[data.row.index];
+            const cell = data.cell;
+
+            // Obtener posición de la celda
+            const x = cell.x + cell.padding("left");
+            const y = cell.y + cell.padding("top") + 2.5; // Ajuste para alinear con el texto
+
+            // Dibujar un rectángulo blanco sobre la primera línea para "borrar" el texto normal
+            const textWidth = pdf.getTextWidth(productName);
+            pdf.setFillColor(255, 255, 255); // Blanco
+
+            // Si la fila tiene color de fondo, usar ese color
+            if (data.row.index % 2 === 0 && cell.styles.fillColor) {
+              const fillColor = cell.styles.fillColor;
+              if (Array.isArray(fillColor)) {
+                pdf.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+              }
+            }
+
+            pdf.rect(x, y - 2.5, textWidth + 1, 3.5, 'F');
+
+            // Dibujar el nombre en negrita
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(9);
+            pdf.setTextColor(0, 0, 0);
+            pdf.text(productName, x, y);
+
+            // Restaurar la fuente normal para el resto
+            pdf.setFont("helvetica", "normal");
+          }
+        },
+      });
+
+      // Agregar totales después de la tabla (solo se ejecuta una vez al final)
+      const finalY = (pdf as any).lastAutoTable.finalY + 10;
+      const totalsX = pageWidth - margins.right - 60;
+
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "normal");
+
+      pdf.text("Subtotal:", totalsX, finalY, { align: "left" });
+      pdf.text(formatearPrecio(quote.subtotal), pageWidth - margins.right, finalY, { align: "right" });
+
+      pdf.text(`IVA (${quote.taxRate}%):`, totalsX, finalY + 6, { align: "left" });
+      pdf.text(formatearPrecio(quote.tax), pageWidth - margins.right, finalY + 6, { align: "right" });
+
+      pdf.setFont("helvetica", "bold");
+      pdf.line(totalsX, finalY + 9, pageWidth - margins.right, finalY + 9);
+      pdf.text("Total:", totalsX, finalY + 14, { align: "left" });
+      pdf.text(formatearPrecio(quote.total), pageWidth - margins.right, finalY + 14, { align: "right" });
+
       // Descargar el PDF
       pdf.save(`presupuesto-${quote.number}.pdf`);
-
-      // Limpiar
-      document.body.removeChild(iframe);
     } catch (error) {
       console.error("Error al generar el PDF:", error);
       toast.error("Error al generar el PDF");
