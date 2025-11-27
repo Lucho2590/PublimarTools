@@ -18,6 +18,7 @@ const collections = {
   sales: {
     ITEMS: "items",
   },
+  PURCHASES: "purchases",
   USERS: "users",
   EVENTS: "events",
   LOCATIONS: "locations",

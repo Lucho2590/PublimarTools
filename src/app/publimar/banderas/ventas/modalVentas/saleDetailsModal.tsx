@@ -213,6 +213,10 @@ export function SaleDetailsModal({
       }
 
       // Cargar datos del cliente
+      if (typedSale?.clientId) {
+        setCliente(typedSale.clientId);
+        setClienteInput(typedSale.clientName || "");
+      }
       if (typedSale?.clientName) {
         setClientName(typedSale.clientName);
       }
@@ -686,6 +690,13 @@ export function SaleDetailsModal({
         }
       }
       // Datos del cliente
+      if (cliente) {
+        // Si hay un cliente seleccionado de la DB, guardar su ID
+        updateData.clientId = cliente;
+      } else {
+        // Si no hay cliente seleccionado, limpiar el clientId
+        updateData.clientId = null;
+      }
       if (clientName) {
         updateData.clientName = clientName;
       }

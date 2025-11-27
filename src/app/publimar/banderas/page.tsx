@@ -29,6 +29,7 @@ import { EQuoteStatus, TQuote } from "@/types/quote";
 // import { TClient } from "@/types/client";
 // import { TProduct } from "@/types/product";
 import { EOrderStatus } from "@/types/order";
+import { EPurchaseDepartment } from "@/types/purchase";
 // import { TEvent } from "@/types/event";
 import { formatDate, formatearPrecio, generateSlug } from "@/lib/utils";
 import { useAuth } from "reactfire";
@@ -37,7 +38,7 @@ import {
   Eye,
   AlertTriangle,
   TrendingUp,
-  Users,
+  ShoppingCart,
   Package,
   X,
   Plus,
@@ -73,6 +74,9 @@ export default function DashboardPage() {
   const [monthlySales, setMonthlySales] = useState<number>(0);
   const [yearlySales, setYearlySales] = useState<number>(0);
   const [showYearlySales, setShowYearlySales] = useState<boolean>(false);
+  const [monthlyPurchases, setMonthlyPurchases] = useState<number>(0);
+  const [yearlyPurchases, setYearlyPurchases] = useState<number>(0);
+  const [showYearlyPurchases, setShowYearlyPurchases] = useState<boolean>(false);
 //   const [loading, setLoading] = useState(true);
   const [sortedEvents, setSortedEvents] = useState<any[]>([]);
   const [showEventModal, setShowEventModal] = useState(false);
@@ -111,18 +115,6 @@ export default function DashboardPage() {
       const dateB = b.validUntil?.toDate?.() || new Date(b.validUntil);
       return dateA.getTime() - dateB.getTime();
     });
-
-  // Consulta últimos clientes
-  const clientsCollection = collection(firestore, collections.CLIENTS);
-  const recentClientsQuery = query(
-    clientsCollection,
-    orderBy("createdAt", "desc"),
-    limit(5)
-  );
-  const { data: recentClients, status: recentClientsStatus } = useFirestoreCollectionData(
-    recentClientsQuery,
-    { idField: "id" }
-  );
 
   // Consulta productos con bajo stock
   const productsCollection = collection(firestore, collections.PRODUCTS);
@@ -206,6 +198,32 @@ export default function DashboardPage() {
   const { data: yearlySalesData, status: yearlySalesStatus } =
     useFirestoreCollectionData(yearlySalesQuery);
 
+  // Consulta compras (solo departamento Banderas)
+  // Traemos todas las compras de Banderas y filtramos por fecha del lado del cliente
+  const purchasesCollection = collection(firestore, collections.PURCHASES);
+  const purchasesQuery = query(
+    purchasesCollection,
+    where("department", "==", EPurchaseDepartment.BANDERAS)
+  );
+  const { data: allPurchasesData, status: purchasesStatus } =
+    useFirestoreCollectionData(purchasesQuery);
+
+  // Filtrar compras del mes y año del lado del cliente usando el campo 'date'
+  const monthlyPurchasesData = allPurchasesData?.filter((purchase: any) => {
+    if (!purchase.date) return false;
+    const purchaseDate = new Date(purchase.date);
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    return purchaseDate.getMonth() === currentMonth && purchaseDate.getFullYear() === currentYear;
+  });
+
+  const yearlyPurchasesData = allPurchasesData?.filter((purchase: any) => {
+    if (!purchase.date) return false;
+    const purchaseDate = new Date(purchase.date);
+    const currentYear = new Date().getFullYear();
+    return purchaseDate.getFullYear() === currentYear;
+  });
+
   useEffect(() => {
     if (monthlySalesData) {
       const total = monthlySalesData.reduce(
@@ -225,6 +243,26 @@ export default function DashboardPage() {
       setYearlySales(total);
     }
   }, [yearlySalesData]);
+
+  useEffect(() => {
+    if (monthlyPurchasesData) {
+      const total = monthlyPurchasesData.reduce(
+        (sum, purchase) => sum + (purchase.amount || 0),
+        0
+      );
+      setMonthlyPurchases(total);
+    }
+  }, [monthlyPurchasesData]);
+
+  useEffect(() => {
+    if (yearlyPurchasesData) {
+      const total = yearlyPurchasesData.reduce(
+        (sum, purchase) => sum + (purchase.amount || 0),
+        0
+      );
+      setYearlyPurchases(total);
+    }
+  }, [yearlyPurchasesData]);
 
   const handleCreateEvent = async () => {
     if (!newEvent.title || !newEvent.time) return;
@@ -331,6 +369,34 @@ export default function DashboardPage() {
             transform-origin: center;
           }
         `}</style>
+ <Card
+          className="cursor-pointer hover:bg-slate-50 transition-all hover:shadow-md"
+          onClick={() => setShowYearlyPurchases(!showYearlyPurchases)}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div className="flex flex-col">
+              <CardTitle className="text-sm font-medium">
+                {showYearlyPurchases ? "Compras del Año" : "Compras del Mes"}
+              </CardTitle>
+            </div>
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {purchasesStatus === 'loading' ? (
+              <Skeleton className="h-8 w-32" />
+            ) : (
+              <div
+                key={showYearlyPurchases ? 'yearly-purchases' : 'monthly-purchases'}
+                className="text-2xl font-bold animate-flip"
+                style={{
+                  animation: 'flipIn 0.8s ease-in-out'
+                }}
+              >
+                {formatearPrecio(showYearlyPurchases ? yearlyPurchases : monthlyPurchases)}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Link href="/publimar/banderas/ordenes">
           <Card className="cursor-pointer hover:bg-slate-50 transition-colors">
@@ -399,116 +465,11 @@ export default function DashboardPage() {
           </DialogContent>
         </Dialog>
 
-        <Dialog>
-          <DialogTrigger asChild>
-            <Card className="cursor-pointer hover:bg-slate-50 transition-colors">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Nuevos Clientes</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                {recentClientsStatus === 'loading' ? (
-                  <Skeleton className="h-8 w-12" />
-                ) : (
-                  <div className="text-2xl font-bold">{recentClients?.length || 0}</div>
-                )}
-              </CardContent>
-            </Card>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>Últimos Clientes Registrados</DialogTitle>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    {/* <TableHead>Email</TableHead> */}
-                    <TableHead>Teléfono</TableHead>
-                    <TableHead className="text-right">Acción</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentClients?.map((client: any) => (
-                    <TableRow key={client.id}>
-                      <TableCell>{client.name}</TableCell>
-                      {/* <TableCell>{client.email}</TableCell> */}
-                      <TableCell>{client.phone}</TableCell>
-                      <TableCell className="text-right">
-                        <Link href={`/publimar/banderas/clientes/${client.id}`}>
-                          <Button variant="outline" size="sm">
-                            Ver
-                          </Button>
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
 
       {/* Contenido principal */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Calendario */}
-        {/* <Card >
-          <CardHeader>
-            <CardTitle>Calendario</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={setSelectedDate}
-              className="rounded-md border"
-            />
-            <div className="mt-4">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">
-                  Eventos del {formatDate(selectedDate)}
-                </h3>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => setShowEventModal(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="space-y-2">
-                {sortedEvents?.filter(
-                  (event) => formatDate(event.date) === formatDate(selectedDate)
-                ).map((event) => (
-                  <div
-                    key={event.id}
-                    className="p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-medium">{event.title}</h4>
-                        <p className="text-sm text-slate-500">
-                          {new Date(event.date).toLocaleTimeString("es-AR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                    {event.description && (
-                      <p className="text-sm text-slate-600 mt-1">
-                        {event.description}
-                      </p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card> */}
-
+    
         {/* Presupuestos por vencer y últimas OT */}
         <div className="lg:col-span-2 space-y-6">
         <Card>
@@ -620,7 +581,7 @@ export default function DashboardPage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Presupuestos por Vencer</CardTitle>
+              <CardTitle>Últimos Presupuestos</CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
@@ -678,79 +639,12 @@ export default function DashboardPage() {
           
         </div>
       </div>
-
-      {/* Modal de nuevo evento */}
-      {/* <Dialog open={showEventModal} onOpenChange={setShowEventModal}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Nuevo Evento</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="title">Título</Label>
-              <Input
-                id="title"
-                value={newEvent.title}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, title: e.target.value })
-                }
-                placeholder="Título del evento"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="time">Hora</Label>
-              <Input
-                id="time"
-                type="time"
-                value={newEvent.time}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, time: e.target.value })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="description">Descripción</Label>
-              <Textarea
-                id="description"
-                value={newEvent.description}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  setNewEvent({ ...newEvent, description: e.target.value })
-                }
-                placeholder="Descripción del evento (opcional)"
-                className="h-20"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowEventModal(false)}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleCreateEvent}
-              disabled={!newEvent.title || !newEvent.time}
-            >
-              Crear Evento
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog> */}
-
       {/* Modal de detalles de presupuesto */}
       <QuoteDetailsModal
         isOpen={showQuoteModal}
         onClose={handleCloseQuoteModal}
         quoteId={selectedQuoteId}
       />
-
-      {/* Modal de detalles de orden */}
-      {/* <OrderDetailsModal
-        isOpen={showOrderModal}
-        onClose={handleCloseOrderModal}
-        orderId={selectedOrderId}
-      /> */}
     </div>
   );
 }
