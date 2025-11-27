@@ -52,6 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatearPrecio, redondearTotal } from "@/lib/utils";
+import { useClients } from "@/hooks/useClients";
 
 // Tipo para los items del presupuesto
 type QuoteItem = {
@@ -119,6 +120,14 @@ export default function NuevoPresupuestoPage() {
 
   const firestore = useFirestore();
   const { data: user } = useUser();
+
+  // Hook para clientes
+  const { createClient } = useClients();
+
+  // Estados para crear cliente nuevo
+  const [showCreateClientDialog, setShowCreateClientDialog] = useState(false);
+  const [pendingQuoteData, setPendingQuoteData] = useState<any>(null);
+  const [creatingClient, setCreatingClient] = useState(false);
 
   // Fetch clients
   const clientsCollection = collection(firestore, collections.CLIENTS);
@@ -342,6 +351,240 @@ export default function NuevoPresupuestoPage() {
     toast.success("Item manual agregado");
   };
 
+  // Función auxiliar para limpiar datos (eliminar undefined)
+  const cleanData = (obj: any): any => {
+    if (obj === null || obj === undefined) return null;
+    if (Array.isArray(obj)) return obj.map(cleanData);
+    if (typeof obj === "object") {
+      const cleaned: any = {};
+      for (const key in obj) {
+        if (obj[key] !== undefined) {
+          cleaned[key] = cleanData(obj[key]);
+        }
+      }
+      return cleaned;
+    }
+    return obj;
+  };
+
+  // Función para crear un nuevo cliente en la BD
+  const handleCreateNewClient = async () => {
+    if (!pendingQuoteData) return;
+
+    setCreatingClient(true);
+    try {
+      const clientData = {
+        name: pendingQuoteData.clienteInput,
+        type: EClientType.INDIVIDUAL,
+        status: EClientStatus.ACTIVE,
+        email: pendingQuoteData.email || undefined,
+        phone: pendingQuoteData.telefono || undefined,
+        address: pendingQuoteData.direccion || undefined,
+        cuit: pendingQuoteData.cuit || undefined,
+        contacts:
+          pendingQuoteData.contactoNombre ||
+          pendingQuoteData.contactoEmail ||
+          pendingQuoteData.contactoTelefono
+            ? [
+                {
+                  name:
+                    pendingQuoteData.contactoNombre ||
+                    pendingQuoteData.personaContacto ||
+                    undefined,
+                  email: pendingQuoteData.contactoEmail || undefined,
+                  phone: pendingQuoteData.contactoTelefono || undefined,
+                  position: pendingQuoteData.contactoPosicion || undefined,
+                },
+              ]
+            : undefined,
+      };
+
+      const cleanClientData = cleanData(clientData);
+      const newClientId = await createClient(cleanClientData);
+
+      toast.success(`Cliente "${pendingQuoteData.clienteInput}" creado exitosamente`);
+
+      // Actualizar selectedClient con el ID nuevo
+      setSelectedClient({
+        ...cleanClientData,
+        id: newClientId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as TClient);
+
+      // Cerrar dialog y continuar con el presupuesto
+      setShowCreateClientDialog(false);
+      await proceedWithQuoteCreation({ ...pendingQuoteData, clientId: newClientId });
+    } catch (error) {
+      console.error("Error al crear cliente:", error);
+      toast.error("Error al crear el cliente");
+    } finally {
+      setCreatingClient(false);
+    }
+  };
+
+  // Función para crear presupuesto con cliente temporal (sin guardar cliente en BD)
+  const handleCreateQuoteWithTemporaryClient = async () => {
+    if (!pendingQuoteData) return;
+
+    setCreatingClient(true);
+    setShowCreateClientDialog(false);
+
+    try {
+      await proceedWithQuoteCreation({ ...pendingQuoteData, clientId: null });
+      toast.success("Presupuesto creado exitosamente (cliente no guardado en BD)");
+    } catch (error) {
+      console.error("Error al crear presupuesto:", error);
+      toast.error("Error al crear el presupuesto");
+    } finally {
+      setCreatingClient(false);
+    }
+  };
+
+  // Función auxiliar para proceder con la creación del presupuesto
+  const proceedWithQuoteCreation = async (data: any) => {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+
+      // Generate quote number
+      const quoteNumber = `P-${new Date().getFullYear()}-${Math.floor(
+        1000 + Math.random() * 9000
+      )}`;
+
+      // Sanitize items
+      const sanitizedItems = data.items.map((item: QuoteItem) => ({
+        id: item.id,
+        product: {
+          id: item.product.id,
+          name: item.product.name,
+          description: item.product.description || "",
+          categories: item.product.categories || [],
+          imageUrls: item.product.imageUrls || [],
+          hasVariants: item.product.hasVariants || false,
+          price: item.product.price || 0,
+          taxRate: item.product.taxRate || 21,
+        },
+        variant: item.variant
+          ? {
+              id: item.variant.id,
+              size: item.variant.size,
+              price: item.variant.price,
+            }
+          : null,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discount: item.discount || 0,
+        subtotal: item.subtotal,
+        notes: item.notes || "",
+      }));
+
+      // Calcular totales
+      const subtotal = sanitizedItems.reduce((sum: number, item: any) => sum + item.subtotal, 0);
+      const applyIVATax = data.applyIVA || false;
+      const taxRate = applyIVATax ? 21 : 0;
+      const subtotalSinIVA = subtotal / 1.21;
+      const taxAmount = applyIVATax ? subtotal - subtotalSinIVA : 0;
+      const total = subtotal;
+
+      // Client data
+      const clientData = data.clientId
+        ? {
+            id: data.clientId,
+            name: data.clienteInput,
+            type: EClientType.INDIVIDUAL,
+            status: EClientStatus.ACTIVE,
+            email: data.email || "",
+            phone: data.telefono || "",
+            address: data.direccion || "",
+            taxId: data.cuit || "",
+            notes: "",
+            contacts:
+              data.contactoNombre || data.contactoEmail || data.contactoTelefono
+                ? [
+                    {
+                      name: data.contactoNombre || data.personaContacto || "",
+                      email: data.contactoEmail || "",
+                      phone: data.contactoTelefono || "",
+                      position: data.contactoPosicion || "",
+                    },
+                  ]
+                : [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }
+        : {
+            id: "",
+            name: data.clienteInput,
+            type: EClientType.INDIVIDUAL,
+            status: EClientStatus.ACTIVE,
+            email: data.email || "",
+            phone: data.telefono || "",
+            address: data.direccion || "",
+            taxId: data.cuit || "",
+            notes: "",
+            contacts:
+              data.contactoNombre || data.contactoEmail || data.contactoTelefono
+                ? [
+                    {
+                      name: data.contactoNombre || data.personaContacto || "",
+                      email: data.contactoEmail || "",
+                      phone: data.contactoTelefono || "",
+                      position: data.contactoPosicion || "",
+                    },
+                  ]
+                : [],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+
+      // Obtener fecha de validez (30 días desde hoy por defecto)
+      const validUntil = new Date();
+      validUntil.setDate(validUntil.getDate() + 30);
+
+      const quoteData = {
+        number: quoteNumber,
+        client: clientData,
+        status: EQuoteStatus.DRAFT,
+        items: sanitizedItems,
+        subtotal: redondearTotal(applyIVATax ? subtotalSinIVA : subtotal),
+        taxRate: taxRate,
+        taxAmount: redondearTotal(taxAmount),
+        total: redondearTotal(total),
+        applyIVA: applyIVATax,
+        discountPercentage: data.discountPercentage || 0,
+        manualDiscount: data.manualDiscount || 0,
+        validUntil: validUntil,
+        notes: "",
+        comments: [],
+        publicUrl:
+          typeof window !== "undefined"
+            ? `${window.location.origin}/presupuestos/${quoteNumber}`
+            : `https://${
+                process.env.NEXT_PUBLIC_VERCEL_URL || "publimartools.vercel.app"
+              }/presupuestos/${quoteNumber}`,
+        createdBy: doc(firestore, `users/${user.uid}`),
+        updatedBy: doc(firestore, `users/${user.uid}`),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        tax: redondearTotal(taxAmount),
+      };
+
+      const quotesCollection = collection(firestore, collections.QUOTES);
+      await addDoc(quotesCollection, quoteData);
+
+      toast.success("Presupuesto creado exitosamente");
+      router.push("/publimar/banderas/presupuestos");
+    } catch (error) {
+      console.error("Error al crear presupuesto:", error);
+      toast.error("Error al crear el presupuesto");
+    } finally {
+      setLoading(false);
+      setPendingQuoteData(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -354,7 +597,37 @@ export default function NuevoPresupuestoPage() {
       return;
     }
     setLoading(true);
+
     try {
+      // Verificar si el cliente existe en la DB
+      const existingClient = clients?.find(
+        (c: any) => c.name?.toLowerCase() === clienteInput.trim().toLowerCase()
+      );
+
+      // Si el cliente no existe y no hay un selectedClient, preguntar si crear nuevo
+      if (!existingClient && !selectedClient && clienteInput.trim()) {
+        setLoading(false); // Parar el loading para mostrar el dialog
+        // Guardar los datos del presupuesto para usar después
+        const quoteDataTemp = {
+          clienteInput: clienteInput.trim(),
+          email,
+          telefono,
+          direccion,
+          cuit,
+          contactoNombre,
+          contactoEmail,
+          contactoTelefono,
+          contactoPosicion,
+          personaContacto,
+          items,
+          applyIVA,
+          discountPercentage,
+          manualDiscount,
+        };
+        setPendingQuoteData(quoteDataTemp);
+        setShowCreateClientDialog(true);
+        return; // Salir y esperar respuesta del usuario
+      }
       // Generate quote number (formato: Q-YYYY-XXXX)
       const quoteNumber = `P-${new Date().getFullYear()}-${Math.floor(
         1000 + Math.random() * 9000
@@ -980,12 +1253,12 @@ export default function NuevoPresupuestoPage() {
                     <Plus className="mr-2 h-4 w-4" /> Agregar producto
                   </Button>
                 </DialogTrigger>
-              <DialogContent className="sm:max-w-[700px]">
+              <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>
                     {editingItemId
                       ? "Editar producto"
-                      : "Agregar producto al presupuesto"}
+                      : "Agregar producto al presupuesto "}
                   </DialogTitle>
                 </DialogHeader>
                 <div className="py-4">
@@ -1441,7 +1714,7 @@ export default function NuevoPresupuestoPage() {
             <div className="flex gap-2">
               <Button
                 type="submit"
-                disabled={loading || !selectedClient}
+                disabled={loading || (!selectedClient && !clienteInput.trim())}
                 variant="default"
                 className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
               >
@@ -1451,6 +1724,75 @@ export default function NuevoPresupuestoPage() {
           </CardFooter>
         </Card>
       </form>
+
+      {/* Dialog para crear cliente nuevo */}
+      <Dialog open={showCreateClientDialog} onOpenChange={setShowCreateClientDialog}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Cliente no encontrado</DialogTitle>
+            <div className="text-sm text-muted-foreground">
+              El cliente "<strong>{clienteInput}</strong>" no existe en la base de datos.
+              <br />¿Qué deseas hacer?
+            </div>
+          </DialogHeader>
+
+          <div className="py-4">
+            <div className="space-y-3">
+              <div className="rounded-lg border p-3">
+                <h4 className="font-medium text-sm mb-1">Opción 1: Solo este presupuesto</h4>
+                <p className="text-xs text-muted-foreground">
+                  No guardar el cliente en la BD. Solo existirá en este presupuesto.
+                </p>
+              </div>
+
+              <div className="rounded-lg border p-3 bg-green-50/50">
+                <h4 className="font-medium text-sm mb-1">Opción 2: Guardar como nuevo cliente</h4>
+                <p className="text-xs text-muted-foreground">
+                  Crear el cliente en la BD para reutilizarlo en futuros presupuestos.
+                </p>
+                {(email || telefono || direccion || cuit) && (
+                  <div className="mt-2 text-xs text-muted-foreground space-y-0.5">
+                    <p className="font-medium">Se guardará con:</p>
+                    {email && <p>• Email: {email}</p>}
+                    {telefono && <p>• Tel: {telefono}</p>}
+                    {direccion && <p>• Dir: {direccion}</p>}
+                    {cuit && <p>• CUIT: {cuit}</p>}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCreateClientDialog(false);
+                setPendingQuoteData(null);
+                setLoading(false);
+              }}
+              disabled={creatingClient}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCreateQuoteWithTemporaryClient}
+              disabled={creatingClient}
+              className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
+            >
+              {creatingClient ? "Creando..." : "Solo este presupuesto"}
+            </Button>
+            <Button
+              onClick={handleCreateNewClient}
+              disabled={creatingClient}
+              className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
+            >
+              {creatingClient ? "Creando..." : "Guardar como nuevo cliente"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
