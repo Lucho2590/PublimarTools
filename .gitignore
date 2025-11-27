@@ -40,3 +40,4 @@ functions/node_modules/
 
 # scripts con credenciales
 update-sales-counters.js
+firebase-service-account.json

@@ -667,7 +667,9 @@ export function SaleDetailsModal({
       // Fecha editada
       if (editedDate) {
         // Convertir la fecha del input (YYYY-MM-DD) a timestamp de Firebase
-        const dateObj = new Date(editedDate);
+        // Usar la fecha local al mediodía para evitar problemas de zona horaria
+        const [year, month, day] = editedDate.split('-').map(Number);
+        const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
         updateData.createdAt = Timestamp.fromDate(dateObj) as unknown as Date;
         updateData.updatedAt = serverTimestamp() as unknown as Date;
       }
@@ -874,55 +876,6 @@ export function SaleDetailsModal({
 
           <div className="flex-1 overflow-y-auto pr-2">
             <div className="grid gap-6 py-4">
-              {/* Información del Cliente
-            {clientName && (
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <h3 className="font-semibold mb-4 text-blue-900">Cliente</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p>
-                      <span className="font-medium">Nombre:</span> {clientName}
-                    </p>
-                  </div>
-                  {contactName && (
-                    <div>
-                      <p>
-                        <span className="font-medium">Contacto:</span> {contactName}
-                      </p>
-                    </div>
-                  )}
-                  {clientAddress && (
-                    <div>
-                      <p>
-                        <span className="font-medium">Dirección:</span> {clientAddress}
-                      </p>
-                    </div>
-                  )}
-                  {clientEmail && (
-                    <div>
-                      <p>
-                        <span className="font-medium">Email:</span> {clientEmail}
-                      </p>
-                    </div>
-                  )}
-                  {clientPhone && (
-                    <div>
-                      <p>
-                        <span className="font-medium">Teléfono:</span> {clientPhone}
-                      </p>
-                    </div>
-                  )}
-                  {clientCuit && (
-                    <div>
-                      <p>
-                        <span className="font-medium">CUIT:</span> {clientCuit}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )} */}
-
               <div className="bg-slate-50 p-4 rounded-lg">
                 <h3 className="font-semibold mb-4">Información General</h3>
                 <div className="grid grid-cols-2 gap-4">
