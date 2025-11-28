@@ -2,12 +2,46 @@
 
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { DayPicker } from "react-day-picker"
+import { DayPicker, CaptionProps, useNavigation } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>
+
+function CustomCaption(props: CaptionProps) {
+  const { goToMonth, nextMonth, previousMonth } = useNavigation()
+
+  return (
+    <div className="flex items-center justify-between w-full px-2 pt-1 mb-2">
+      <Button
+        variant="ghost"
+        className="h-7 w-7 bg-transparent p-0 opacity-70 hover:opacity-100"
+        onClick={() => previousMonth && goToMonth(previousMonth)}
+        disabled={!previousMonth}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+
+      <div className="text-sm font-medium">
+        {props.displayMonth.toLocaleDateString(props.locale, {
+          month: 'long',
+          year: 'numeric'
+        })}
+      </div>
+
+      <Button
+        variant="ghost"
+        className="h-7 w-7 bg-transparent p-0 opacity-70 hover:opacity-100"
+        onClick={() => nextMonth && goToMonth(nextMonth)}
+        disabled={!nextMonth}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
 
 function Calendar({
   className,
@@ -20,17 +54,9 @@ function Calendar({
       showOutsideDays={showOutsideDays}
       className={cn("p-2", className)}
       classNames={{
-        months: "flex sm:flex-row space-y-2 sm:space-x-2 sm:space-y-0 ",
-        month: "space-y-400",
-        caption: "flex justify-center pt-1 relative items-center",
-        caption_label: "text-sm font-medium",
-        nav: "flex items-center gap-1",
-        nav_button: cn(
-          buttonVariants({ variant: "outline" }),
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
-        ),
-        nav_button_previous: "absolute left-1",
-        nav_button_next: "absolute right-1",
+        months: "flex sm:flex-row space-y-2 sm:space-x-2 sm:space-y-0",
+        month: "space-y-4",
+        caption: "",
         table: "w-full border-collapse ",
         head_row: "grid grid-cols-7",
         head_cell:
@@ -54,8 +80,7 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
-        IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
+        Caption: CustomCaption,
       }}
       {...props}
     />
