@@ -80,7 +80,7 @@ export default function ComprasPage() {
   // Estados para filtros
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [selectedProvider, setSelectedProvider] = useState<string>("all");
-  const [selectedDepartment, setSelectedDepartment] = useState<string>(EPurchaseDepartment.BANDERAS);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>(EPurchaseDepartment.VIA_PUBLICA);
 
   // Obtener proveedores para el select
   const providersCollection = collection(firestore, "providers");
@@ -262,7 +262,7 @@ export default function ComprasPage() {
     setSearchTerm("");
     setDateRange(undefined);
     setSelectedProvider("all");
-    setSelectedDepartment(EPurchaseDepartment.BANDERAS);
+    setSelectedDepartment(EPurchaseDepartment.VIA_PUBLICA);
     setCurrentPage(1);
   };
 
