@@ -10,7 +10,6 @@ import {
   orderBy,
   limit,
   Timestamp,
-  addDoc,
 } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,7 +31,8 @@ import { EOrderStatus } from "@/types/order";
 import { EPurchaseDepartment } from "@/types/purchase";
 // import { TEvent } from "@/types/event";
 import { formatDate, formatearPrecio, generateSlug } from "@/lib/utils";
-import { useAuth } from "reactfire";
+import { useAuth as useFirebaseAuth } from "reactfire";
+import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
 import {
   Eye,
@@ -63,28 +63,20 @@ import collections from "@/lib/collections";
 import { toast } from "sonner";
 // import { Textarea } from "@/components/ui/textarea";
 import QuoteDetailsModal from "./presupuestos/modalPresupuestos/quoteDetailsModal";
+import CalendarAgenda from "@/components/calendar/CalendarAgenda";
+import { EUserRole } from "@/types/user";
 // import OrderDetailsModal from "./ordenes/modalOrdenes/orderDetailsModal"; // Comentado temporalmente
 
 export default function DashboardPage() {
   const firestore = useFirestore();
-  const user = useAuth();
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(
-    new Date()
-  );
+  const firebaseUser = useFirebaseAuth();
+  const { userData, userRole } = useAuth();
   const [monthlySales, setMonthlySales] = useState<number>(0);
   const [yearlySales, setYearlySales] = useState<number>(0);
   const [showYearlySales, setShowYearlySales] = useState<boolean>(false);
   const [monthlyPurchases, setMonthlyPurchases] = useState<number>(0);
   const [yearlyPurchases, setYearlyPurchases] = useState<number>(0);
   const [showYearlyPurchases, setShowYearlyPurchases] = useState<boolean>(false);
-//   const [loading, setLoading] = useState(true);
-  const [sortedEvents, setSortedEvents] = useState<any[]>([]);
-  const [showEventModal, setShowEventModal] = useState(false);
-  const [newEvent, setNewEvent] = useState({
-    title: "",
-    description: "",
-    time: "",
-  });
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
@@ -151,27 +143,20 @@ export default function DashboardPage() {
     idField: "id",
   });
 
-  // Consulta eventos del calendario
+  // Consulta eventos del calendario - Admin y Administración ven todos, otros solo los suyos
   const eventsCollection = collection(firestore, collections.EVENTS);
-  const eventsQuery = query(
-    eventsCollection,
-    where("createdBy", "==", user.currentUser?.uid || "")
-  );
+  const canViewAllEvents = userRole === EUserRole.ADMIN || userRole === EUserRole.ADMINISTRACION;
+
+  const eventsQuery = canViewAllEvents
+    ? query(eventsCollection)
+    : query(
+        eventsCollection,
+        where("createdBy", "==", firebaseUser.currentUser?.uid || "")
+      );
+
   const { data: events } = useFirestoreCollectionData(eventsQuery, {
     idField: "id",
   });
-
-  // Ordenamos los eventos en el cliente
-  useEffect(() => {
-    if (events) {
-      const newSortedEvents = events.sort((a, b) => {
-        const dateA = a.date instanceof Date ? a.date : new Date(a.date);
-        const dateB = b.date instanceof Date ? b.date : new Date(b.date);
-        return dateA.getTime() - dateB.getTime();
-      });
-      setSortedEvents(newSortedEvents);
-    }
-  }, [events]);
 
   // Calcular ventas del mes
   const startOfMonth = new Date();
@@ -263,31 +248,6 @@ export default function DashboardPage() {
       setYearlyPurchases(total);
     }
   }, [yearlyPurchasesData]);
-
-  const handleCreateEvent = async () => {
-    if (!newEvent.title || !newEvent.time) return;
-
-    try {
-      const eventDate = new Date(selectedDate || new Date());
-      const [hours, minutes] = newEvent.time.split(":");
-      eventDate.setHours(parseInt(hours), parseInt(minutes));
-
-      await addDoc(collection(firestore, collections.EVENTS), {
-        title: newEvent.title,
-        description: newEvent.description,
-        date: eventDate,
-        createdBy: user.currentUser?.uid,
-        createdAt: new Date(),
-      });
-
-      setNewEvent({ title: "", description: "", time: "" });
-      setShowEventModal(false);
-      toast.success("Evento creado correctamente");
-    } catch (error) {
-      console.error("Error al crear evento:", error);
-      toast.error("Error al crear el evento");
-    }
-  };
 
   const handleViewQuote = (quoteId: string) => {
     setSelectedQuoteId(quoteId);
@@ -469,7 +429,7 @@ export default function DashboardPage() {
 
       {/* Contenido principal */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    
+
         {/* Presupuestos por vencer y últimas OT */}
         <div className="lg:col-span-2 space-y-6">
         <Card>
@@ -635,10 +595,18 @@ export default function DashboardPage() {
               </Table>
             </CardContent>
           </Card>
+        </div>
 
-          
+        {/* Columna derecha: Calendario/Agenda */}
+        <div className="lg:col-span-1">
+          <CalendarAgenda
+            events={events || []}
+            currentUserId={firebaseUser.currentUser?.uid || ""}
+            canViewAllEvents={canViewAllEvents}
+          />
         </div>
       </div>
+
       {/* Modal de detalles de presupuesto */}
       <QuoteDetailsModal
         isOpen={showQuoteModal}

@@ -5,4 +5,5 @@ export type TEvent = {
   date: Date;
   createdBy: string;
   createdAt: Date;
+  createdByName?: string; // Opcional para mostrar el nombre del creador
 }; 
