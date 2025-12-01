@@ -22,6 +22,7 @@ const collections = {
   USERS: "users",
   EVENTS: "events",
   LOCATIONS: "locations",
+  NOTES: "notes",
 } as const;
 
 export default collections;

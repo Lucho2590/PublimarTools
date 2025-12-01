@@ -16,8 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Clock, Trash2, Edit2, Calendar as CalendarIcon, User } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-import { TEvent } from "@/types/event";
-import { addDoc, collection, deleteDoc, doc, updateDoc, getDoc } from "firebase/firestore";
+import { TEvent, EEventSection } from "@/types/event";
+import { addDoc, collection, deleteDoc, doc, updateDoc, getDoc, Timestamp } from "firebase/firestore";
 import { useFirestore } from "reactfire";
 import collections from "@/lib/collections";
 import { toast } from "sonner";
@@ -26,12 +26,12 @@ import { es } from "date-fns/locale";
 interface CalendarAgendaProps {
   events: TEvent[];
   currentUserId: string;
-  canViewAllEvents?: boolean;
+  currentUserName: string;
+  section: EEventSection;
 }
 
-export default function CalendarAgenda({ events, currentUserId, canViewAllEvents = false }: CalendarAgendaProps) {
+export default function CalendarAgenda({ events, currentUserId, currentUserName, section }: CalendarAgendaProps) {
   const firestore = useFirestore();
-  const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [showEventModal, setShowEventModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<TEvent | null>(null);
@@ -40,32 +40,6 @@ export default function CalendarAgenda({ events, currentUserId, canViewAllEvents
     description: "",
     time: "",
   });
-
-  // Cargar nombres de usuarios si es admin/administración
-  useEffect(() => {
-    if (!canViewAllEvents || !events) return;
-
-    const loadUserNames = async () => {
-      const names: Record<string, string> = {};
-      const uniqueUserIds = [...new Set(events.map(e => e.createdBy))];
-
-      for (const userId of uniqueUserIds) {
-        if (names[userId]) continue;
-        try {
-          const userDoc = await getDoc(doc(firestore, collections.USERS, userId));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            names[userId] = userData.displayName || userData.email || 'Usuario desconocido';
-          }
-        } catch (error) {
-          console.error('Error al obtener usuario:', error);
-        }
-      }
-      setUserNames(names);
-    };
-
-    loadUserNames();
-  }, [events, canViewAllEvents, firestore]);
 
   // Filtrar eventos del día seleccionado
   const eventsForSelectedDate = events?.filter((event) => {
@@ -103,7 +77,9 @@ export default function CalendarAgenda({ events, currentUserId, canViewAllEvents
         title: newEvent.title,
         description: newEvent.description || "",
         date: eventDate,
+        section: section,
         createdBy: currentUserId,
+        createdByName: currentUserName,
         createdAt: new Date(),
       });
 
@@ -251,11 +227,11 @@ export default function CalendarAgenda({ events, currentUserId, canViewAllEvents
                             {event.description}
                           </p>
                         )}
-                        {canViewAllEvents && userNames[event.createdBy] && (
+                        {event.createdByName && (
                           <div className="flex items-center gap-1 mt-1">
                             <User className="h-3 w-3 text-slate-500 flex-shrink-0" />
                             <span className="text-xs text-slate-500 italic">
-                              {userNames[event.createdBy]}
+                              {event.createdByName}
                             </span>
                           </div>
                         )}

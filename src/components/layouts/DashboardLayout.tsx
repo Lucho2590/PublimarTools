@@ -40,7 +40,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
     setExpandedItems((prev) =>
       prev.includes(itemName)
         ? prev.filter((name) => name !== itemName)
-        : [...prev, itemName]
+        : [itemName] // Solo permite un item expandido a la vez
     );
   };
 
@@ -246,6 +246,63 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
             ),
           },
           {
+            name: "Clientes",
+            href: "/publimar/viaPublica/clientes",
+            icon: (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+              </svg>
+            ),
+          },
+          {
+            name: "Presupuestos",
+            href: "/publimar/viaPublica/presupuestos",
+            icon: (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            ),
+          },
+          {
+            name: "Exhibiciones",
+            href: "/publimar/viaPublica/exhibiciones",
+            icon: (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+                stroke="currentColor"
+                className="size-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                />
+              </svg>
+            ),
+          },
+          {
             name: "Compras",
             href: "/publimar/viaPublica/compras",
             icon: (
@@ -266,8 +323,8 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
             ),
           },
           {
-            name: "Salidas",
-            href: "/publimar/viaPublica/salidas",
+            name: "Partes Diarios",
+            href: "/publimar/viaPublica/partesDiarios",
             icon: (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -280,7 +337,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9"
+                  d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5m-9-6h.008v.008H12v-.008ZM12 15h.008v.008H12V15Zm0 2.25h.008v.008H12v-.008ZM9.75 15h.008v.008H9.75V15Zm0 2.25h.008v.008H9.75v-.008ZM7.5 15h.008v.008H7.5V15Zm0 2.25h.008v.008H7.5v-.008Zm6.75-4.5h.008v.008h-.008v-.008Zm0 2.25h.008v.008h-.008V15Zm0 2.25h.008v.008h-.008v-.008Zm2.25-4.5h.008v.008H16.5v-.008Zm0 2.25h.008v.008H16.5V15Z"
                 />
               </svg>
             ),
@@ -411,7 +468,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                         }`}
                       >
                         {item.icon}
-                        {isSidebarOpen && <span className="ml-3">{item.name}</span>}
+                        {isSidebarOpen && <span className="ml-3 font-bold text-base">{item.name}</span>}
                       </Link>
                       {isSidebarOpen && (
                         <button
@@ -467,7 +524,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                     }`}
                   >
                     {item.icon}
-                    {isSidebarOpen && <span className="ml-3">{item.name}</span>}
+                    {isSidebarOpen && <span className="ml-3 font-bold text-base">{item.name}</span>}
                   </Link>
                 )}
               </li>

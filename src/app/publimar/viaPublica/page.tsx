@@ -29,6 +29,7 @@ import { EQuoteStatus, TQuote } from "@/types/quote";
 // import { TProduct } from "@/types/product";
 import { EOrderStatus } from "@/types/order";
 import { EPurchaseDepartment } from "@/types/purchase";
+import { ESaleDepartment } from "@/types/sale";
 // import { TEvent } from "@/types/event";
 import { formatDate, formatearPrecio, generateSlug } from "@/lib/utils";
 import { useAuth as useFirebaseAuth } from "reactfire";
@@ -64,6 +65,9 @@ import { toast } from "sonner";
 // import { Textarea } from "@/components/ui/textarea";
 import CalendarAgenda from "@/components/calendar/CalendarAgenda";
 import { EUserRole } from "@/types/user";
+import UserNotes from "@/components/notes/UserNotes";
+import { ENoteSection } from "@/types/note";
+import { EEventSection } from "@/types/event";
 // import QuoteDetailsModal from "./presupuestos/modalPresupuestos/quoteDetailsModal"; // No disponible para Vía Pública
 // import OrderDetailsModal from "./ordenes/modalOrdenes/orderDetailsModal"; // No disponible para Vía Pública
 
@@ -143,20 +147,17 @@ export default function DashboardPage() {
     idField: "id",
   });
 
-  // Consulta eventos del calendario - Admin y Administración ven todos, otros solo los suyos
+  // Consulta eventos del calendario - Traer eventos de Vía Pública
   const eventsCollection = collection(firestore, collections.EVENTS);
-  const canViewAllEvents = userRole === EUserRole.ADMIN || userRole === EUserRole.ADMINISTRACION;
+  const { data: allEvents } = useFirestoreCollectionData(
+    query(eventsCollection),
+    { idField: "id" }
+  );
 
-  const eventsQuery = canViewAllEvents
-    ? query(eventsCollection)
-    : query(
-        eventsCollection,
-        where("createdBy", "==", firebaseUser.currentUser?.uid || "")
-      );
-
-  const { data: events } = useFirestoreCollectionData(eventsQuery, {
-    idField: "id",
-  });
+  // Filtrar eventos de Vía Pública del lado del cliente
+  const events = allEvents?.filter((event: any) =>
+    event.section === EEventSection.VIA_PUBLICA
+  );
 
   // Calcular ventas del mes
   const startOfMonth = new Date();
@@ -171,14 +172,16 @@ export default function DashboardPage() {
   const salesCollection = collection(firestore, collections.SALES);
   const monthlySalesQuery = query(
     salesCollection,
-    where("createdAt", ">=", Timestamp.fromDate(startOfMonth))
+    where("createdAt", ">=", Timestamp.fromDate(startOfMonth)),
+    where("department", "==", ESaleDepartment.VIA_PUBLICA)
   );
   const { data: monthlySalesData, status: monthlySalesStatus } =
     useFirestoreCollectionData(monthlySalesQuery);
 
   const yearlySalesQuery = query(
     salesCollection,
-    where("createdAt", ">=", Timestamp.fromDate(startOfYear))
+    where("createdAt", ">=", Timestamp.fromDate(startOfYear)),
+    where("department", "==", ESaleDepartment.VIA_PUBLICA)
   );
   const { data: yearlySalesData, status: yearlySalesStatus } =
     useFirestoreCollectionData(yearlySalesQuery);
@@ -275,11 +278,69 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Vía Pública</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Vía Pública</h1>
+        {firebaseUser.currentUser?.uid && userData && (
+          <UserNotes
+            userId={firebaseUser.currentUser.uid}
+            userName={userData.displayName || firebaseUser.currentUser.email || "Usuario"}
+            section={ENoteSection.VIA_PUBLICA}
+          />
+        )}
+      </div>
 
       {/* Resumen de métricas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Compras */}
+        {/* Card 1: Ventas (Facturación) */}
+        <Card
+          className="cursor-pointer hover:bg-slate-50 transition-all hover:shadow-md"
+          onClick={() => setShowYearlySales(!showYearlySales)}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div className="flex flex-col">
+              <CardTitle className="text-sm font-medium">
+                {showYearlySales ? "Facturación del Año" : "Facturación del Mes"}
+              </CardTitle>
+            </div>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {monthlySalesStatus === 'loading' || yearlySalesStatus === 'loading' ? (
+              <Skeleton className="h-8 w-32" />
+            ) : (
+              <div
+                key={showYearlySales ? 'yearly' : 'monthly'}
+                className="text-2xl font-bold animate-flip"
+                style={{
+                  animation: 'flipIn 0.8s ease-in-out'
+                }}
+              >
+                {formatearPrecio(showYearlySales ? yearlySales : monthlySales)}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <style jsx>{`
+          @keyframes flipIn {
+            0% {
+              transform: rotateX(90deg);
+              opacity: 0;
+            }
+            50% {
+              transform: rotateX(-10deg);
+            }
+            100% {
+              transform: rotateX(0deg);
+              opacity: 1;
+            }
+          }
+          .animate-flip {
+            transform-origin: center;
+          }
+        `}</style>
+
+        {/* Card 2: Compras */}
         <Card
           className="cursor-pointer hover:bg-slate-50 transition-all hover:shadow-md"
           onClick={() => setShowYearlyPurchases(!showYearlyPurchases)}
@@ -309,29 +370,10 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <style jsx>{`
-          @keyframes flipIn {
-            0% {
-              transform: rotateX(90deg);
-              opacity: 0;
-            }
-            50% {
-              transform: rotateX(-10deg);
-            }
-            100% {
-              transform: rotateX(0deg);
-              opacity: 1;
-            }
-          }
-          .animate-flip {
-            transform-origin: center;
-          }
-        `}</style>
-
-        {/* Card 2: Salidas Activas */}
+        {/* Card 3: Exhibiciones */}
         <Card className="cursor-default hover:bg-slate-50 transition-colors">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Salidas Activas</CardTitle>
+            <CardTitle className="text-sm font-medium">Exhibiciones</CardTitle>
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
@@ -339,7 +381,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Card 3: Ubicaciones a Reparar */}
+        {/* Card 4: Ubicaciones a Reparar */}
         <Card className="cursor-default hover:bg-slate-50 transition-colors">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Ubicaciones a Reparar</CardTitle>
@@ -347,17 +389,6 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">0</div>
-          </CardContent>
-        </Card>
-
-        {/* Card 4: En Blanco */}
-        <Card className="cursor-default hover:bg-slate-50 transition-colors">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">-</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">-</div>
           </CardContent>
         </Card>
       </div>
@@ -369,7 +400,7 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 space-y-6">
         <Card>
             <CardHeader>
-              <CardTitle>Tabla 1 (En desarrollo)</CardTitle>
+              <CardTitle>Elementos disponibles</CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
@@ -422,7 +453,8 @@ export default function DashboardPage() {
           <CalendarAgenda
             events={events || []}
             currentUserId={firebaseUser.currentUser?.uid || ""}
-            canViewAllEvents={canViewAllEvents}
+            currentUserName={userData?.displayName || firebaseUser.currentUser?.email || "Usuario"}
+            section={EEventSection.VIA_PUBLICA}
           />
         </div>
       </div>

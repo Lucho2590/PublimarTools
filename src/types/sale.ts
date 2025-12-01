@@ -9,6 +9,11 @@ export enum EPaymentMethod {
   CHECK = "cheque",
 }
 
+export enum ESaleDepartment {
+  BANDERAS = "banderas",
+  VIA_PUBLICA = "via_publica",
+}
+
 export type TFactura = {
   id: string;
   tipo: string;
@@ -45,6 +50,7 @@ export interface TSale {
   discountAmount?: number;
   manualDiscount?: number;
   paymentMethod: EPaymentMethod;
+  department?: ESaleDepartment; // Departamento al que pertenece la venta
   // Sistema de facturación (antiguo - mantener para compatibilidad)
   isInvoiced: boolean;
   invoiceNumber: string | null;

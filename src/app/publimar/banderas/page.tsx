@@ -29,6 +29,7 @@ import { EQuoteStatus, TQuote } from "@/types/quote";
 // import { TProduct } from "@/types/product";
 import { EOrderStatus } from "@/types/order";
 import { EPurchaseDepartment } from "@/types/purchase";
+import { ESaleDepartment } from "@/types/sale";
 // import { TEvent } from "@/types/event";
 import { formatDate, formatearPrecio, generateSlug } from "@/lib/utils";
 import { useAuth as useFirebaseAuth } from "reactfire";
@@ -65,6 +66,9 @@ import { toast } from "sonner";
 import QuoteDetailsModal from "./presupuestos/modalPresupuestos/quoteDetailsModal";
 import CalendarAgenda from "@/components/calendar/CalendarAgenda";
 import { EUserRole } from "@/types/user";
+import UserNotes from "@/components/notes/UserNotes";
+import { ENoteSection } from "@/types/note";
+import { EEventSection } from "@/types/event";
 // import OrderDetailsModal from "./ordenes/modalOrdenes/orderDetailsModal"; // Comentado temporalmente
 
 export default function DashboardPage() {
@@ -143,20 +147,17 @@ export default function DashboardPage() {
     idField: "id",
   });
 
-  // Consulta eventos del calendario - Admin y Administración ven todos, otros solo los suyos
+  // Consulta eventos del calendario - Traer eventos de Banderas o sin sección (legacy)
   const eventsCollection = collection(firestore, collections.EVENTS);
-  const canViewAllEvents = userRole === EUserRole.ADMIN || userRole === EUserRole.ADMINISTRACION;
+  const { data: allEvents } = useFirestoreCollectionData(
+    query(eventsCollection),
+    { idField: "id" }
+  );
 
-  const eventsQuery = canViewAllEvents
-    ? query(eventsCollection)
-    : query(
-        eventsCollection,
-        where("createdBy", "==", firebaseUser.currentUser?.uid || "")
-      );
-
-  const { data: events } = useFirestoreCollectionData(eventsQuery, {
-    idField: "id",
-  });
+  // Filtrar eventos de Banderas del lado del cliente
+  const events = allEvents?.filter((event: any) =>
+    !event.section || event.section === EEventSection.BANDERAS
+  );
 
   // Calcular ventas del mes
   const startOfMonth = new Date();
@@ -171,14 +172,16 @@ export default function DashboardPage() {
   const salesCollection = collection(firestore, collections.SALES);
   const monthlySalesQuery = query(
     salesCollection,
-    where("createdAt", ">=", Timestamp.fromDate(startOfMonth))
+    where("createdAt", ">=", Timestamp.fromDate(startOfMonth)),
+    where("department", "==", ESaleDepartment.BANDERAS)
   );
   const { data: monthlySalesData, status: monthlySalesStatus } =
     useFirestoreCollectionData(monthlySalesQuery);
 
   const yearlySalesQuery = query(
     salesCollection,
-    where("createdAt", ">=", Timestamp.fromDate(startOfYear))
+    where("createdAt", ">=", Timestamp.fromDate(startOfYear)),
+    where("department", "==", ESaleDepartment.BANDERAS)
   );
   const { data: yearlySalesData, status: yearlySalesStatus } =
     useFirestoreCollectionData(yearlySalesQuery);
@@ -275,7 +278,16 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Banderas</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Banderas</h1>
+        {firebaseUser.currentUser?.uid && userData && (
+          <UserNotes
+            userId={firebaseUser.currentUser.uid}
+            userName={userData.displayName || firebaseUser.currentUser.email || "Usuario"}
+            section={ENoteSection.BANDERAS}
+          />
+        )}
+      </div>
 
       {/* Resumen de métricas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -602,7 +614,8 @@ export default function DashboardPage() {
           <CalendarAgenda
             events={events || []}
             currentUserId={firebaseUser.currentUser?.uid || ""}
-            canViewAllEvents={canViewAllEvents}
+            currentUserName={userData?.displayName || firebaseUser.currentUser?.email || "Usuario"}
+            section={EEventSection.BANDERAS}
           />
         </div>
       </div>
