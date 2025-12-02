@@ -11,6 +11,7 @@ import {
   deleteDoc,
   doc,
   Timestamp,
+  orderBy,
 } from "firebase/firestore";
 import {
   Dialog,
@@ -43,7 +44,8 @@ export default function UserNotes({ userId, userName, section }: UserNotesProps)
   const notesCollection = collection(firestore, collections.NOTES);
   const notesQuery = query(
     notesCollection,
-    where("section", "==", section)
+    where("section", "==", section),
+    orderBy("createdAt", "desc") // Más nuevas primero
   );
 
   const { data: notes, status } = useFirestoreCollectionData(notesQuery, {
