@@ -47,7 +47,7 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
-import { EPaymentMethod, TFactura } from "@/types/sale";
+import { EPaymentMethod, ESaleDepartment, TFactura } from "@/types/sale";
 import { formatearPrecio, redondearADecena, redondearTotal, formatDateString } from "@/lib/utils";
 import { useClients } from "@/hooks/useClients";
 
@@ -697,6 +697,7 @@ export default function NuevaVentaPage() {
         subtotal: redondearTotal(
           applyIVA ? currentSubtotalSinIVA : currentSubtotal
         ),
+        department: ESaleDepartment.BANDERAS,
         total: redondearTotal(currentTotal),
         applyIVA,
         taxRate: 21,

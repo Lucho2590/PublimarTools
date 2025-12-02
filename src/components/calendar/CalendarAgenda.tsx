@@ -22,6 +22,7 @@ import { useFirestore } from "reactfire";
 import collections from "@/lib/collections";
 import { toast } from "sonner";
 import { es } from "date-fns/locale";
+import { sendEventToN8n } from "@/lib/n8nWebhook";
 
 interface CalendarAgendaProps {
   events: TEvent[];
@@ -73,7 +74,7 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
       const [hours, minutes] = newEvent.time.split(":");
       eventDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
-      await addDoc(collection(firestore, collections.EVENTS), {
+      const docRef = await addDoc(collection(firestore, collections.EVENTS), {
         title: newEvent.title,
         description: newEvent.description || "",
         date: eventDate,
@@ -81,6 +82,16 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
         createdBy: currentUserId,
         createdByName: currentUserName,
         createdAt: new Date(),
+      });
+
+      // Enviar a n8n para sincronizar con Google Calendar
+      await sendEventToN8n("create", {
+        id: docRef.id,
+        title: newEvent.title,
+        description: newEvent.description || "",
+        date: eventDate,
+        createdBy: currentUserId,
+        createdByName: currentUserName,
       });
 
       setNewEvent({ title: "", description: "", time: "" });
@@ -110,6 +121,16 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
         date: eventDate,
       });
 
+      // Enviar a n8n para actualizar en Google Calendar
+      await sendEventToN8n("update", {
+        id: editingEvent.id,
+        title: newEvent.title,
+        description: newEvent.description || "",
+        date: eventDate,
+        createdBy: editingEvent.createdBy,
+        createdByName: editingEvent.createdByName,
+      });
+
       setNewEvent({ title: "", description: "", time: "" });
       setEditingEvent(null);
       setShowEventModal(false);
@@ -122,9 +143,28 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
 
   const handleDeleteEvent = async (eventId: string) => {
     try {
+      // Obtener los datos del evento antes de eliminarlo
       const eventRef = doc(firestore, collections.EVENTS, eventId);
-      await deleteDoc(eventRef);
-      toast.success("Evento eliminado correctamente");
+      const eventDoc = await getDoc(eventRef);
+
+      if (eventDoc.exists()) {
+        const eventData = eventDoc.data();
+
+        // Eliminar de Firestore
+        await deleteDoc(eventRef);
+
+        // Enviar a n8n para eliminar de Google Calendar
+        await sendEventToN8n("delete", {
+          id: eventId,
+          title: eventData.title || "",
+          date: eventData.date?.toDate ? eventData.date.toDate() : new Date(),
+          createdBy: eventData.createdBy || "",
+          description: eventData.description,
+          createdByName: eventData.createdByName,
+        });
+
+        toast.success("Evento eliminado correctamente");
+      }
     } catch (error) {
       console.error("Error al eliminar evento:", error);
       toast.error("Error al eliminar el evento");
