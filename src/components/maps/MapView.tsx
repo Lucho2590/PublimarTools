@@ -179,15 +179,54 @@ export default function MapView({
       {/* Marcadores de ubicaciones existentes */}
       {locations.map((location) => (
         <Marker key={location.id} position={[location.lat, location.lng]}>
-          <Popup>
-            <div className="p-2">
-              <h3 className="font-bold text-lg">{location.name}</h3>
-              {location.description && (
-                <p className="text-sm text-gray-600 mt-1">{location.description}</p>
+          <Popup maxWidth={300} minWidth={250}>
+            <div className="p-2 space-y-3">
+              {/* Código de ubicación */}
+              <div>
+                <h3 className="font-bold text-lg text-blue-900">{location.code}</h3>
+              </div>
+
+              {/* Dirección */}
+              {location.address && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dirección</p>
+                  <p className="text-sm text-gray-700 mt-1">{location.address}</p>
+                </div>
               )}
-              <p className="text-xs text-gray-400 mt-2">
-                {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
-              </p>
+
+              {/* Dispositivos */}
+              {location.devices && location.devices.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dispositivos</p>
+                  <ul className="mt-1 space-y-1">
+                    {location.devices.map((device, idx) => (
+                      <li key={idx} className="text-sm text-gray-700 flex justify-between">
+                        <span>{device.deviceTypeName}</span>
+                        <span className="font-semibold text-blue-900">{device.quantity}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Carousel de fotos - preparado para futuro */}
+              {/* TODO: Agregar fotos cuando estén disponibles */}
+              {/*
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Fotos</p>
+                <Carousel>
+                  <CarouselContent>
+                    {location.photos?.map((photo, idx) => (
+                      <CarouselItem key={idx}>
+                        <img src={photo.url} alt={`Foto ${idx + 1}`} className="w-full h-32 object-cover rounded" />
+                      </CarouselItem>
+                    ))}
+                  </CarouselContent>
+                  <CarouselPrevious />
+                  <CarouselNext />
+                </Carousel>
+              </div>
+              */}
             </div>
           </Popup>
         </Marker>

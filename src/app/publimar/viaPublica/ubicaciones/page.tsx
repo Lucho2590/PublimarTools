@@ -1,21 +1,33 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
-import { useFirestore, useFirestoreCollectionData } from 'reactfire';
-import { collection, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
+import { useFirestore, useFirestoreCollectionData } from "reactfire";
+import {
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  updateDoc,
+} from "firebase/firestore";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from '@/components/ui/sheet';
+} from "@/components/ui/sheet";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import {
   Table,
   TableBody,
@@ -23,13 +35,14 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { toast } from 'sonner';
-import { MapPin, Plus, Trash2, Edit, X } from 'lucide-react';
-import collections from '@/lib/collections';
-import { TLocation } from '@/types/location';
+} from "@/components/ui/table";
+import { toast } from "sonner";
+import { MapPin, Plus, Trash2, Edit, X, ChevronDown, Check } from "lucide-react";
+import collections from "@/lib/collections";
+import { TLocation, TLocationDevice } from "@/types/location";
+import { TDeviceType } from "@/types/device";
 
-const MapView = dynamic(() => import('@/components/maps/MapView'), {
+const MapView = dynamic(() => import("@/components/maps/MapView"), {
   ssr: false,
   loading: () => (
     <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
@@ -41,17 +54,33 @@ const MapView = dynamic(() => import('@/components/maps/MapView'), {
 export default function UbicacionesPage() {
   const firestore = useFirestore();
   const [showDrawer, setShowDrawer] = useState(false);
-  const [editingLocation, setEditingLocation] = useState<TLocation | null>(null);
-  const [draggableMarker, setDraggableMarker] = useState<{ lat: number; lng: number } | null>(null);
-  const [mapCenter, setMapCenter] = useState<[number, number]>([-38.0055, -57.5426]); // Mar del Plata por defecto
-  const [getMapCenter, setGetMapCenter] = useState<(() => [number, number]) | null>(null);
+  const [editingLocation, setEditingLocation] = useState<TLocation | null>(
+    null
+  );
+  const [draggableMarker, setDraggableMarker] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [mapCenter, setMapCenter] = useState<[number, number]>([
+    -38.0055, -57.5426,
+  ]); // Mar del Plata por defecto
+  const [getMapCenter, setGetMapCenter] = useState<
+    (() => [number, number]) | null
+  >(null);
+  const [devices, setDevices] = useState<TLocationDevice[]>([]);
+  const [selectedDeviceTypeId, setSelectedDeviceTypeId] = useState<string>("");
+  const [deviceQuantity, setDeviceQuantity] = useState<number>(1);
 
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    address: '',
-    lat: '',
-    lng: '',
+    code: "",
+    description: "",
+    address: "",
+    lat: "",
+    lng: "",
+    contactName: "",
+    contactPhone: "",
+    contactEmail: "",
+    contactNote: "",
   });
 
   // Obtener ubicacion actual del dispositivo
@@ -61,30 +90,59 @@ export default function UbicacionesPage() {
         (position) => {
           const { latitude, longitude } = position.coords;
           setMapCenter([latitude, longitude]);
-          toast.success('Ubicacion actual detectada');
+          toast.success("Ubicacion actual detectada");
         },
         (error) => {
-          console.log('No se pudo obtener la ubicacion, usando Mar del Plata por defecto');
+          console.log(
+            "No se pudo obtener la ubicacion, usando Mar del Plata por defecto"
+          );
           // Ya esta seteado Mar del Plata por defecto
         }
       );
     }
   }, []);
 
-  const locationsCollection = collection(firestore, collections.LOCATIONS || 'locations');
-  const { data: locationsData, status } = useFirestoreCollectionData(locationsCollection, {
-    idField: 'id',
-  });
+  const locationsCollection = collection(
+    firestore,
+    collections.LOCATIONS || "locations"
+  );
+  const { data: locationsData, status } = useFirestoreCollectionData(
+    locationsCollection,
+    {
+      idField: "id",
+    }
+  );
 
-  const locations: TLocation[] = (locationsData as any[])?.map((loc) => ({
-    id: loc.id,
-    name: loc.name,
-    lat: loc.lat,
-    lng: loc.lng,
-    description: loc.description,
-    address: loc.address,
-    createdAt: loc.createdAt?.toDate?.(),
-  })) || [];
+  const deviceTypesCollection = collection(firestore, collections.DEVICES);
+  const { data: deviceTypesData } = useFirestoreCollectionData(
+    deviceTypesCollection,
+    {
+      idField: "id",
+    }
+  );
+
+  const deviceTypes: TDeviceType[] =
+    (deviceTypesData as any[])?.map((device) => ({
+      id: device.id,
+      name: device.name,
+      description: device.description,
+    })) || [];
+
+  const locations: TLocation[] =
+    (locationsData as any[])?.map((loc) => ({
+      id: loc.id,
+      code: loc.code,
+      lat: loc.lat,
+      lng: loc.lng,
+      description: loc.description,
+      address: loc.address,
+      devices: loc.devices || [],
+      contactName: loc.contactName,
+      contactPhone: loc.contactPhone,
+      contactEmail: loc.contactEmail,
+      contactNote: loc.contactNote,
+      createdAt: loc.createdAt?.toDate?.(),
+    })) || [];
 
   const handleNewLocation = () => {
     // Obtener el centro visible actual del mapa
@@ -99,19 +157,24 @@ export default function UbicacionesPage() {
 
     setDraggableMarker(initialPosition);
     setFormData({
-      name: '',
-      description: '',
-      address: '',
+      code: "",
+      description: "",
+      address: "",
       lat: initialPosition.lat.toFixed(6),
       lng: initialPosition.lng.toFixed(6),
+      contactName: "",
+      contactPhone: "",
+      contactEmail: "",
+      contactNote: "",
     });
+    setDevices([]);
     setShowDrawer(true);
   };
 
   const handleDraggableMarkerMove = (lat: number, lng: number) => {
     // Actualizar tanto el marcador como el formulario cuando termina el drag
     setDraggableMarker({ lat, lng });
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       lat: lat.toFixed(6),
       lng: lng.toFixed(6),
@@ -121,33 +184,48 @@ export default function UbicacionesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.lat || !formData.lng) {
-      toast.error('Nombre y coordenadas son requeridos');
+    if (!formData.code || !formData.lat || !formData.lng) {
+      toast.error("Codigo y coordenadas son requeridos");
       return;
     }
 
     try {
       const locationData = {
-        name: formData.name,
+        code: formData.code,
         description: formData.description,
         address: formData.address,
         lat: parseFloat(formData.lat),
         lng: parseFloat(formData.lng),
+        devices: devices,
+        contactName: formData.contactName,
+        contactPhone: formData.contactPhone,
+        contactEmail: formData.contactEmail,
+        contactNote: formData.contactNote,
         createdAt: new Date(),
       };
 
       if (editingLocation) {
-        await updateDoc(doc(firestore, collections.LOCATIONS || 'locations', editingLocation.id), locationData);
-        toast.success('Ubicacion actualizada correctamente');
+        await updateDoc(
+          doc(
+            firestore,
+            collections.LOCATIONS || "locations",
+            editingLocation.id
+          ),
+          locationData
+        );
+        toast.success("Ubicacion actualizada correctamente");
       } else {
-        await addDoc(collection(firestore, collections.LOCATIONS || 'locations'), locationData);
-        toast.success('Ubicacion agregada correctamente');
+        await addDoc(
+          collection(firestore, collections.LOCATIONS || "locations"),
+          locationData
+        );
+        toast.success("Ubicacion agregada correctamente");
       }
 
       handleCloseDrawer();
     } catch (error) {
-      console.error('Error al guardar ubicacion:', error);
-      toast.error('Error al guardar la ubicacion');
+      console.error("Error al guardar ubicacion:", error);
+      toast.error("Error al guardar la ubicacion");
     }
   };
 
@@ -155,24 +233,31 @@ export default function UbicacionesPage() {
     setEditingLocation(location);
     setDraggableMarker({ lat: location.lat, lng: location.lng });
     setFormData({
-      name: location.name,
-      description: location.description || '',
-      address: location.address || '',
+      code: location.code,
+      description: location.description || "",
+      address: location.address || "",
       lat: location.lat.toString(),
       lng: location.lng.toString(),
+      contactName: location.contactName || "",
+      contactPhone: location.contactPhone || "",
+      contactEmail: location.contactEmail || "",
+      contactNote: location.contactNote || "",
     });
+    setDevices(location.devices || []);
     setShowDrawer(true);
   };
 
   const handleDelete = async (locationId: string) => {
-    if (!confirm('Estas seguro de eliminar esta ubicacion?')) return;
+    if (!confirm("Estas seguro de eliminar esta ubicacion?")) return;
 
     try {
-      await deleteDoc(doc(firestore, collections.LOCATIONS || 'locations', locationId));
-      toast.success('Ubicacion eliminada correctamente');
+      await deleteDoc(
+        doc(firestore, collections.LOCATIONS || "locations", locationId)
+      );
+      toast.success("Ubicacion eliminada correctamente");
     } catch (error) {
-      console.error('Error al eliminar ubicacion:', error);
-      toast.error('Error al eliminar la ubicacion');
+      console.error("Error al eliminar ubicacion:", error);
+      toast.error("Error al eliminar la ubicacion");
     }
   };
 
@@ -180,28 +265,70 @@ export default function UbicacionesPage() {
     setShowDrawer(false);
     setEditingLocation(null);
     setDraggableMarker(null);
+    setDevices([]);
+    setSelectedDeviceTypeId("");
+    setDeviceQuantity(1);
     setFormData({
-      name: '',
-      description: '',
-      address: '',
-      lat: '',
-      lng: '',
+      code: "",
+      description: "",
+      address: "",
+      lat: "",
+      lng: "",
+      contactName: "",
+      contactPhone: "",
+      contactEmail: "",
+      contactNote: "",
     });
+  };
+
+  const handleAddDevice = () => {
+    if (!selectedDeviceTypeId) {
+      toast.error("Selecciona un tipo de dispositivo");
+      return;
+    }
+
+    if (deviceQuantity < 1) {
+      toast.error("La cantidad debe ser mayor a 0");
+      return;
+    }
+
+    const deviceType = deviceTypes.find((dt) => dt.id === selectedDeviceTypeId);
+    if (!deviceType) return;
+
+    const newDeviceItem: TLocationDevice = {
+      deviceTypeId: selectedDeviceTypeId,
+      deviceTypeName: deviceType.name,
+      quantity: deviceQuantity,
+    };
+
+    setDevices([...devices, newDeviceItem]);
+    setSelectedDeviceTypeId("");
+    setDeviceQuantity(1);
+  };
+
+  const handleDeleteDevice = (index: number) => {
+    setDevices(devices.filter((_, i) => i !== index));
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Ubicaciones</h1>
-        <Button onClick={handleNewLocation} className="bg-blue-900 hover:bg-blue-800">
+        <Button
+          onClick={handleNewLocation}
+          className="bg-blue-900 hover:bg-blue-800"
+        >
           <Plus className="h-4 w-4 mr-2" />
           Nueva Ubicacion
         </Button>
       </div>
 
       {/* Mapa a pantalla completa */}
-      <div className="h-[calc(100vh-200px)] w-full relative z-0" style={{ pointerEvents: 'auto' }}>
-        {status === 'loading' ? (
+      <div
+        className="h-[calc(100vh-200px)] w-full relative z-0"
+        style={{ pointerEvents: "auto" }}
+      >
+        {status === "loading" ? (
           <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
             <p className="text-gray-500">Cargando ubicaciones...</p>
           </div>
@@ -234,7 +361,7 @@ export default function UbicacionesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nombre</TableHead>
+                  <TableHead>Codigo</TableHead>
                   <TableHead>Direccion</TableHead>
                   <TableHead>Coordenadas</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
@@ -243,8 +370,10 @@ export default function UbicacionesPage() {
               <TableBody>
                 {locations.map((location) => (
                   <TableRow key={location.id}>
-                    <TableCell className="font-medium">{location.name}</TableCell>
-                    <TableCell>{location.address || '-'}</TableCell>
+                    <TableCell className="font-medium">
+                      {location.code}
+                    </TableCell>
+                    <TableCell>{location.address || "-"}</TableCell>
                     <TableCell className="text-sm text-gray-500">
                       {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
                     </TableCell>
@@ -277,13 +406,16 @@ export default function UbicacionesPage() {
       </Card>
 
       {/* Drawer lateral derecho */}
-      <Sheet open={showDrawer} onOpenChange={(open) => {
-        // Solo permitir cerrar el drawer desde el boton X o Cancelar, no al hacer click afuera
-        if (!open && showDrawer) {
-          return;
-        }
-        setShowDrawer(open);
-      }}>
+      <Sheet
+        open={showDrawer}
+        onOpenChange={(open) => {
+          // Solo permitir cerrar el drawer desde el boton X o Cancelar, no al hacer click afuera
+          if (!open && showDrawer) {
+            return;
+          }
+          setShowDrawer(open);
+        }}
+      >
         <SheetContent
           side="right"
           className="w-[400px] sm:w-[540px] overflow-y-auto z-[100]"
@@ -296,7 +428,7 @@ export default function UbicacionesPage() {
           <SheetHeader>
             <div className="flex items-center justify-between">
               <SheetTitle>
-                {editingLocation ? 'Editar Ubicacion' : 'Nueva Ubicacion'}
+                {editingLocation ? "Editar Ubicacion" : "Nueva Ubicacion"}
               </SheetTitle>
               <Button
                 variant="ghost"
@@ -309,45 +441,208 @@ export default function UbicacionesPage() {
             </div>
             <SheetDescription>
               {editingLocation
-                ? 'Modifica los datos de la ubicacion y mueve el marcador rojo en el mapa'
-                : 'Arrastra el marcador rojo en el mapa para seleccionar la ubicacion'}
+                ? "Modifica los datos de la ubicacion y mueve el marcador rojo en el mapa"
+                : "Arrastra el marcador rojo en el mapa para seleccionar la ubicacion"}
             </SheetDescription>
           </SheetHeader>
 
-          <form onSubmit={handleSubmit} className="space-y-6 mt-6">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nombre *</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ej: Oficina Central"
-                required
-              />
-            </div>
+          <form onSubmit={handleSubmit} className="mt-6">
+            <Tabs defaultValue="general" className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="general">General</TabsTrigger>
+                <TabsTrigger value="dispositivos">Dispositivos</TabsTrigger>
+                <TabsTrigger value="contacto">Contacto</TabsTrigger>
+              </TabsList>
 
-            <div className="space-y-2">
-              <Label htmlFor="address">Direccion</Label>
-              <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                placeholder="Ej: Av. Corrientes 1234, CABA"
-              />
-            </div>
+              {/* TAB: GENERAL */}
+              <TabsContent value="general" className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="code">Codigo de Ubicacion *</Label>
+                  <Input
+                    id="code"
+                    value={formData.code}
+                    onChange={(e) =>
+                      setFormData({ ...formData, code: e.target.value })
+                    }
+                    placeholder="Ej: UB-001"
+                    required
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Descripcion</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Detalles adicionales sobre la ubicacion"
-                rows={3}
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Direccion</Label>
+                  <Input
+                    id="address"
+                    value={formData.address}
+                    onChange={(e) =>
+                      setFormData({ ...formData, address: e.target.value })
+                    }
+                    placeholder="Ej: Av. Corrientes 1234, CABA"
+                  />
+                </div>
 
-            <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="description">Descripcion</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                    placeholder="Detalles adicionales sobre la ubicacion"
+                    rows={4}
+                  />
+                </div>
+              </TabsContent>
+
+              {/* TAB: DISPOSITIVOS */}
+              <TabsContent value="dispositivos" className="space-y-4 mt-4">
+                {/* Selector de tipo de dispositivo con botones */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Selecciona un tipo:</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {deviceTypes.length === 0 ? (
+                      <p className="text-sm text-gray-500">No hay tipos de dispositivos creados</p>
+                    ) : (
+                      deviceTypes.map((type) => (
+                        <Button
+                          key={type.id}
+                          type="button"
+                          variant={selectedDeviceTypeId === type.id ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setSelectedDeviceTypeId(type.id)}
+                          className={`${
+                            selectedDeviceTypeId === type.id
+                              ? "bg-blue-900 hover:bg-blue-800"
+                              : ""
+                          }`}
+                        >
+                          {selectedDeviceTypeId === type.id && (
+                            <Check className="h-3 w-3 mr-1" />
+                          )}
+                          {type.name}
+                        </Button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Input de cantidad y botón agregar */}
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <Label htmlFor="deviceQuantity" className="text-sm">Cantidad</Label>
+                    <Input
+                      id="deviceQuantity"
+                      type="number"
+                      min="1"
+                      value={deviceQuantity}
+                      onChange={(e) => setDeviceQuantity(parseInt(e.target.value) || 1)}
+                      placeholder="Cantidad"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleAddDevice}
+                    className="bg-green-600 hover:bg-green-700"
+                    disabled={!selectedDeviceTypeId}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Agregar
+                  </Button>
+                </div>
+
+                {/* Tabla de dispositivos agregados */}
+                {devices.length > 0 && (
+                  <div className="pt-4 border-t">
+                    <Label className="text-sm font-medium mb-2 block">Dispositivos agregados:</Label>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Cantidad</TableHead>
+                          <TableHead>Dispositivo</TableHead>
+                          <TableHead className="w-[50px]"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {devices.map((device, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-medium">{device.quantity}</TableCell>
+                            <TableCell>{device.deviceTypeName}</TableCell>
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteDevice(index)}
+                                className="h-8 w-8 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </TabsContent>
+
+              {/* TAB: CONTACTO */}
+              <TabsContent value="contacto" className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="contactName">Nombre</Label>
+                  <Input
+                    id="contactName"
+                    value={formData.contactName}
+                    onChange={(e) =>
+                      setFormData({ ...formData, contactName: e.target.value })
+                    }
+                    placeholder="Nombre del contacto"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="contactPhone">Telefono</Label>
+                  <Input
+                    id="contactPhone"
+                    type="tel"
+                    value={formData.contactPhone}
+                    onChange={(e) =>
+                      setFormData({ ...formData, contactPhone: e.target.value })
+                    }
+                    placeholder="Ej: +54 9 223 123-4567"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="contactEmail">Email</Label>
+                  <Input
+                    id="contactEmail"
+                    type="email"
+                    value={formData.contactEmail}
+                    onChange={(e) =>
+                      setFormData({ ...formData, contactEmail: e.target.value })
+                    }
+                    placeholder="email@ejemplo.com"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="contactNote">Nota</Label>
+                  <Textarea
+                    id="contactNote"
+                    value={formData.contactNote}
+                    onChange={(e) =>
+                      setFormData({ ...formData, contactNote: e.target.value })
+                    }
+                    placeholder="Notas adicionales sobre el contacto"
+                    rows={4}
+                  />
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            {/* <div className="space-y-4">
               <Label>Coordenadas</Label>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
                 <div className="flex items-center gap-2 text-sm text-blue-800">
@@ -395,7 +690,7 @@ export default function UbicacionesPage() {
                   </div>
                 </div>
               </div>
-            </div>
+            </div> */}
 
             <div className="flex gap-2 pt-4">
               <Button
@@ -410,7 +705,7 @@ export default function UbicacionesPage() {
                 type="submit"
                 className="flex-1 bg-green-600 hover:bg-green-700"
               >
-                {editingLocation ? 'Actualizar' : 'Guardar'}
+                {editingLocation ? "Actualizar" : "Guardar"}
               </Button>
             </div>
           </form>
