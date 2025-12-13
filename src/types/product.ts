@@ -28,6 +28,7 @@ export enum EProductCategory {
   
   export interface TProduct {
     lowStock: boolean;
+    ecommerce: boolean;
     salesCount: number;
     totalSales: number;
     id: string;

@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
         sku: data.sku,
         categories: data.categories || [],
         lowStock: data.lowStock || false,
+        ecommerce: data.ecommerce || false,
         variants: data.variants || [],
         imageUrls: data.imageUrls || [],
         createdAt: data.createdAt?.toDate?.()?.toISOString() || null,

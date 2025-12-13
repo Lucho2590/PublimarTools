@@ -42,6 +42,13 @@ export default function NuevoProductoPage() {
     categories: [] as string[],
     imageUrls: [] as string[],
     sku: "",
+    lowStock: false,
+    ecommerce: false,
+    hasVariants: true,
+    price: null,
+    stock: null,
+    salesCount: 0,
+    totalSales: 0,
     variants: [{
       id: crypto.randomUUID(),
       size: "",

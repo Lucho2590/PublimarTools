@@ -22,7 +22,7 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
-import { Trash2, Bell } from "lucide-react";
+import { Trash2, Bell, ShoppingCartIcon } from "lucide-react";
 
 interface ProductEditModalProps {
   isOpen: boolean;
@@ -51,6 +51,7 @@ export default function ProductEditModal({
     sku: "",
     size: "",
     lowStock: false,
+    ecommerce: false,
     variants: [{
       id: crypto.randomUUID(),
       size: "",
@@ -73,6 +74,7 @@ export default function ProductEditModal({
       sku: "",
       size: "",
       lowStock: false,
+      ecommerce: false,
       variants: [{
         id: crypto.randomUUID(),
         size: "",
@@ -123,6 +125,7 @@ export default function ProductEditModal({
           sku: product.sku || "",
           size: "",
           lowStock: product.lowStock || false,
+          ecommerce: product.ecommerce || false,
           variants: Array.isArray(product.variants) && product.variants.length > 0
             ? product.variants.map(variant => ({
                 ...variant,
@@ -201,6 +204,7 @@ export default function ProductEditModal({
         sku: formData.sku || "",
         size: "",
         lowStock: formData.lowStock,
+        ecommerce: formData.ecommerce,
         variants: formData.variants.map(variant => ({
           id: variant.id,
           size: variant.size,
@@ -275,6 +279,16 @@ export default function ProductEditModal({
                   }`}
                 />
               </button>
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, ecommerce: !prev.ecommerce }))}
+                className="transition-all duration-200 hover:scale-110"
+                title={formData.ecommerce ? "Desactivar ecommerce" : "Activar ecommerce"}
+              >
+                <ShoppingCartIcon
+                  className={`h-5 w-5 ${formData.ecommerce ? 'fill-blue-500 text-blue-500' : 'text-gray-300 hover:text-gray-400'}`}
+                />
+              </button> 
             </div>
             <div className="flex gap-2">
               <Button
