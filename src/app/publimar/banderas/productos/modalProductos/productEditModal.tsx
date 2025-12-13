@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
 import { Trash2, Bell, ShoppingCartIcon } from "lucide-react";
+import { generateSlug } from "@/lib/utils";
 
 interface ProductEditModalProps {
   isOpen: boolean;
@@ -214,6 +215,12 @@ export default function ProductEditModal({
         })),
         updatedAt: serverTimestamp(),
       };
+
+      // Generar/actualizar slug si ecommerce está activo
+      if (formData.ecommerce && productId) {
+        const slug = generateSlug(formData.name, productId);
+        productData.slug = slug;
+      }
 
       await updateDoc(productRef, productData);
       toast.success("Producto actualizado con éxito");

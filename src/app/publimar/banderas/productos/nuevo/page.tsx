@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData, useUser } from "reactfire";
-import { collection, addDoc, serverTimestamp, doc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProductCategory, TProductVariant } from "@/types/product";
 import { Trash2 } from "lucide-react";
+import { generateSlug } from "@/lib/utils";
 
 export default function NuevoProductoPage() {
   const [loading, setLoading] = useState(false);
@@ -120,7 +121,16 @@ export default function NuevoProductoPage() {
       };
 
       const productsCollection = collection(firestore, collections.PRODUCTS);
-      await addDoc(productsCollection, productData);
+      const docRef = await addDoc(productsCollection, productData);
+
+      // Si ecommerce está activo, generar y guardar slug
+      if (formData.ecommerce) {
+        const slug = generateSlug(formData.name, docRef.id);
+        await updateDoc(docRef, {
+          slug,
+          updatedAt: serverTimestamp()
+        });
+      }
 
       toast.success("Producto creado exitosamente");
       router.push("/publimar/banderas/productos");

@@ -45,5 +45,6 @@ export enum EProductCategory {
     imageUrls: never[];
     hasVariants: boolean;
     sku: string;
+    slug?: string;
   }
   

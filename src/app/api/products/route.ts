@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
         categories: data.categories || [],
         lowStock: data.lowStock || false,
         ecommerce: data.ecommerce || false,
+        slug: data.slug || null,
         variants: data.variants || [],
         imageUrls: data.imageUrls || [],
         createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
