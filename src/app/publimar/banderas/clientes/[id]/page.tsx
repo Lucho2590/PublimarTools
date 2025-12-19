@@ -8,7 +8,7 @@ import {
   useFirestoreCollectionData,
   useFirestoreDocData,
 } from "reactfire";
-import { doc, collection, query, where } from "firebase/firestore";
+import { doc, collection, query, where, orderBy } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -58,7 +58,15 @@ export default function ClienteDetallePage({
   const { status: salesStatus, data: sales } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.SALES),
-      where("clientId", "==", clientId)
+      where("clientId", "==", clientId),
+    ),
+    { idField: "id" }
+  );
+
+  const { status: salesStatus2, data: sales2 } = useFirestoreCollectionData(
+    query(
+      collection(firestore, collections.SALES),
+      where("client", "==", clientId),
     ),
     { idField: "id" }
   );
@@ -391,13 +399,13 @@ export default function ClienteDetallePage({
               <CardTitle>Ventas</CardTitle>
             </CardHeader>
             <CardContent>
-              {salesStatus === "loading" ? (
+              {salesStatus === "loading" || salesStatus2 === "loading" ? (
                 <div className="flex justify-center py-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
                 </div>
-              ) : sales && sales.length > 0 ? (
+              ) : sales && sales.length > 0 || sales2 && sales2.length > 0 ? (
                 <div className="space-y-4">
-                  {sales.map((sale: any) => (
+                  {(sales && sales.length > 0 ? sales : sales2).map((sale: any) => (
                     <div
                       key={sale.id}
                       className="border rounded-lg p-4 hover:bg-slate-50 transition-colors"

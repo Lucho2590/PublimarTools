@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "reactfire";
 import { useOrders, useOrderById } from "@/hooks/useOrders";
 import { useClients } from "@/hooks/useClients";
+import { useSales } from "@/hooks/useSales";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,7 +48,7 @@ import { formatearPrecio, formatDate, formatDateString, extractIdFromSlug } from
 import { toast } from "sonner";
 import { EOrderStatus, TPaymentHistory, TFactura } from "@/types/order";
 import { EPaymentMethod } from "@/types/sale";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
 import collections from "@/lib/collections";
@@ -75,6 +76,7 @@ export default function OrderDetailsPage({
     error: orderError,
   } = useOrderById(orderId);
   const { clients, loading: clientsLoading, updateClient } = useClients();
+  const { createSale, generateSaleNumber } = useSales();
 
   // Productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
@@ -128,6 +130,10 @@ export default function OrderDetailsPage({
   const [newFacturaNumero, setNewFacturaNumero] = useState("");
   const [newFacturaFecha, setNewFacturaFecha] = useState("");
   const [newFacturaMonto, setNewFacturaMonto] = useState("");
+
+  // Estados para conversión a venta
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState<any>(null);
 
   // ============================================
   // FUNCIONES HELPER PARA PAGOS (Solución Híbrida)
@@ -509,6 +515,102 @@ export default function OrderDetailsPage({
     }
   };
 
+  // Función para convertir orden a venta
+  const convertOrderToSale = async (orderData: any) => {
+    try {
+      // Transformar items de orden a items de venta
+      const saleItems = orderData.items.map((item: any) => ({
+        isManual: item.isManual || false,
+        description: item.description || undefined,
+        productId: item.productId || undefined,
+        variantId: item.variantId || undefined,
+        productName: item.productName || undefined,
+        variantName: item.variantName || undefined,
+        quantity: Number(item.quantity) || 0,
+        unitPrice: Number(item.unitPrice) || 0,
+        total: Number(item.subtotal) || 0,
+      }));
+
+      // Crear la venta basada en la orden
+      const saleData = {
+        clientName: orderData.clientName || undefined,
+        client: orderData.clientId || undefined,
+        number: orderData.number,
+        items: saleItems,
+        subtotal: orderData.subtotal,
+        total: orderData.total,
+        applyIVA: orderData.applyIVA || false,
+        taxRate: orderData.applyIVA ? 0.21 : 0,
+        taxAmount: orderData.applyIVA ? orderData.total * 0.21 : 0,
+        discountPercentage: orderData.discountPercentage || 0,
+        discountAmount: orderData.discountAmount || 0,
+        manualDiscount: orderData.manualDiscount || 0,
+        paymentMethod: (orderData.paymentMethod as EPaymentMethod) || EPaymentMethod.CASH,
+        isInvoiced: orderData.isInvoiced || false,
+        invoiceNumber: orderData.invoiceNumber || "",
+        bank: orderData.bank || undefined,
+        facturas: orderData.facturas || [],
+        orderId: orderId,
+      };
+
+      // Crear la venta
+      const saleId = await createSale(saleData as any);
+
+      // Descontar stock de los productos (mismo flujo que en ventas/nueva)
+      for (const item of orderData.items) {
+        // Solo actualizar stock para productos del catálogo, no para items manuales
+        const isManualItem = item.isManual || false;
+
+        if (!isManualItem && item.productId) {
+          try {
+            const productRef = doc(firestore, collections.PRODUCTS, item.productId);
+            const productDoc = await getDoc(productRef);
+
+            if (productDoc.exists()) {
+              const currentProduct = productDoc.data();
+              const currentTotalSales = currentProduct.totalSales || 0;
+              const currentSalesCount = currentProduct.salesCount || 0;
+
+              // Si tiene variante, actualizar stock de la variante específica
+              if (item.variantId && currentProduct.variants) {
+                await updateDoc(productRef, {
+                  variants: currentProduct.variants.map((v: any) =>
+                    v.id === item.variantId
+                      ? { ...v, stock: Number(v.stock) - item.quantity }
+                      : v
+                  ),
+                  // Actualizar contadores de ventas
+                  totalSales: currentTotalSales + item.quantity,
+                  salesCount: currentSalesCount + 1,
+                  lastSaleDate: new Date(),
+                });
+              } else {
+                // Si no tiene variante, actualizar stock general del producto
+                await updateDoc(productRef, {
+                  stock: Number(currentProduct.stock || 0) - item.quantity,
+                  // Actualizar contadores de ventas
+                  totalSales: currentTotalSales + item.quantity,
+                  salesCount: currentSalesCount + 1,
+                  lastSaleDate: new Date(),
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error al actualizar stock del producto ${item.productId}:`, error);
+            // Continuar con los demás productos aunque uno falle
+          }
+        }
+      }
+
+      toast.success(`Orden convertida a venta exitosamente (ID: ${saleId})`);
+
+      return saleId;
+    } catch (error) {
+      console.error("Error al convertir orden a venta:", error);
+      toast.error("Error al convertir la orden a venta");
+      throw error;
+    }
+  };
 
   const handleSave = async (facturasOverride?: TFactura[]) => {
     if (!editedOrder || !user) return;
@@ -616,12 +718,81 @@ export default function OrderDetailsPage({
       // Filtrar valores undefined recursivamente
       const cleanUpdateData = cleanData(updateData);
 
+      // Verificar si debe mostrar diálogo de conversión a venta
+      const shouldConvert =
+        cleanUpdateData.status === EOrderStatus.COMPLETED &&
+        newBalance === 0 &&
+        !order?.convertedToSale;
+
+      if (shouldConvert) {
+        // Guardar datos pendientes y mostrar diálogo
+        setPendingSaveData(cleanUpdateData);
+        setShowConvertDialog(true);
+        setSaving(false);
+        return;
+      }
+
+      // Guardar normalmente si no requiere conversión
       await updateOrder(orderId, cleanUpdateData);
 
       toast.success("Orden actualizada exitosamente");
     } catch (error) {
       toast.error("Error al actualizar la orden");
       console.error("Error completo:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Función para confirmar conversión a venta
+  const handleConfirmConvert = async () => {
+    if (!pendingSaveData) return;
+
+    setSaving(true);
+    try {
+      // Primero guardar la orden
+      await updateOrder(orderId, pendingSaveData);
+
+      // Luego convertir a venta
+      const saleId = await convertOrderToSale(pendingSaveData);
+
+      // Actualizar la orden con la referencia a la venta usando doc y updateDoc directamente
+      const orderRef = doc(firestore, collections.ORDERS, orderId);
+      await updateDoc(orderRef, {
+        convertedToSale: true,
+        convertedAt: serverTimestamp(),
+        saleId: saleId,
+        updatedAt: serverTimestamp(),
+      });
+
+      toast.success("Orden guardada y convertida a venta exitosamente");
+
+      // Limpiar estados
+      setShowConvertDialog(false);
+      setPendingSaveData(null);
+    } catch (error) {
+      console.error("Error al guardar y convertir:", error);
+      toast.error("Error al procesar la orden");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Función para cancelar conversión y solo guardar
+  const handleCancelConvert = async () => {
+    if (!pendingSaveData) return;
+
+    setSaving(true);
+    try {
+      await updateOrder(orderId, pendingSaveData);
+      toast.success("Orden actualizada exitosamente");
+
+      // Limpiar estados
+      setShowConvertDialog(false);
+      setPendingSaveData(null);
+    } catch (error) {
+      console.error("Error al guardar:", error);
+      toast.error("Error al actualizar la orden");
     } finally {
       setSaving(false);
     }
@@ -749,6 +920,8 @@ export default function OrderDetailsPage({
     setShowManualItemDialog(false);
     toast.success("Item manual agregado");
   };
+
+
 
   // Manejar agregar producto del catálogo
   const handleAddProduct = () => {
@@ -1132,7 +1305,7 @@ export default function OrderDetailsPage({
                       En Proceso
                     </SelectItem>
                     <SelectItem value={EOrderStatus.COMPLETED}>
-                      Completada
+                      Entregada
                     </SelectItem>
                     <SelectItem value={EOrderStatus.CANCELLED}>
                       Cancelada
@@ -2058,6 +2231,42 @@ export default function OrderDetailsPage({
           </Card>
         </div>
       </div>
+
+      {/* Dialog de confirmación para convertir a venta */}
+      <Dialog open={showConvertDialog} onOpenChange={setShowConvertDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Convertir a Venta</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-gray-600">
+              Esta orden está <strong>Entregada</strong> y tiene <strong>saldo $0</strong>.
+            </p>
+            <p className="text-sm text-gray-600 mt-2">
+              ¿Deseas convertirla automáticamente a una <strong>Venta</strong>?
+            </p>
+            {editedOrder && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                <p className="text-sm font-medium">Orden #{editedOrder.number}</p>
+                <p className="text-sm text-gray-600">
+                  Cliente: {editedOrder.clientName || order?.client?.name}
+                </p>
+                <p className="text-sm text-gray-600">
+                  Total: {formatearPrecio(total)}
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelConvert} disabled={saving}>
+              No, solo guardar
+            </Button>
+            <Button onClick={handleConfirmConvert} className="bg-green-600 hover:bg-green-700" disabled={saving}>
+              {saving ? "Procesando..." : "Sí, convertir a Venta"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,12 +65,6 @@ export default function PedidosPage() {
   // Hook para manejar ventas
   const { createSale, generateSaleNumber } = useSales();
 
-  // Función para manejar la vista de orden en modal
-  const handleViewOrder = (orderId: string) => {
-    setSelectedOrderId(orderId);
-    setShowModal(true);
-  };
-
   // Función para convertir orden a venta
   const convertOrderToSale = async (order: TOrder) => {
     try {
@@ -119,7 +113,53 @@ export default function PedidosPage() {
 
       // Crear la venta usando el hook (que ya limpia los undefined)
       const saleId = await createSale(saleData as any);
-      
+
+      // Descontar stock de los productos (mismo flujo que en ventas/nueva)
+      for (const item of order.items) {
+        // Solo actualizar stock para productos del catálogo, no para items manuales
+        const isManualItem = item.isManual || false;
+
+        if (!isManualItem && item.productId) {
+          try {
+            const productRef = doc(firestore, collections.PRODUCTS, item.productId);
+            const productDoc = await getDoc(productRef);
+
+            if (productDoc.exists()) {
+              const currentProduct = productDoc.data();
+              const currentTotalSales = currentProduct.totalSales || 0;
+              const currentSalesCount = currentProduct.salesCount || 0;
+
+              // Si tiene variante, actualizar stock de la variante específica
+              if (item.variantId && currentProduct.variants) {
+                await updateDoc(productRef, {
+                  variants: currentProduct.variants.map((v: any) =>
+                    v.id === item.variantId
+                      ? { ...v, stock: Number(v.stock) - item.quantity }
+                      : v
+                  ),
+                  // Actualizar contadores de ventas
+                  totalSales: currentTotalSales + item.quantity,
+                  salesCount: currentSalesCount + 1,
+                  lastSaleDate: new Date(),
+                });
+              } else {
+                // Si no tiene variante, actualizar stock general del producto
+                await updateDoc(productRef, {
+                  stock: Number(currentProduct.stock || 0) - item.quantity,
+                  // Actualizar contadores de ventas
+                  totalSales: currentTotalSales + item.quantity,
+                  salesCount: currentSalesCount + 1,
+                  lastSaleDate: new Date(),
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error al actualizar stock del producto ${item.productId}:`, error);
+            // Continuar con los demás productos aunque uno falle
+          }
+        }
+      }
+
       // Actualizar la orden para marcarla como convertida
       const orderRef = doc(firestore, collections.ORDERS, order.id);
       await updateDoc(orderRef, {

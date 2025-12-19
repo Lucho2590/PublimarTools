@@ -316,7 +316,7 @@ export default function ComprasPage() {
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Seleccionar proveedor" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-48 overflow-y-auto">
                       {providers && providers.map((prov: any) => (
                         <SelectItem key={prov.id} value={prov.id}>
                           {prov.name}
@@ -462,7 +462,7 @@ export default function ComprasPage() {
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Todos los proveedores" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-48 overflow-y-auto">
                   <SelectItem value="all">Todos los proveedores</SelectItem>
                   {providers && providers.map((provider: any) => (
                     <SelectItem key={provider.id} value={provider.id}>
