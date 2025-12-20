@@ -8,6 +8,7 @@ import {
   deleteDoc,
   serverTimestamp,
   Timestamp,
+  getDoc,
 } from "firebase/firestore";
 import {
   Dialog,
@@ -16,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { TSale, TSaleItem, EPaymentMethod, TFactura } from "@/types/sale";
+import { TSale, TSaleItem, EPaymentMethod, TFactura, TReturn, TReturnItem } from "@/types/sale";
 import collections from "@/lib/collections";
 import { useState, useEffect } from "react";
 import {
@@ -54,6 +55,7 @@ import {
   Plus,
   Pencil,
   FileText,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
@@ -132,6 +134,12 @@ export function SaleDetailsModal({
   const [clientEmail, setClientEmail] = useState<string>("");
   const [clientPhone, setClientPhone] = useState<string>("");
   const [clientCuit, setClientCuit] = useState<string>("");
+
+  // Estados para devoluciones
+  const [showReturnDialog, setShowReturnDialog] = useState(false);
+  const [returnItems, setReturnItems] = useState<{[key: number]: number}>({});  // {itemIndex: quantity}
+  const [returnReason, setReturnReason] = useState("");
+  const [returnToStock, setReturnToStock] = useState(true);
 
   // Estados para el dialog de cliente
   const [showClientDialog, setShowClientDialog] = useState(false);
@@ -647,6 +655,119 @@ export function SaleDetailsModal({
     onOpenChange(open);
   };
 
+  const handleProcessReturn = async () => {
+    if (!saleRef || !saleId || !typedSale) return;
+
+    // Validar que haya items seleccionados
+    const selectedItems = Object.entries(returnItems).filter(([_, qty]) => qty > 0);
+    if (selectedItems.length === 0) {
+      toast.error("Debe seleccionar al menos un item para devolver");
+      return;
+    }
+
+    // Validar motivo
+    if (!returnReason.trim()) {
+      toast.error("Debe especificar un motivo para la devolución");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Crear items de devolución
+      const returnItemsArray: TReturnItem[] = [];
+      let totalRefund = 0;
+
+      for (const [indexStr, quantity] of selectedItems) {
+        const index = parseInt(indexStr);
+        const item = typedSale.items[index];
+
+        // Calcular monto proporcional a devolver
+        const refundAmount = (item.total / item.quantity) * quantity;
+        totalRefund += refundAmount;
+
+        returnItemsArray.push({
+          saleItemId: `${index}`,  // Usar el índice como ID
+          productId: item.productId,
+          variantId: item.variantId,
+          productName: item.productName,
+          variantName: item.variantName,
+          quantityReturned: quantity,
+          refundAmount: refundAmount,
+        });
+
+        // Devolver stock si está marcado
+        if (returnToStock && !item.isManual && item.productId && !item.productId.includes('manual')) {
+          try {
+            const productRef = doc(firestore, collections.PRODUCTS, item.productId);
+            const productDoc = await getDoc(productRef);
+
+            if (productDoc.exists()) {
+              const currentProduct = productDoc.data();
+
+              // Si tiene variante, actualizar stock de la variante específica
+              if (item.variantId && currentProduct.variants) {
+                await updateDoc(productRef, {
+                  variants: currentProduct.variants.map((v: any) =>
+                    v.id === item.variantId
+                      ? { ...v, stock: Number(v.stock) + quantity }
+                      : v
+                  ),
+                });
+              } else {
+                // Si no tiene variante, actualizar stock general
+                await updateDoc(productRef, {
+                  stock: Number(currentProduct.stock || 0) + quantity,
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error al devolver stock del producto ${item.productId}:`, error);
+            // Continuar con los demás productos aunque uno falle
+          }
+        }
+      }
+
+      // Crear objeto de devolución
+      const newReturn: TReturn = {
+        id: `return-${Date.now()}`,
+        date: new Date(),
+        items: returnItemsArray,
+        reason: returnReason,
+        refundAmount: totalRefund,
+        stockReturned: returnToStock,
+        notes: "",
+      };
+
+      // Actualizar venta con la devolución
+      const currentReturns = typedSale.returns || [];
+      const updatedReturns = [...currentReturns, newReturn];
+      const totalReturned = (typedSale.totalReturned || 0) + totalRefund;
+      const finalTotal = typedSale.total - totalReturned;
+
+      await updateDoc(saleRef, {
+        returns: updatedReturns,
+        totalReturned: totalReturned,
+        finalTotal: finalTotal,
+        updatedAt: serverTimestamp(),
+      });
+
+      toast.success("Devolución procesada exitosamente");
+
+      // Limpiar estados del modal
+      setReturnItems({});
+      setReturnReason("");
+      setReturnToStock(true);
+      setShowReturnDialog(false);
+
+      onSuccess();
+    } catch (error) {
+      console.error("Error al procesar devolución:", error);
+      toast.error("Error al procesar la devolución");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!saleRef || !saleId) return;
 
@@ -839,6 +960,15 @@ export function SaleDetailsModal({
             <DialogTitle>Venta #{typedSale?.number}</DialogTitle>
             {!isEditing ? (
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowReturnDialog(true)}
+                  className="flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Devolución
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -1506,6 +1636,79 @@ export function SaleDetailsModal({
                   </Table>
                 </div>
               </div>
+
+              {/* Historial de Devoluciones */}
+              {typedSale?.returns && typedSale.returns.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="font-semibold mb-4">Historial de Devoluciones</h3>
+                  <div className="space-y-4">
+                    {typedSale.returns.map((returnItem, returnIndex) => (
+                      <div key={returnItem.id} className="border rounded-lg p-4 bg-red-50">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-medium text-red-900">
+                              Devolución #{returnIndex + 1}
+                            </h4>
+                            <p className="text-sm text-gray-600">
+                              {formatDate(returnItem.date)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-red-900">
+                              -{formatearPrecio(returnItem.refundAmount)}
+                            </p>
+                            {returnItem.stockReturned && (
+                              <p className="text-xs text-green-700">
+                                Stock devuelto
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mb-2">
+                          <p className="text-sm font-medium text-gray-700">Motivo:</p>
+                          <p className="text-sm text-gray-600">{returnItem.reason}</p>
+                        </div>
+
+                        <div className="border-t pt-2 mt-2">
+                          <p className="text-sm font-medium text-gray-700 mb-1">Items devueltos:</p>
+                          <ul className="space-y-1">
+                            {returnItem.items.map((item, itemIndex) => (
+                              <li key={itemIndex} className="text-sm text-gray-600 flex justify-between">
+                                <span>
+                                  {item.productName} {item.variantName && `(${item.variantName})`}
+                                  - Cantidad: {item.quantityReturned}
+                                </span>
+                                <span className="font-medium">
+                                  -{formatearPrecio(item.refundAmount)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Resumen de devoluciones */}
+                  <div className="mt-4 p-4 bg-gray-100 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium">Total Original:</span>
+                      <span>{formatearPrecio(typedSale.total)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-red-700 mb-2">
+                      <span className="font-medium">Total Devuelto:</span>
+                      <span>-{formatearPrecio(typedSale.totalReturned || 0)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-lg font-bold border-t pt-2">
+                      <span>Total Final:</span>
+                      <span className="text-green-700">
+                        {formatearPrecio(typedSale.finalTotal || typedSale.total)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </DialogContent>
@@ -1646,6 +1849,133 @@ export function SaleDetailsModal({
               className="bg-green-600 hover:bg-green-700"
             >
               Agregar Item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para Devolución */}
+      <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Registrar Devolución</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Motivo de la devolución *</Label>
+              <Textarea
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+                placeholder="Producto defectuoso, talla incorrecta, etc."
+                rows={2}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="returnToStock"
+                checked={returnToStock}
+                onCheckedChange={(checked) => setReturnToStock(checked as boolean)}
+              />
+              <Label htmlFor="returnToStock" className="cursor-pointer">
+                Devolver al inventario
+              </Label>
+            </div>
+
+            <div className="border rounded-lg">
+              <div className="bg-gray-50 p-3 border-b">
+                <h4 className="font-medium">Items de la venta</h4>
+                <p className="text-sm text-gray-600">Seleccione los items y cantidades a devolver</p>
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Producto</TableHead>
+                    <TableHead>Medida</TableHead>
+                    <TableHead className="text-right">Cantidad Original</TableHead>
+                    <TableHead className="text-right">Precio Unit.</TableHead>
+                    <TableHead className="text-right">Cantidad a Devolver</TableHead>
+                    <TableHead className="text-right">Reembolso</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {typedSale?.items.map((item, index) => {
+                    const returnQty = returnItems[index] || 0;
+                    const refundAmount = returnQty > 0 ? (item.total / item.quantity) * returnQty : 0;
+
+                    return (
+                      <TableRow key={index}>
+                        <TableCell>
+                          {item.productName}
+                          {item.isManual && (
+                            <span className="text-xs text-gray-500 ml-2">(Manual)</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{item.variantName || "N/A"}</TableCell>
+                        <TableCell className="text-right">{item.quantity}</TableCell>
+                        <TableCell className="text-right">{formatearPrecio(item.unitPrice)}</TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            min="0"
+                            max={item.quantity}
+                            value={returnQty}
+                            onChange={(e) => {
+                              const value = Math.min(item.quantity, Math.max(0, parseInt(e.target.value) || 0));
+                              setReturnItems(prev => ({
+                                ...prev,
+                                [index]: value
+                              }));
+                            }}
+                            className="w-20 text-right"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {returnQty > 0 ? formatearPrecio(refundAmount) : "-"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Resumen de devolución */}
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Total a reembolsar:</span>
+                <span className="text-lg font-bold text-blue-900">
+                  {formatearPrecio(
+                    Object.entries(returnItems).reduce((total, [indexStr, qty]) => {
+                      if (qty === 0) return total;
+                      const index = parseInt(indexStr);
+                      const item = typedSale?.items[index];
+                      if (!item) return total;
+                      return total + (item.total / item.quantity) * qty;
+                    }, 0)
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowReturnDialog(false);
+                setReturnItems({});
+                setReturnReason("");
+                setReturnToStock(true);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleProcessReturn}
+              disabled={isLoading}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isLoading ? "Procesando..." : "Procesar Devolución"}
             </Button>
           </DialogFooter>
         </DialogContent>

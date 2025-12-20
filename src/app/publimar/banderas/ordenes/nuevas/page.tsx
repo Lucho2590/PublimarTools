@@ -390,18 +390,12 @@ const total = subtotal - totalDiscountAmount;
         cuit: cuit || undefined,
         address: direccion || undefined,
         reference: referencia || undefined,
-        contacts: []
+        contacts: [{
+          name: personaContacto || clienteInput.trim(),
+          email: email || undefined,
+          phone: telefono || undefined,
+        }],
       };
-
-      // Agregar contacto si hay datos
-      if (contactoNombre || contactoEmail || contactoTelefono) {
-        clientData.contacts = [{
-          name: contactoNombre || clienteInput,
-          email: contactoEmail || undefined,
-          phone: contactoTelefono || undefined,
-          position: contactoPosicion || undefined,
-        }];
-      }
 
       // Limpiar valores undefined con protección contra referencias circulares
       const cleanData = (obj: any, seen = new WeakSet()): any => {

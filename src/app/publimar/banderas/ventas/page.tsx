@@ -127,7 +127,8 @@ export default function VentasPage() {
   // Calcular total de ventas filtradas
   const totalVentas = filteredSales?.reduce((sum, sale) => {
     const typedSale = sale as unknown as TSale;
-    return sum + typedSale.total;
+    // Usar finalTotal si existe (con devoluciones), sino usar total
+    return sum + (typedSale.finalTotal ?? typedSale.total);
   }, 0) || 0;
 
   // Limpiar todos los filtros y volver al día actual
@@ -254,12 +255,13 @@ export default function VentasPage() {
     if (!sales) return [];
 
     const paymentMethodSales = new Map<string, number>();
-    
+
     sales.forEach((sale) => {
       const typedSale = sale as unknown as TSale;
       const method = formatPaymentMethod(typedSale.paymentMethod);
       const currentTotal = paymentMethodSales.get(method) || 0;
-      paymentMethodSales.set(method, currentTotal + typedSale.total);
+      // Usar finalTotal si existe (con devoluciones), sino usar total
+      paymentMethodSales.set(method, currentTotal + (typedSale.finalTotal ?? typedSale.total));
     });
 
     return Array.from(paymentMethodSales.entries())
@@ -460,7 +462,12 @@ export default function VentasPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatearPrecio(redondearADecena(typedSale.total))}
+                            {formatearPrecio(redondearADecena(typedSale.finalTotal ?? typedSale.total))}
+                            {typedSale.returns && typedSale.returns.length > 0 && (
+                              <span className="text-xs text-orange-600 ml-1" title="Tiene devoluciones">
+                                *
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex justify-center gap-2">

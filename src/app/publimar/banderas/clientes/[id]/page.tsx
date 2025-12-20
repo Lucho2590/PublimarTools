@@ -69,7 +69,7 @@ export default function ClienteDetallePage({
       where("client", "==", clientId),
     ),
     { idField: "id" }
-  );
+  )
 
   // Estados para el modal de ventas
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);

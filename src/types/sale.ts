@@ -34,6 +34,27 @@ export interface TSaleItem {
   total: number;
 }
 
+export interface TReturnItem {
+  saleItemId: string;         // ID del item original de la venta
+  productId?: string;
+  variantId?: string;
+  productName: string;
+  variantName?: string;
+  quantityReturned: number;   // Cantidad devuelta
+  refundAmount: number;       // Monto a reembolsar
+}
+
+export interface TReturn {
+  id: string;
+  date: Date;
+  items: TReturnItem[];
+  reason: string;              // Motivo de la devolución
+  refundAmount: number;        // Monto total devuelto
+  stockReturned: boolean;      // Si se devolvió al inventario
+  createdBy?: string;          // Usuario que registró la devolución
+  notes?: string;              // Notas adicionales
+}
+
 export interface TSale {
   bank?: string | null;
   id?: string;
@@ -70,4 +91,8 @@ export interface TSale {
   createdAt: Date;
   updatedAt: Date;
   orderId?: string;
+  // Sistema de devoluciones
+  returns?: TReturn[];         // Historial de devoluciones
+  totalReturned?: number;      // Total devuelto
+  finalTotal?: number;         // Total después de devoluciones
 } 

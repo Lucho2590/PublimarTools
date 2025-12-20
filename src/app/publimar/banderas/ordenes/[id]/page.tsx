@@ -334,8 +334,10 @@ export default function OrderDetailsPage({
     }
   }, [order, saving]);
 
-  // Obtener cliente completo
-  const selectedClient = clients?.find((c) => c.id === order?.clientId);
+  // Obtener cliente completo (soporta ambos formatos: clientId y client.id)
+  const selectedClient = clients?.find((c) =>
+    c.id === order?.clientId || c.id === order?.client?.id
+  );
 
   // Cálculos
   const subtotal =
@@ -1045,6 +1047,7 @@ export default function OrderDetailsPage({
                 <Input
                   value={
                     editedOrder?.contact?.name ||
+                    selectedClient?.contacts?.[0]?.name ||
                     editedOrder?.tempClientData?.contacts?.[0]?.name ||
                     order?.client?.contacts?.[0]?.name ||
                     ""
@@ -1078,8 +1081,8 @@ export default function OrderDetailsPage({
                 <Input
                   value={
                     editedOrder?.telefono ||
-                    editedOrder?.contact?.phone ||
                     selectedClient?.phone ||
+                    editedOrder?.contact?.phone ||
                     order?.client?.phone ||
                     editedOrder?.tempClientData?.phone ||
                     ""
@@ -1167,11 +1170,8 @@ export default function OrderDetailsPage({
                         type="email"
                         value={
                           editedOrder?.contact?.email ||
+                          selectedClient?.contacts?.[0]?.email ||
                           order?.client?.contacts?.[0]?.email ||
-                          editedOrder?.contact?.name ||
-                          editedOrder?.contact?.position ||
-                          editedOrder?.contact?.email ||
-                          editedOrder?.contact?.phone ||
                           ""
                         }
                         onChange={async (e) => {
@@ -1207,6 +1207,7 @@ export default function OrderDetailsPage({
                       <Input
                         value={
                           editedOrder?.contact?.phone ||
+                          selectedClient?.contacts?.[0]?.phone ||
                           order?.client?.contacts?.[0]?.phone ||
                           ""
                         }
@@ -1243,6 +1244,7 @@ export default function OrderDetailsPage({
                       <Input
                         value={
                           editedOrder?.contact?.position ||
+                          selectedClient?.contacts?.[0]?.position ||
                           order?.client?.contacts?.[0]?.position ||
                           ""
                         }
