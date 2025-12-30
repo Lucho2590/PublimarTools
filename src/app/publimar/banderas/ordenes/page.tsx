@@ -61,12 +61,13 @@ export default function PedidosPage() {
   const [orderToConvert, setOrderToConvert] = useState<TOrder | null>(null);
   const [newStatusToSet, setNewStatusToSet] = useState<EOrderStatus | null>(null);
   const firestore = useFirestore();
-  
+  const [clicked, setClicked] = useState(false);
   // Hook para manejar ventas
   const { createSale, generateSaleNumber } = useSales();
 
   // Función para convertir orden a venta
   const convertOrderToSale = async (order: TOrder) => {
+
     try {
       // Transformar items de orden a items de venta
       const saleItems = order.items.map(item => ({
@@ -153,6 +154,7 @@ export default function PedidosPage() {
                 });
               }
             }
+            setClicked(false);
           } catch (error) {
             console.error(`Error al actualizar stock del producto ${item.productId}:`, error);
             // Continuar con los demás productos aunque uno falle
@@ -183,6 +185,7 @@ export default function PedidosPage() {
   // Función para confirmar la conversión a venta
   const handleConfirmConvert = () => {
     if (orderToConvert) {
+      setClicked(true);
       convertOrderToSale(orderToConvert);
     }
   };
@@ -655,7 +658,7 @@ export default function PedidosPage() {
             <Button variant="outline" onClick={handleCancelConvert}>
               No, solo cambiar estado
             </Button>
-            <Button onClick={handleConfirmConvert} className="bg-green-600 hover:bg-green-700">
+            <Button onClick={handleConfirmConvert} className="bg-green-600 hover:bg-green-700" disabled={clicked}>
               Sí, convertir a Venta
             </Button>
           </DialogFooter>

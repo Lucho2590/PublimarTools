@@ -134,6 +134,8 @@ export default function OrderDetailsPage({
   // Estados para conversión a venta
   const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [pendingSaveData, setPendingSaveData] = useState<any>(null);
+  const [clicked, setClicked] = useState(false);
+
 
   // ============================================
   // FUNCIONES HELPER PARA PAGOS (Solución Híbrida)
@@ -750,6 +752,7 @@ export default function OrderDetailsPage({
   const handleConfirmConvert = async () => {
     if (!pendingSaveData) return;
 
+    setClicked(true);
     setSaving(true);
     try {
       // Primero guardar la orden
@@ -772,6 +775,7 @@ export default function OrderDetailsPage({
       // Limpiar estados
       setShowConvertDialog(false);
       setPendingSaveData(null);
+      setClicked(false);
     } catch (error) {
       console.error("Error al guardar y convertir:", error);
       toast.error("Error al procesar la orden");
@@ -2263,7 +2267,7 @@ export default function OrderDetailsPage({
             <Button variant="outline" onClick={handleCancelConvert} disabled={saving}>
               No, solo guardar
             </Button>
-            <Button onClick={handleConfirmConvert} className="bg-green-600 hover:bg-green-700" disabled={saving}>
+            <Button onClick={handleConfirmConvert} className="bg-green-600 hover:bg-green-700" disabled={clicked || saving}>
               {saving ? "Procesando..." : "Sí, convertir a Venta"}
             </Button>
           </DialogFooter>
