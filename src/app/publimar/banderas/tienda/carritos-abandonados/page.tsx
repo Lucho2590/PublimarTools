@@ -113,13 +113,20 @@ export default function CarritosAbandonadosPage() {
     try {
       setLoading(true);
       // Mostrar todos los carritos NO convertidos (abandonados o activos)
+      // Sin orderBy para evitar necesitar índice compuesto
       const cartsQuery = query(
         collection(firestore, "abandonedCarts"),
-        where("converted", "==", false),
-        orderBy("updatedAt", "desc")
+        where("converted", "==", false)
       );
       const cartsSnap = await getDocs(cartsQuery);
-      const cartsData = cartsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TAbandonedCart));
+      let cartsData = cartsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TAbandonedCart));
+
+      // Ordenar en memoria por updatedAt
+      cartsData = cartsData.sort((a, b) => {
+        const timeA = a.updatedAt?.seconds || 0;
+        const timeB = b.updatedAt?.seconds || 0;
+        return timeB - timeA; // desc
+      });
 
       setCarts(cartsData);
       setFilteredCarts(cartsData);
@@ -187,8 +194,10 @@ export default function CarritosAbandonadosPage() {
       }
 
       filtered = filtered.filter(cart => {
-        if (!cart.abandonedAt) return false;
-        const cartDate = timestampToDate(cart.abandonedAt);
+        // Usar abandonedAt si existe, sino lastActivityAt o updatedAt
+        const dateToUse = cart.abandonedAt || cart.lastActivityAt || cart.updatedAt;
+        if (!dateToUse) return false;
+        const cartDate = timestampToDate(dateToUse);
         return cartDate && cartDate >= startDate;
       });
     }
@@ -197,15 +206,18 @@ export default function CarritosAbandonadosPage() {
   };
 
   const exportToCSV = () => {
-    const headers = ["Fecha Abandono", "Items", "Total", "Dispositivo", "Navegador", "Session ID"];
-    const rows = filteredCarts.map(cart => [
-      cart.abandonedAt ? formatDate(timestampToDate(cart.abandonedAt)!) : "",
-      cart.itemsCount,
-      cart.total,
-      cart.metadata.deviceType,
-      cart.metadata.browser || "",
-      cart.sessionId,
-    ]);
+    const headers = ["Fecha", "Items", "Total", "Dispositivo", "Navegador", "Session ID"];
+    const rows = filteredCarts.map(cart => {
+      const dateToUse = cart.abandonedAt || cart.lastActivityAt || cart.updatedAt;
+      return [
+        dateToUse ? formatDate(timestampToDate(dateToUse)!) : "",
+        cart.itemsCount,
+        cart.total,
+        cart.metadata.deviceType,
+        cart.metadata.browser || "",
+        cart.sessionId,
+      ];
+    });
 
     const csv = [
       headers.join(","),
@@ -426,7 +438,7 @@ export default function CarritosAbandonadosPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Fecha Abandono</TableHead>
+                  <TableHead>Fecha</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Productos</TableHead>
                   <TableHead>Total</TableHead>
@@ -436,10 +448,17 @@ export default function CarritosAbandonadosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCarts.map((cart) => (
+                {filteredCarts.map((cart) => {
+                  const dateToDisplay = cart.abandonedAt || cart.lastActivityAt || cart.updatedAt;
+                  return (
                   <TableRow key={cart.id}>
                     <TableCell>
-                      {cart.abandonedAt && formatDate(timestampToDate(cart.abandonedAt)!)}
+                      <div>
+                        {dateToDisplay && formatDate(timestampToDate(dateToDisplay)!)}
+                      </div>
+                      {!cart.abandoned && (
+                        <div className="text-xs text-orange-600 font-medium">Activo</div>
+                      )}
                     </TableCell>
                     <TableCell>
                       {cart.customer ? (
@@ -525,7 +544,8 @@ export default function CarritosAbandonadosPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}
