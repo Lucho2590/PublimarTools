@@ -1,13 +1,16 @@
 'use client';
 
-import React, { ReactNode, useState, } from "react";
+import React, { ReactNode, useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useSigninCheck } from "reactfire";
+import { useSigninCheck, useFirestore } from "reactfire";
 import { Button } from "@/components/ui/button";
 import { signOut } from "firebase/auth";
 import { useAuth } from "reactfire";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { TEcommerceOrder } from "@/types/ecommerceOrder";
+import { TAbandonedCart } from "@/types/abandonedCart";
 
 interface IDashboardLayoutProps {
   children: ReactNode;
@@ -25,12 +28,48 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = usePathname();
   const auth = useAuth();
+  const firestore = useFirestore();
   const { status, data: signInCheckResult } = useSigninCheck();
   const [mounted, setMounted] = useState(false);
+  const [unviewedCount, setUnviewedCount] = useState(0);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Consultar contadores de no vistos cada 30 segundos
+  useEffect(() => {
+    const loadUnviewedCount = async () => {
+      try {
+        // Contar pedidos no vistos
+        const ordersSnap = await getDocs(collection(firestore, "ecommerceOrders"));
+        const orders = ordersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder));
+        const unviewedOrders = orders.filter(order => !order.viewed).length;
+
+        // Contar carritos no vistos
+        const cartsQuery = query(
+          collection(firestore, "abandonedCarts"),
+          where("abandoned", "==", true),
+          where("converted", "==", false)
+        );
+        const cartsSnap = await getDocs(cartsQuery);
+        const carts = cartsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TAbandonedCart));
+        const unviewedCarts = carts.filter(cart => !cart.viewed).length;
+
+        setUnviewedCount(unviewedOrders + unviewedCarts);
+      } catch (error) {
+        console.error("Error loading unviewed count:", error);
+      }
+    };
+
+    // Cargar inicialmente
+    loadUnviewedCount();
+
+    // Actualizar cada 30 segundos
+    const interval = setInterval(loadUnviewedCount, 30000);
+
+    return () => clearInterval(interval);
+  }, [firestore]);
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -197,6 +236,108 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                 />
               </svg>
             ),
+          },
+          {
+            name: "Tienda Online",
+            href: "/publimar/banderas/tienda",
+            icon: (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+                stroke="currentColor"
+                className="size-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75-.615A2.993 2.993 0 0 0 9.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 0 0 2.25 1.016c.896 0 1.7-.393 2.25-1.015a3.001 3.001 0 0 0 3.75.614m-16.5 0a3.004 3.004 0 0 1-.621-4.72l1.189-1.19A1.5 1.5 0 0 1 3.129 3h17.742a1.5 1.5 0 0 1 1.06.44l1.19 1.189a3 3 0 0 1-.621 4.72M6.75 18h3.75a.75.75 0 0 0 .75-.75V13.5a.75.75 0 0 0-.75-.75H6.75a.75.75 0 0 0-.75.75v3.75c0 .414.336.75.75.75Z"
+                />
+              </svg>
+            ),
+            subItems: [
+              {
+                name: "Dashboard",
+                href: "/publimar/banderas/tienda",
+                icon: (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                    className="size-6"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 5.25m8.5-5.25 1 5.25m-8.5 0H6m10.5 0H15"
+                    />
+                  </svg>
+                ),
+              },
+              {
+                name: "Pedidos",
+                href: "/publimar/banderas/tienda/pedidos",
+                icon: (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                    className="size-6"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                    />
+                  </svg>
+                ),
+              },
+              {
+                name: "Carritos Abandonados",
+                href: "/publimar/banderas/tienda/carritos-abandonados",
+                icon: (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                    className="size-6"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 0 0-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 0 0-16.536-1.84M7.5 14.25 5.106 5.272M6 20.25a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Zm12.75 0a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0Z"
+                    />
+                  </svg>
+                ),
+              },
+              {
+                name: "Analytics",
+                href: "/publimar/banderas/tienda/analytics",
+                icon: (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                    className="size-6"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"
+                    />
+                  </svg>
+                ),
+              },
+            ],
           },
         ],
       },
@@ -461,14 +602,23 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                       <Link
                         href={item.href}
                         key={item.name}
-                        className={`flex items-center p-2 rounded-md flex-1 ${
+                        className={`flex items-center p-2 rounded-md flex-1 relative ${
                           pathname === item.href
                             ? "bg-blue-700 text-white"
                             : "text-blue-300 hover:bg-blue-900 hover:text-white"
                         }`}
                       >
                         {item.icon}
-                        {isSidebarOpen && <span className="ml-3 font-bold text-base">{item.name}</span>}
+                        {isSidebarOpen && (
+                          <span className="ml-3 font-bold text-base flex items-center">
+                            {item.name}
+                            {item.name === "Tienda Online" && unviewedCount > 0 && (
+                              <span className="ml-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                                {unviewedCount}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </Link>
                       {isSidebarOpen && (
                         <button
@@ -517,14 +667,23 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                 ) : (
                   <Link
                     href={item.href}
-                    className={`flex items-center p-2 rounded-md ${
+                    className={`flex items-center p-2 rounded-md relative ${
                       pathname === item.href
                         ? "bg-blue-700 text-white"
                         : "text-blue-300 hover:bg-blue-900 hover:text-white"
                     }`}
                   >
                     {item.icon}
-                    {isSidebarOpen && <span className="ml-3 font-bold text-base">{item.name}</span>}
+                    {isSidebarOpen && (
+                      <span className="ml-3 font-bold text-base flex items-center">
+                        {item.name}
+                        {item.name === "Tienda Online" && unviewedCount > 0 && (
+                          <span className="ml-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                            {unviewedCount}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </Link>
                 )}
               </li>
