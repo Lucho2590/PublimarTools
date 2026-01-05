@@ -20,4 +20,5 @@ export type TLocation = {
   contactPhone?: string;
   contactEmail?: string;
   contactNote?: string;
+  photos?: string[]; // URLs de fotos en Firebase Storage
 };

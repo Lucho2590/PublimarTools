@@ -10,6 +10,13 @@ import {
   doc,
   updateDoc,
 } from "firebase/firestore";
+import { storage } from "@/lib/firebase";
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
+} from "firebase/storage";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,10 +44,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { MapPin, Plus, Trash2, Edit, X, ChevronDown, Check } from "lucide-react";
+import { MapPin, Plus, Trash2, Edit, X, ChevronDown, Check, Filter, Grid3x3, Upload, Image as ImageIcon } from "lucide-react";
 import collections from "@/lib/collections";
 import { TLocation, TLocationDevice } from "@/types/location";
 import { TDeviceType } from "@/types/device";
+import { useMemo } from "react";
 
 const MapView = dynamic(() => import("@/components/maps/MapView"), {
   ssr: false,
@@ -70,6 +78,30 @@ export default function UbicacionesPage() {
   const [devices, setDevices] = useState<TLocationDevice[]>([]);
   const [selectedDeviceTypeId, setSelectedDeviceTypeId] = useState<string>("");
   const [deviceQuantity, setDeviceQuantity] = useState<number>(1);
+
+  // Estado para fotos de la ubicación
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // Estado para filtros de dispositivos
+  const [selectedDeviceTypes, setSelectedDeviceTypes] = useState<Set<string>>(() => {
+    // Cargar desde localStorage al inicializar
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('mapDeviceFilters');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return new Set(parsed);
+        } catch (e) {
+          return new Set();
+        }
+      }
+    }
+    return new Set(); // Por defecto vacío = muestra todo
+  });
+
+  // Estado para colapsar/expandir filtros
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
 
   const [formData, setFormData] = useState({
     code: "",
@@ -137,12 +169,67 @@ export default function UbicacionesPage() {
       description: loc.description,
       address: loc.address,
       devices: loc.devices || [],
+      photos: loc.photos || [],
       contactName: loc.contactName,
       contactPhone: loc.contactPhone,
       contactEmail: loc.contactEmail,
       contactNote: loc.contactNote,
       createdAt: loc.createdAt?.toDate?.(),
     })) || [];
+
+  // Guardar filtros en localStorage cuando cambien
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('mapDeviceFilters', JSON.stringify([...selectedDeviceTypes]));
+    }
+  }, [selectedDeviceTypes]);
+
+  // Contador de ubicaciones por tipo de dispositivo
+  const deviceTypeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    deviceTypes.forEach(type => {
+      counts[type.id] = locations.filter(loc =>
+        loc.devices?.some(d => d.deviceTypeId === type.id)
+      ).length;
+    });
+    return counts;
+  }, [locations, deviceTypes]);
+
+  // Filtrar ubicaciones según tipos de dispositivos seleccionados
+  const filteredLocations = useMemo(() => {
+    if (selectedDeviceTypes.size === 0) {
+      return locations; // Si no hay filtros, muestra todo
+    }
+
+    return locations.filter(location =>
+      location.devices?.some(device =>
+        selectedDeviceTypes.has(device.deviceTypeId)
+      )
+    );
+  }, [locations, selectedDeviceTypes]);
+
+  // Toggle de tipo de dispositivo
+  const toggleDeviceType = (deviceTypeId: string) => {
+    setSelectedDeviceTypes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(deviceTypeId)) {
+        newSet.delete(deviceTypeId);
+      } else {
+        newSet.add(deviceTypeId);
+      }
+      return newSet;
+    });
+  };
+
+  // Limpiar todos los filtros
+  const clearFilters = () => {
+    setSelectedDeviceTypes(new Set());
+  };
+
+  // Seleccionar todos los filtros
+  const selectAllFilters = () => {
+    setSelectedDeviceTypes(new Set(deviceTypes.map(dt => dt.id)));
+  };
 
   const handleNewLocation = () => {
     // Obtener el centro visible actual del mapa
@@ -168,6 +255,7 @@ export default function UbicacionesPage() {
       contactNote: "",
     });
     setDevices([]);
+    setPhotos([]);
     setShowDrawer(true);
   };
 
@@ -197,6 +285,7 @@ export default function UbicacionesPage() {
         lat: parseFloat(formData.lat),
         lng: parseFloat(formData.lng),
         devices: devices,
+        photos: photos,
         contactName: formData.contactName,
         contactPhone: formData.contactPhone,
         contactEmail: formData.contactEmail,
@@ -244,6 +333,7 @@ export default function UbicacionesPage() {
       contactNote: location.contactNote || "",
     });
     setDevices(location.devices || []);
+    setPhotos(location.photos || []);
     setShowDrawer(true);
   };
 
@@ -266,6 +356,7 @@ export default function UbicacionesPage() {
     setEditingLocation(null);
     setDraggableMarker(null);
     setDevices([]);
+    setPhotos([]);
     setSelectedDeviceTypeId("");
     setDeviceQuantity(1);
     setFormData({
@@ -310,6 +401,76 @@ export default function UbicacionesPage() {
     setDevices(devices.filter((_, i) => i !== index));
   };
 
+  // Manejar subida de foto
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith("image/")) {
+      toast.error("Solo se permiten archivos de imagen");
+      return;
+    }
+
+    // Validar tamaño (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("La imagen no debe superar los 5MB");
+      return;
+    }
+
+    try {
+      setUploadingPhoto(true);
+
+      // Crear referencia única en Storage
+      const timestamp = Date.now();
+      const fileName = `${timestamp}_${file.name}`;
+      const storageRef = ref(storage, `locations/${fileName}`);
+
+      // Subir archivo
+      await uploadBytes(storageRef, file);
+
+      // Obtener URL de descarga
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // Agregar URL al array de fotos
+      setPhotos([...photos, downloadURL]);
+
+      toast.success("Foto subida correctamente");
+    } catch (error) {
+      console.error("Error al subir foto:", error);
+      toast.error("Error al subir la foto");
+    } finally {
+      setUploadingPhoto(false);
+      // Reset input
+      e.target.value = "";
+    }
+  };
+
+  // Manejar eliminación de foto
+  const handlePhotoDelete = async (photoUrl: string, index: number) => {
+    if (!confirm("¿Estás seguro de eliminar esta foto?")) return;
+
+    try {
+      // Extraer el path del storage desde la URL
+      const urlParts = photoUrl.split("/o/")[1];
+      if (urlParts) {
+        const filePath = decodeURIComponent(urlParts.split("?")[0]);
+        const fileRef = ref(storage, filePath);
+
+        // Eliminar del storage
+        await deleteObject(fileRef);
+      }
+
+      // Eliminar del array de fotos
+      setPhotos(photos.filter((_, i) => i !== index));
+
+      toast.success("Foto eliminada correctamente");
+    } catch (error) {
+      console.error("Error al eliminar foto:", error);
+      toast.error("Error al eliminar la foto");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -323,10 +484,105 @@ export default function UbicacionesPage() {
         </Button>
       </div>
 
-      {/* Mapa a pantalla completa */}
+      {/* Filtros de dispositivos - Colapsable */}
+      <Card>
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              className="flex items-center gap-2 hover:opacity-70 transition-opacity"
+            >
+              <Filter className="h-5 w-5 text-blue-900" />
+              <CardTitle className="text-lg">Filtrar por Tipo de Dispositivo</CardTitle>
+              <ChevronDown
+                className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${
+                  filtersExpanded ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+            {filtersExpanded && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearFilters}
+                  disabled={selectedDeviceTypes.size === 0}
+                >
+                  Limpiar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={selectAllFilters}
+                  disabled={selectedDeviceTypes.size === deviceTypes.length}
+                >
+                  Seleccionar todos
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        {filtersExpanded && (
+          <CardContent>
+            <div className="space-y-3">
+              {/* Chips de filtros */}
+              <div className="flex flex-wrap gap-2">
+                {deviceTypes.map((deviceType) => {
+                  const isSelected = selectedDeviceTypes.has(deviceType.id);
+                  const count = deviceTypeCounts[deviceType.id] || 0;
+
+                  return (
+                    <button
+                      key={deviceType.id}
+                      onClick={() => toggleDeviceType(deviceType.id)}
+                      className={`
+                        inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium
+                        transition-all duration-200 border-2
+                        ${
+                          isSelected
+                            ? "bg-blue-900 text-white border-blue-900 shadow-md hover:bg-blue-800"
+                            : "bg-white text-gray-700 border-gray-300 hover:border-blue-900 hover:text-blue-900"
+                        }
+                      `}
+                    >
+                      <Grid3x3 className="h-4 w-4" />
+                      <span>{deviceType.name}</span>
+                      <span
+                        className={`
+                          px-2 py-0.5 rounded-full text-xs font-bold
+                          ${isSelected ? "bg-blue-800 text-white" : "bg-gray-200 text-gray-600"}
+                        `}
+                      >
+                        {count}
+                      </span>
+                      {isSelected && <Check className="h-4 w-4" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Contador de resultados */}
+              <div className="pt-2 border-t border-gray-200">
+                <p className="text-sm text-gray-600">
+                  Mostrando:{" "}
+                  <span className="font-bold text-blue-900">{filteredLocations.length}</span> de{" "}
+                  <span className="font-bold">{locations.length}</span> ubicaciones
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Mapa - Responsive y robusto */}
       <div
-        className="h-[calc(100vh-200px)] w-full relative z-0"
-        style={{ pointerEvents: "auto" }}
+        className="w-full relative z-0"
+        style={{
+          height: filtersExpanded ? 'calc(100vh - 400px)' : 'calc(100vh - 280px)',
+          minHeight: '500px',
+          maxHeight: '800px',
+          pointerEvents: "auto"
+        }}
       >
         {status === "loading" ? (
           <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
@@ -334,7 +590,7 @@ export default function UbicacionesPage() {
           </div>
         ) : (
           <MapView
-            locations={locations}
+            locations={filteredLocations}
             center={mapCenter}
             draggableMarker={draggableMarker}
             onDraggableMarkerMove={handleDraggableMarkerMove}
@@ -346,16 +602,27 @@ export default function UbicacionesPage() {
       {/* Lista de ubicaciones */}
       <Card>
         <CardHeader>
-          <CardTitle>Ubicaciones Registradas ({locations.length})</CardTitle>
+          <CardTitle>Ubicaciones Registradas ({filteredLocations.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          {locations.length === 0 ? (
+          {filteredLocations.length === 0 ? (
             <div className="text-center py-12">
               <MapPin className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-              <p className="text-gray-500">No hay ubicaciones registradas</p>
-              <p className="text-sm text-gray-400 mt-2">
-                Agrega tu primera ubicacion haciendo click en Nueva Ubicacion
-              </p>
+              {locations.length === 0 ? (
+                <>
+                  <p className="text-gray-500">No hay ubicaciones registradas</p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Agrega tu primera ubicacion haciendo click en Nueva Ubicacion
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-500">No hay ubicaciones con los filtros seleccionados</p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Intenta seleccionar otros tipos de dispositivos
+                  </p>
+                </>
+              )}
             </div>
           ) : (
             <Table>
@@ -368,7 +635,7 @@ export default function UbicacionesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {locations.map((location) => (
+                {filteredLocations.map((location) => (
                   <TableRow key={location.id}>
                     <TableCell className="font-medium">
                       {location.code}
@@ -492,6 +759,77 @@ export default function UbicacionesPage() {
                     placeholder="Detalles adicionales sobre la ubicacion"
                     rows={4}
                   />
+                </div>
+
+                {/* Sección de fotos */}
+                <div className="space-y-3 pt-4 border-t">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Fotos de la Ubicación</Label>
+                    <label
+                      htmlFor="photo-upload"
+                      className={`cursor-pointer inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                        uploadingPhoto
+                          ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          : "bg-blue-900 text-white hover:bg-blue-800"
+                      }`}
+                    >
+                      <Upload className="h-4 w-4" />
+                      {uploadingPhoto ? "Subiendo..." : "Subir Foto"}
+                    </label>
+                    <input
+                      id="photo-upload"
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      disabled={uploadingPhoto}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* Previsualización de fotos */}
+                  {photos.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {photos.map((photoUrl, index) => (
+                        <div
+                          key={index}
+                          className="relative group aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 transition-colors"
+                        >
+                          <img
+                            src={photoUrl}
+                            alt={`Foto ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Overlay con botón eliminar */}
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handlePhotoDelete(photoUrl, index)}
+                              className="gap-1"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Eliminar
+                            </Button>
+                          </div>
+                          {/* Número de foto */}
+                          <div className="absolute top-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                            {index + 1}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8 px-4 border-2 border-dashed border-gray-300 rounded-lg">
+                      <ImageIcon className="h-12 w-12 text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-500 text-center">
+                        No hay fotos agregadas
+                      </p>
+                      <p className="text-xs text-gray-400 text-center mt-1">
+                        Las fotos se mostrarán en el popup del mapa
+                      </p>
+                    </div>
+                  )}
                 </div>
               </TabsContent>
 

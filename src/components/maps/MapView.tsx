@@ -5,6 +5,13 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TLocation } from '@/types/location';
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 // Fix para los iconos de Leaflet en Next.js
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -152,7 +159,7 @@ export default function MapView({
     <MapContainer
       center={center}
       zoom={zoom}
-      style={{ height: '100%', width: '100%', minHeight: '500px' }}
+      style={{ height: '100%', width: '100%' }}
       className="rounded-lg"
       scrollWheelZoom={true}
       dragging={true}
@@ -194,6 +201,38 @@ export default function MapView({
                 </div>
               )}
 
+              {/* Fotos - Carousel */}
+              {location.photos && location.photos.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Fotos</p>
+                  <Carousel className="w-full">
+                    <CarouselContent>
+                      {location.photos.map((photoUrl, idx) => (
+                        <CarouselItem key={idx}>
+                          <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100">
+                            <img
+                              src={photoUrl}
+                              alt={`Foto ${idx + 1} de ${location.code}`}
+                              className="w-full h-full object-cover"
+                            />
+                            {/* Contador de fotos */}
+                            <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                              {idx + 1} / {location.photos?.length || 0}
+                            </div>
+                          </div>
+                        </CarouselItem>
+                      ))}
+                    </CarouselContent>
+                    {location.photos.length > 1 && (
+                      <>
+                        <CarouselPrevious className="left-2" />
+                        <CarouselNext className="right-2" />
+                      </>
+                    )}
+                  </Carousel>
+                </div>
+              )}
+
               {/* Dispositivos */}
               {location.devices && location.devices.length > 0 && (
                 <div>
@@ -208,25 +247,6 @@ export default function MapView({
                   </ul>
                 </div>
               )}
-
-              {/* Carousel de fotos - preparado para futuro */}
-              {/* TODO: Agregar fotos cuando estén disponibles */}
-              {/*
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Fotos</p>
-                <Carousel>
-                  <CarouselContent>
-                    {location.photos?.map((photo, idx) => (
-                      <CarouselItem key={idx}>
-                        <img src={photo.url} alt={`Foto ${idx + 1}`} className="w-full h-32 object-cover rounded" />
-                      </CarouselItem>
-                    ))}
-                  </CarouselContent>
-                  <CarouselPrevious />
-                  <CarouselNext />
-                </Carousel>
-              </div>
-              */}
             </div>
           </Popup>
         </Marker>
