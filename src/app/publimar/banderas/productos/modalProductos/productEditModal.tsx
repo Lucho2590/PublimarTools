@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore, useFirestoreDoc, useFirestoreCollectionData } from "reactfire";
 import { collection, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { storage } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,7 +24,7 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
-import { Trash2, Bell, ShoppingCartIcon } from "lucide-react";
+import { Trash2, Bell, ShoppingCartIcon, Upload, X, Image as ImageIcon } from "lucide-react";
 import { generateSlug } from "@/lib/utils";
 
 interface ProductEditModalProps {
@@ -39,6 +41,7 @@ export default function ProductEditModal({
   onProductUpdated,
 }: ProductEditModalProps) {
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const firestore = useFirestore();
 
   const [formData, setFormData] = useState({
@@ -168,6 +171,80 @@ export default function ProductEditModal({
       ...prev,
       variants: prev.variants.filter((v) => v.id !== variantId),
     }));
+  };
+
+  // Upload de imagen a Firebase Storage
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !productId) return;
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor selecciona un archivo de imagen válido');
+      return;
+    }
+
+    // Validar tamaño (máx 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('La imagen no debe superar los 5MB');
+      return;
+    }
+
+    setUploadingImage(true);
+
+    try {
+      // Crear referencia única en Storage
+      const fileName = `${Date.now()}_${file.name}`;
+      const storageRef = ref(storage, `products/${productId}/${fileName}`);
+
+      // Subir archivo
+      await uploadBytes(storageRef, file);
+
+      // Obtener URL de descarga
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // Agregar URL al formData
+      setFormData((prev) => ({
+        ...prev,
+        imageUrls: [...prev.imageUrls, downloadURL],
+      }));
+
+      toast.success('Imagen subida exitosamente');
+
+      // Reset input
+      e.target.value = '';
+    } catch (error) {
+      console.error('Error al subir imagen:', error);
+      toast.error('Error al subir la imagen');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  // Eliminar imagen
+  const handleRemoveImage = async (imageUrl: string, index: number) => {
+    try {
+      // Extraer path del Storage desde la URL
+      const urlParts = imageUrl.split('/o/')[1];
+      if (urlParts) {
+        const imagePath = decodeURIComponent(urlParts.split('?')[0]);
+        const imageRef = ref(storage, imagePath);
+
+        // Eliminar de Storage
+        await deleteObject(imageRef);
+      }
+
+      // Eliminar del formData
+      setFormData((prev) => ({
+        ...prev,
+        imageUrls: prev.imageUrls.filter((_, i) => i !== index),
+      }));
+
+      toast.success('Imagen eliminada');
+    } catch (error) {
+      console.error('Error al eliminar imagen:', error);
+      toast.error('Error al eliminar la imagen');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -370,6 +447,74 @@ export default function ProductEditModal({
                   })}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ImageIcon className="h-5 w-5" />
+                Imágenes del producto
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Upload Button */}
+              <div className="flex items-center gap-4">
+                <Label
+                  htmlFor="image-upload"
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 cursor-pointer transition-colors"
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploadingImage ? 'Subiendo...' : 'Subir imagen'}
+                </Label>
+                <Input
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  disabled={uploadingImage}
+                  className="hidden"
+                />
+                <span className="text-sm text-gray-500">
+                  Formatos: JPG, PNG, WebP (máx. 5MB)
+                </span>
+              </div>
+
+              {/* Preview de imágenes */}
+              {formData.imageUrls.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {formData.imageUrls.map((url, index) => (
+                    <div
+                      key={index}
+                      className="relative group rounded-lg overflow-hidden border-2 border-gray-200 hover:border-blue-500 transition-colors"
+                    >
+                      <img
+                        src={url}
+                        alt={`Producto ${index + 1}`}
+                        className="w-full h-32 object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveImage(url, index)}
+                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                        title="Eliminar imagen"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                      <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        Imagen {index + 1}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                  <ImageIcon className="h-12 w-12 mx-auto text-gray-400 mb-2" />
+                  <p className="text-gray-500">
+                    No hay imágenes cargadas. Sube la primera imagen del producto.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
