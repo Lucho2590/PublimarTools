@@ -50,6 +50,7 @@ import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
 import { EPaymentMethod, ESaleDepartment, TFactura } from "@/types/sale";
 import { formatearPrecio, redondearADecena, redondearTotal, formatDateString } from "@/lib/utils";
 import { useClients } from "@/hooks/useClients";
+import { EClientSection } from "@/types/client";
 
 interface SaleItem {
   id: string;
@@ -64,12 +65,12 @@ export default function NuevaVentaPage() {
   const router = useRouter();
   const firestore = useFirestore();
 
-  // Hook de clientes
-  const { 
-    clients, 
+  // Hook de clientes - Solo clientes de la sección "banderas"
+  const {
+    clients,
     loading: clientsLoading,
-    createClient 
-  } = useClients();
+    createClient
+  } = useClients({ section: EClientSection.BANDERAS });
 
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");

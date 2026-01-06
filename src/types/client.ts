@@ -4,10 +4,15 @@ export enum EClientType {
     INDIVIDUAL = "individual",
     COMPANY = "company",
   }
-  
+
   export enum EClientStatus {
     ACTIVE = "active",
     INACTIVE = "inactive",
+  }
+
+  export enum EClientSection {
+    BANDERAS = "banderas",
+    VIA_PUBLICA = "viaPublica",
   }
   
   export type TClientContact = {
@@ -23,6 +28,7 @@ export enum EClientType {
     name: string;
     type: EClientType;
     status: EClientStatus;
+    section: EClientSection; // Sección del cliente (banderas o vía pública)
     businessName?: string; // Razón social para empresas
     email?: string;
     phone?: string;

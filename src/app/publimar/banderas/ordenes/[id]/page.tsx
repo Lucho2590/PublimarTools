@@ -6,6 +6,7 @@ import { useUser } from "reactfire";
 import { useOrders, useOrderById } from "@/hooks/useOrders";
 import { useClients } from "@/hooks/useClients";
 import { useSales } from "@/hooks/useSales";
+import { EClientSection } from "@/types/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -75,7 +76,7 @@ export default function OrderDetailsPage({
     loading: orderLoading,
     error: orderError,
   } = useOrderById(orderId);
-  const { clients, loading: clientsLoading, updateClient } = useClients();
+  const { clients, loading: clientsLoading, updateClient } = useClients({ section: EClientSection.BANDERAS });
   const { createSale, generateSaleNumber } = useSales();
 
   // Productos

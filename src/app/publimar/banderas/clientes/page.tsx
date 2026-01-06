@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy } from "firebase/firestore";
+import { collection, query, orderBy, where } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -33,7 +33,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import collections from "@/lib/collections";
-import { EClientType, EClientStatus } from "@/types/client";
+import { EClientType, EClientStatus, EClientSection } from "@/types/client";
 import { Edit, Eye } from "lucide-react";
 import ClientDetailsModal from "./modalClientes/clientDetailsModal";
 import { generateSlug } from "@/lib/utils";
@@ -47,9 +47,13 @@ export default function ClientesPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const firestore = useFirestore();
 
-  // Consulta a Firestore - Temporalmente sin el filtro de status
+  // Consulta a Firestore - Filtra solo clientes de la sección "banderas"
   const clientsCollection = collection(firestore, collections.CLIENTS);
-  const clientsQuery = query(clientsCollection, orderBy("name"));
+  const clientsQuery = query(
+    clientsCollection,
+    where("section", "==", EClientSection.BANDERAS),
+    orderBy("name")
+  );
 
   const { status, data: clients } = useFirestoreCollectionData(clientsQuery, {
     idField: "id",

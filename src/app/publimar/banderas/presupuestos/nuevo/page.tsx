@@ -9,6 +9,9 @@ import {
   serverTimestamp,
   DocumentData,
   doc,
+  query,
+  where,
+  orderBy,
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +45,7 @@ import {
 import { Search, Plus, Trash2, Edit, ArrowLeft, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import collections from "@/lib/collections";
 import { EQuoteStatus } from "@/types/quote";
-import { TClient, EClientType, EClientStatus } from "@/types/client";
+import { TClient, EClientType, EClientStatus, EClientSection } from "@/types/client";
 import { TProduct, TProductVariant, TProductCategory } from "@/types/product";
 import {
   Select,
@@ -129,10 +132,15 @@ export default function NuevoPresupuestoPage() {
   const [pendingQuoteData, setPendingQuoteData] = useState<any>(null);
   const [creatingClient, setCreatingClient] = useState(false);
 
-  // Fetch clients
+  // Fetch clients - Solo clientes de la sección "banderas"
   const clientsCollection = collection(firestore, collections.CLIENTS);
-  const { status: clientsStatus, data: clients } = useFirestoreCollectionData(
+  const clientsQuery = query(
     clientsCollection,
+    where("section", "==", EClientSection.BANDERAS),
+    orderBy("name")
+  );
+  const { status: clientsStatus, data: clients } = useFirestoreCollectionData(
+    clientsQuery,
     {
       idField: "id",
     }
@@ -377,6 +385,7 @@ export default function NuevoPresupuestoPage() {
         name: pendingQuoteData.clienteInput,
         type: EClientType.INDIVIDUAL,
         status: EClientStatus.ACTIVE,
+        section: EClientSection.BANDERAS, // Cliente de la sección banderas
         email: pendingQuoteData.email || undefined,
         phone: pendingQuoteData.telefono || undefined,
         address: pendingQuoteData.direccion || undefined,

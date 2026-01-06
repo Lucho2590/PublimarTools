@@ -54,7 +54,7 @@ import collections from "@/lib/collections";
 // Hooks personalizados
 import { useOrders } from "@/hooks/useOrders";
 import { useClients } from "@/hooks/useClients";
-import { EClientStatus } from "@/types/client";
+import { EClientStatus, EClientSection } from "@/types/client";
 
 export default function NuevasOrdenesPage() {
   const router = useRouter();
@@ -68,11 +68,11 @@ export default function NuevasOrdenesPage() {
     createOrderWithDefaults 
   } = useOrders();
   
-  const { 
-    clients, 
+  const {
+    clients,
     loading: clientsLoading,
-    createClient 
-  } = useClients();
+    createClient
+  } = useClients({ section: EClientSection.BANDERAS });
 
   // Productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
@@ -384,6 +384,7 @@ const total = subtotal - totalDiscountAmount;
       // Preparar datos del cliente
       const clientData: any = {
         status: EClientStatus.ACTIVE,
+        section: EClientSection.BANDERAS, // Cliente de la sección banderas
         name: clienteInput.trim(),
         email: email || undefined,
         phone: telefono || undefined,

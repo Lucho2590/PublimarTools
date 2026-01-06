@@ -40,7 +40,7 @@ export default function EditarClientePage({ params }: { params: { id: string } }
     name: "",
     type: EClientType.INDIVIDUAL,
     status: EClientStatus.ACTIVE,
-    section: EClientSection.BANDERAS,
+    section: EClientSection.VIA_PUBLICA,
     businessName: "",
     email: "",
     phone: "",
@@ -106,7 +106,7 @@ export default function EditarClientePage({ params }: { params: { id: string } }
       });
 
       toast.success("Cliente actualizado correctamente");
-      redirect(`/publimar/banderas/clientes/${params.id}`);
+      redirect(`/publimar/viaPublica/clientes/${params.id}`);
     } catch (error) {
       console.error("Error al actualizar el cliente:", error);
       toast.error("Error al actualizar el cliente");
@@ -133,7 +133,7 @@ export default function EditarClientePage({ params }: { params: { id: string } }
           El cliente que buscas no existe o ha sido eliminado.
         </p>
         <Button asChild className="mt-4">
-          <Link href="/publimar/banderas/clientes">Volver a clientes</Link>
+          <Link href="/publimar/viaPublica/clientes">Volver a clientes</Link>
         </Button>
       </div>
     );

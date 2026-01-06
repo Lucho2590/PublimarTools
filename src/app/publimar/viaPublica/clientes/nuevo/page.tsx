@@ -38,7 +38,7 @@ export default function NuevoClientePage() {
     name: "",
     type: EClientType.COMPANY,
     status: EClientStatus.ACTIVE,
-    section: EClientSection.BANDERAS, // Clientes de banderas
+    section: EClientSection.VIA_PUBLICA, // Clientes de vía pública
     email: "",
     phone: "",
     address: "",
@@ -126,7 +126,7 @@ export default function NuevoClientePage() {
       await addDoc(clientsCollection, clientData);
 
       toast.success("Cliente creado con éxito");
-      router.push("/publimar/banderas/clientes");
+      router.push("/publimar/viaPublica/clientes");
     } catch (error) {
       console.error("Error al crear el cliente:", error);
       toast.error("Error al crear el cliente");
@@ -141,7 +141,7 @@ export default function NuevoClientePage() {
         <h1 className="text-2xl font-bold">Crear nuevo cliente</h1>
         <Button
           variant="outline"
-          onClick={() => router.push("/publimar/banderas/clientes")}
+          onClick={() => router.push("/publimar/viaPublica/clientes")}
           className="bg-red-500 hover:bg-red-600 text-white"
         >
           Cancelar
@@ -356,7 +356,7 @@ export default function NuevoClientePage() {
           <CardFooter className="flex justify-between pt-6">
             <Button
               variant="outline"
-              onClick={() => router.push("/publimar/banderas/clientes")}
+              onClick={() => router.push("/publimar/viaPublica/clientes")}
               disabled={loading}
                 className="bg-red-500 hover:bg-red-600 text-white"
             >

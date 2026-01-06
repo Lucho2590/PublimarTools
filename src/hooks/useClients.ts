@@ -1,22 +1,23 @@
-import { 
-  useFirestore, 
+import {
+  useFirestore,
   useFirestoreCollectionData,
   useFirestoreDocData
 } from 'reactfire'
-import { 
+import {
   collection,
-  doc, 
-  addDoc, 
-  updateDoc, 
+  doc,
+  addDoc,
+  updateDoc,
   deleteDoc,
   orderBy,
   query,
   limit,
+  where,
   serverTimestamp,
   DocumentReference
 } from 'firebase/firestore'
 import { useCallback, useMemo } from 'react'
-import { TClient } from '@/types/client'
+import { TClient, EClientSection } from '@/types/client'
 import collections from '@/lib/collections'
 
 const COLLECTION_NAME = collections.CLIENTS
@@ -25,6 +26,7 @@ interface UseClientsOptions {
   pageSize?: number; // Tamaño de página para paginación (limita cantidad de documentos)
   orderByField?: string; // Campo por el cual ordenar (default: "createdAt")
   orderDirection?: 'asc' | 'desc'; // Dirección del orden (default: "desc")
+  section?: EClientSection; // Filtrar por sección (banderas o viaPublica)
 }
 
 export function useClients(options?: UseClientsOptions) {
@@ -32,27 +34,33 @@ export function useClients(options?: UseClientsOptions) {
   const pageSize = options?.pageSize
   const orderByField = options?.orderByField || "createdAt"
   const orderDirection = options?.orderDirection || "desc"
-  
+  const section = options?.section
+
   // Memoizar la collection para evitar recrearla en cada render
   const clientsCollection = useMemo(
     () => collection(firestore, COLLECTION_NAME),
     [firestore]
   )
-  
-  // Memoizar la query con paginación opcional
+
+  // Memoizar la query con filtros opcionales
   const clientsQuery = useMemo(() => {
-    const baseQuery = query(
-      clientsCollection, 
-      orderBy(orderByField, orderDirection)
-    )
-    
+    let baseQuery = query(clientsCollection)
+
+    // Filtrar por sección si se especifica
+    if (section) {
+      baseQuery = query(baseQuery, where("section", "==", section))
+    }
+
+    // Agregar ordenamiento
+    baseQuery = query(baseQuery, orderBy(orderByField, orderDirection))
+
     // Si se especifica pageSize, limitar los resultados
     if (pageSize) {
-      return query(baseQuery, limit(pageSize))
+      baseQuery = query(baseQuery, limit(pageSize))
     }
-    
+
     return baseQuery
-  }, [clientsCollection, orderByField, orderDirection, pageSize])
+  }, [clientsCollection, orderByField, orderDirection, pageSize, section])
   
   const { status, data: clients } = useFirestoreCollectionData(clientsQuery, {
     idField: 'id',

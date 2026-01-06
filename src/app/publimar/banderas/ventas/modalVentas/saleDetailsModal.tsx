@@ -61,6 +61,7 @@ import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { DialogFooter } from "@/components/ui/dialog";
 import { useClients } from "@/hooks/useClients";
+import { EClientSection } from "@/types/client";
 
 const BANCOS = ["Galicia", "Frances"];
 
@@ -154,11 +155,11 @@ export function SaleDetailsModal({
   const [highlightedClientIndex, setHighlightedClientIndex] = useState(-1);
 
   // Hook de clientes
-  const { 
-    clients, 
+  const {
+    clients,
     loading: clientsLoading,
-    createClient 
-  } = useClients();
+    createClient
+  } = useClients({ section: EClientSection.BANDERAS });
 
   // Estado para fecha editable
   const [editedDate, setEditedDate] = useState<string>("");
