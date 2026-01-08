@@ -135,6 +135,7 @@ export function SaleDetailsModal({
   const [clientEmail, setClientEmail] = useState<string>("");
   const [clientPhone, setClientPhone] = useState<string>("");
   const [clientCuit, setClientCuit] = useState<string>("");
+  const [clientSection, setClientSection] = useState<EClientSection>(EClientSection.BANDERAS);
 
   // Estados para devoluciones
   const [showReturnDialog, setShowReturnDialog] = useState(false);
@@ -503,6 +504,7 @@ export function SaleDetailsModal({
     setEmail(clientEmail || "");
     setTelefono(clientPhone || "");
     setCuit(clientCuit || "");
+    setClientSection(EClientSection.BANDERAS);
     setShowClientDialog(true);
   };
 
@@ -564,6 +566,7 @@ export function SaleDetailsModal({
         name: clienteInput.trim(),
         type: "individual",
         status: "active",
+        section: EClientSection.BANDERAS,
         contacts: personaContacto || email || telefono ? [{
           name: personaContacto || clienteInput,
           email: email || "",
