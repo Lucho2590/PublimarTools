@@ -257,6 +257,9 @@ export default function NuevaVentaPage() {
         name: clienteInput.trim(),
         type: "individual",
         status: "active",
+        cuit: cuit || "", 
+        address: direccion || "",
+        section: EClientSection.BANDERAS,
         contacts: personaContacto || email || telefono ? [{
           name: personaContacto || clienteInput,
           email: email || "",
