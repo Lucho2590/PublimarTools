@@ -462,7 +462,7 @@ export default function ComprasPage() {
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Todos los proveedores" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-48 overflow-y-auto">
                   <SelectItem value="all">Todos los proveedores</SelectItem>
                   {providers && providers.map((provider: any) => (
                     <SelectItem key={provider.id} value={provider.id}>
@@ -482,7 +482,7 @@ export default function ComprasPage() {
                 }}
               />
             </div>
-            <div className="flex-1">
+            {/* <div className="flex-1">
               <Label className="mb-2 block">Departamento</Label>
               <Select
                 value={selectedDepartment}
@@ -501,7 +501,7 @@ export default function ComprasPage() {
                   <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administración</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </div> */}
             <div className="flex md:justify-end">
               <Button
                 variant="outline"
