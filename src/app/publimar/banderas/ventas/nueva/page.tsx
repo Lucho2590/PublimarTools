@@ -259,6 +259,8 @@ export default function NuevaVentaPage() {
         status: "active",
         cuit: cuit || "", 
         address: direccion || "",
+        email: email || "",
+        phone: telefono || "",
         section: EClientSection.BANDERAS,
         contacts: personaContacto || email || telefono ? [{
           name: personaContacto || clienteInput,
