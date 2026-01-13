@@ -306,17 +306,17 @@ export default function ComprasPage() {
                     required
                   />
                 </div>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
+                <div className="space-y-2">
                   <Label htmlFor="providerId">Proveedor *</Label>
                   <Select
                     value={form.providerId || ""}
                     onValueChange={handleProviderChange}
                     required
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full ">
                       <SelectValue placeholder="Seleccionar proveedor" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-48 overflow-y-auto">
                       {providers && providers.map((prov: any) => (
                         <SelectItem key={prov.id} value={prov.id}>
                           {prov.name}
