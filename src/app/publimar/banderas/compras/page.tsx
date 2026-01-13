@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useFirestore } from "reactfire";
 import { collection, addDoc, serverTimestamp, query, orderBy } from "firebase/firestore";
@@ -81,6 +81,20 @@ export default function ComprasPage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [selectedProvider, setSelectedProvider] = useState<string>("all");
   const [selectedDepartment, setSelectedDepartment] = useState<string>(EPurchaseDepartment.BANDERAS);
+
+  // Estados para autocomplete de proveedor (nueva compra)
+  const [providerInput, setProviderInput] = useState("");
+  const [showProviderDropdown, setShowProviderDropdown] = useState(false);
+  const [highlightedProviderIndex, setHighlightedProviderIndex] = useState(-1);
+  const providerInputRef = useRef<HTMLInputElement>(null);
+  const dropdownProviderRef = useRef<HTMLUListElement>(null);
+
+  // Estados para autocomplete de proveedor (filtro)
+  const [filterProviderInput, setFilterProviderInput] = useState("");
+  const [showFilterProviderDropdown, setShowFilterProviderDropdown] = useState(false);
+  const [highlightedFilterProviderIndex, setHighlightedFilterProviderIndex] = useState(-1);
+  const filterProviderInputRef = useRef<HTMLInputElement>(null);
+  const dropdownFilterProviderRef = useRef<HTMLUListElement>(null);
 
   // Obtener proveedores para el select
   const providersCollection = collection(firestore, "providers");
@@ -209,6 +223,81 @@ export default function ComprasPage() {
     setForm({ ...form, department: value as EPurchaseDepartment });
   };
 
+  // Funciones para autocomplete de proveedor (nueva compra)
+  const handleProviderInputChange = (value: string) => {
+    setProviderInput(value);
+    setShowProviderDropdown(true);
+    setHighlightedProviderIndex(-1);
+  };
+
+  const handleSelectProvider = (providerId: string, providerName: string) => {
+    setForm({ ...form, providerId });
+    setProviderInput(providerName);
+    setShowProviderDropdown(false);
+    setHighlightedProviderIndex(-1);
+  };
+
+  const handleProviderKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const filteredProviders = providers?.filter((p: any) =>
+      p.name.toLowerCase().includes(providerInput.toLowerCase())
+    ) || [];
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedProviderIndex((prev) =>
+        prev < filteredProviders.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedProviderIndex((prev) => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === "Enter" && highlightedProviderIndex >= 0) {
+      e.preventDefault();
+      const selectedProvider = filteredProviders[highlightedProviderIndex];
+      handleSelectProvider(selectedProvider.id, selectedProvider.name);
+      if (providerInputRef.current) providerInputRef.current.blur();
+    }
+  };
+
+  // Funciones para autocomplete de proveedor (filtro)
+  const handleFilterProviderInputChange = (value: string) => {
+    setFilterProviderInput(value);
+    setShowFilterProviderDropdown(true);
+    setHighlightedFilterProviderIndex(-1);
+    // Si el input está vacío, seleccionar "all"
+    if (!value.trim()) {
+      setSelectedProvider("all");
+    }
+  };
+
+  const handleSelectFilterProvider = (providerId: string, providerName: string) => {
+    setSelectedProvider(providerId);
+    setFilterProviderInput(providerName);
+    setShowFilterProviderDropdown(false);
+    setHighlightedFilterProviderIndex(-1);
+    setCurrentPage(1);
+  };
+
+  const handleFilterProviderKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const filteredProviders = providers?.filter((p: any) =>
+      p.name.toLowerCase().includes(filterProviderInput.toLowerCase())
+    ) || [];
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedFilterProviderIndex((prev) =>
+        prev < filteredProviders.length - 1 ? prev + 1 : prev
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedFilterProviderIndex((prev) => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === "Enter" && highlightedFilterProviderIndex >= 0) {
+      e.preventDefault();
+      const selectedProvider = filteredProviders[highlightedFilterProviderIndex];
+      handleSelectFilterProvider(selectedProvider.id, selectedProvider.name);
+      if (filterProviderInputRef.current) filterProviderInputRef.current.blur();
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -238,6 +327,7 @@ export default function ComprasPage() {
         resetForm.department = EPurchaseDepartment.ADMINISTRACION;
       }
       setForm(resetForm);
+      setProviderInput("");
       setShowForm(false);
       toast.success("Compra registrada correctamente");
     } catch (error) {
@@ -262,6 +352,7 @@ export default function ComprasPage() {
     setSearchTerm("");
     setDateRange(undefined);
     setSelectedProvider("all");
+    setFilterProviderInput("");
     setSelectedDepartment(EPurchaseDepartment.BANDERAS);
     setCurrentPage(1);
   };
@@ -308,22 +399,75 @@ export default function ComprasPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="providerId">Proveedor *</Label>
-                  <Select
-                    value={form.providerId || ""}
-                    onValueChange={handleProviderChange}
-                    required
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Seleccionar proveedor" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-48 overflow-y-auto">
-                      {providers && providers.map((prov: any) => (
-                        <SelectItem key={prov.id} value={prov.id}>
-                          {prov.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div style={{ position: "relative" }}>
+                    <Input
+                      ref={providerInputRef}
+                      placeholder="Buscar o seleccionar proveedor..."
+                      value={providerInput}
+                      onChange={(e) => handleProviderInputChange(e.target.value)}
+                      onKeyDown={handleProviderKeyDown}
+                      onFocus={() => {
+                        setShowProviderDropdown(true);
+                        setHighlightedProviderIndex(-1);
+                      }}
+                      onBlur={() =>
+                        setTimeout(() => {
+                          setShowProviderDropdown(false);
+                          setHighlightedProviderIndex(-1);
+                        }, 150)
+                      }
+                      required
+                    />
+                    {showProviderDropdown &&
+                      providers &&
+                      providers.length > 0 &&
+                      (providerInput || true) && (
+                        <ul
+                          ref={dropdownProviderRef}
+                          style={{
+                            position: "absolute",
+                            zIndex: 10,
+                            background: "white",
+                            border: "1px solid #e5e7eb",
+                            padding: 6,
+                            borderRadius: 6,
+                            width: "100%",
+                            maxHeight: 180,
+                            overflowY: "auto",
+                            marginTop: 2,
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                          }}
+                        >
+                          {providers
+                            .filter((p: any) =>
+                              p.name.toLowerCase().includes(providerInput.toLowerCase())
+                            )
+                            .map((p: any, index: number) => (
+                              <li
+                                key={p.id}
+                                style={{
+                                  padding: 8,
+                                  borderRadius: 6,
+                                  cursor: "pointer",
+                                  backgroundColor:
+                                    index === highlightedProviderIndex
+                                      ? "#f1f5f9"
+                                      : "transparent",
+                                  transition: "background-color 0.15s ease",
+                                }}
+                                onMouseEnter={() => setHighlightedProviderIndex(index)}
+                                onMouseDown={() => {
+                                  handleSelectProvider(p.id, p.name);
+                                  if (providerInputRef.current)
+                                    providerInputRef.current.blur();
+                                }}
+                              >
+                                {p.name}
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                  </div>
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="description">Descripción / Nota *</Label>
@@ -397,6 +541,7 @@ export default function ComprasPage() {
                       resetForm.department = EPurchaseDepartment.ADMINISTRACION;
                     }
                     setForm(resetForm);
+                    setProviderInput("");
                   }}
                 >
                   Cancelar
@@ -452,25 +597,95 @@ export default function ComprasPage() {
             </div>
             <div className="flex-1">
               <Label className="mb-2 block">Proveedor</Label>
-              <Select
-                value={selectedProvider}
-                onValueChange={(value) => {
-                  setSelectedProvider(value);
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Todos los proveedores" />
-                </SelectTrigger>
-                <SelectContent className="max-h-48 overflow-y-auto">
-                  <SelectItem value="all">Todos los proveedores</SelectItem>
-                  {providers && providers.map((provider: any) => (
-                    <SelectItem key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div style={{ position: "relative" }}>
+                <Input
+                  ref={filterProviderInputRef}
+                  placeholder="Todos los proveedores"
+                  value={filterProviderInput}
+                  onChange={(e) => handleFilterProviderInputChange(e.target.value)}
+                  onKeyDown={handleFilterProviderKeyDown}
+                  onFocus={() => {
+                    setShowFilterProviderDropdown(true);
+                    setHighlightedFilterProviderIndex(-1);
+                  }}
+                  onBlur={() =>
+                    setTimeout(() => {
+                      setShowFilterProviderDropdown(false);
+                      setHighlightedFilterProviderIndex(-1);
+                    }, 150)
+                  }
+                />
+                {showFilterProviderDropdown &&
+                  providers &&
+                  providers.length > 0 && (
+                    <ul
+                      ref={dropdownFilterProviderRef}
+                      style={{
+                        position: "absolute",
+                        zIndex: 10,
+                        background: "white",
+                        border: "1px solid #e5e7eb",
+                        padding: 6,
+                        borderRadius: 6,
+                        width: "100%",
+                        maxHeight: 180,
+                        overflowY: "auto",
+                        marginTop: 2,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                      }}
+                    >
+                      <li
+                        style={{
+                          padding: 8,
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          backgroundColor:
+                            highlightedFilterProviderIndex === -1 && !filterProviderInput
+                              ? "#f1f5f9"
+                              : "transparent",
+                          transition: "background-color 0.15s ease",
+                          fontWeight: selectedProvider === "all" ? "600" : "normal",
+                        }}
+                        onMouseEnter={() => setHighlightedFilterProviderIndex(-1)}
+                        onMouseDown={() => {
+                          handleSelectFilterProvider("all", "");
+                          if (filterProviderInputRef.current)
+                            filterProviderInputRef.current.blur();
+                        }}
+                      >
+                        Todos los proveedores
+                      </li>
+                      {providers
+                        .filter((p: any) =>
+                          p.name.toLowerCase().includes(filterProviderInput.toLowerCase())
+                        )
+                        .map((p: any, index: number) => (
+                          <li
+                            key={p.id}
+                            style={{
+                              padding: 8,
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              backgroundColor:
+                                index === highlightedFilterProviderIndex
+                                  ? "#f1f5f9"
+                                  : "transparent",
+                              transition: "background-color 0.15s ease",
+                              fontWeight: selectedProvider === p.id ? "600" : "normal",
+                            }}
+                            onMouseEnter={() => setHighlightedFilterProviderIndex(index)}
+                            onMouseDown={() => {
+                              handleSelectFilterProvider(p.id, p.name);
+                              if (filterProviderInputRef.current)
+                                filterProviderInputRef.current.blur();
+                            }}
+                          >
+                            {p.name}
+                          </li>
+                        ))}
+                    </ul>
+                  )}
+              </div>
             </div>
             <div className="flex-1">
               <Label className="mb-2 block">Rango de Fechas</Label>
