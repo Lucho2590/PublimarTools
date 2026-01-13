@@ -306,7 +306,7 @@ export default function ComprasPage() {
                     required
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-48 overflow-y-auto">
                   <Label htmlFor="providerId">Proveedor *</Label>
                   <Select
                     value={form.providerId || ""}
