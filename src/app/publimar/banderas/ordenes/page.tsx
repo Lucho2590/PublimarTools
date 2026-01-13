@@ -18,7 +18,7 @@ import {
 import collections from "@/lib/collections";
 import { EOrderStatus, TOrder } from "@/types/order";
 import { useSales } from "@/hooks/useSales";
-import { EPaymentMethod } from "@/types/sale";
+import { EPaymentMethod, ESaleDepartment } from "@/types/sale";
 import { redirect } from "next/navigation";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -102,6 +102,7 @@ export default function PedidosPage() {
         discountAmount: order.discountAmount || 0,
         manualDiscount: order.manualDiscount || 0,
         paymentMethod: (order.paymentMethod as EPaymentMethod) || EPaymentMethod.CASH,
+        department: ESaleDepartment.BANDERAS,
         isInvoiced: order.isInvoiced || false,
         invoiceNumber: order.invoiceNumber || "",
         bank: order.bank || undefined,

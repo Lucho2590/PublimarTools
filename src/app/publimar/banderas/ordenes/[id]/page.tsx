@@ -48,7 +48,7 @@ import {
 import { formatearPrecio, formatDate, formatDateString, extractIdFromSlug } from "@/lib/utils";
 import { toast } from "sonner";
 import { EOrderStatus, TPaymentHistory, TFactura } from "@/types/order";
-import { EPaymentMethod } from "@/types/sale";
+import { EPaymentMethod, ESaleDepartment } from "@/types/sale";
 import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
@@ -551,6 +551,7 @@ export default function OrderDetailsPage({
         discountAmount: orderData.discountAmount || 0,
         manualDiscount: orderData.manualDiscount || 0,
         paymentMethod: (orderData.paymentMethod as EPaymentMethod) || EPaymentMethod.CASH,
+        department: ESaleDepartment.BANDERAS,
         isInvoiced: orderData.isInvoiced || false,
         invoiceNumber: orderData.invoiceNumber || "",
         bank: orderData.bank || undefined,
