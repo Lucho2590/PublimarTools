@@ -11,6 +11,8 @@ import { useAuth } from "reactfire";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { TEcommerceOrder } from "@/types/ecommerceOrder";
 import { TAbandonedCart } from "@/types/abandonedCart";
+import { useIsMobile } from "@/hooks/useMediaQuery";
+import { Menu, X } from "lucide-react";
 
 interface IDashboardLayoutProps {
   children: ReactNode;
@@ -24,6 +26,7 @@ interface NavItem {
 }
 
 export default function DashboardLayout({ children }: IDashboardLayoutProps) {
+  const isMobile = useIsMobile();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const pathname = usePathname();
@@ -36,6 +39,15 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
   React.useEffect(() => {
     setMounted(true);
   }, []);
+
+  // En mobile, cerrar el sidebar por defecto
+  useEffect(() => {
+    if (isMobile) {
+      setIsSidebarOpen(false);
+    } else {
+      setIsSidebarOpen(true);
+    }
+  }, [isMobile]);
 
   // Consultar contadores de no vistos cada 30 segundos
   useEffect(() => {
@@ -73,6 +85,12 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
+  };
+
+  const closeSidebar = () => {
+    if (isMobile) {
+      setIsSidebarOpen(false);
+    }
   };
 
   const toggleItem = (itemName: string) => {
@@ -527,69 +545,86 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
 
   return (
     <div className="flex h-screen bg-blue-100">
+      {/* Backdrop para mobile */}
+      {isMobile && isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40"
+          onClick={closeSidebar}
+        />
+      )}
+
       {/* Sidebar */}
       <div
         className={`${
-          isSidebarOpen ? "w-64" : "w-25"
-        } bg-blue-950 text-white transition-all duration-300 ease-in-out flex flex-col`}
+          isMobile
+            ? `fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-300 ease-in-out ${
+                isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+              }`
+            : isSidebarOpen
+            ? "w-64"
+            : "w-20"
+        } bg-blue-950 text-white flex flex-col`}
       >
         <div className="p-4 flex items-center justify-between">
-          {isSidebarOpen ? (
+          {isSidebarOpen || isMobile ? (
             <>
             <h2 className="text-xl font-bold">PublimarTools</h2>
-            <Image 
-              src="/imagenes/favicon-publimar-tools.png" 
-              alt="PublimarTools" 
-              width={30} 
-              height={30} 
+            <Image
+              src="/imagenes/favicon-publimar-tools.png"
+              alt="PublimarTools"
+              width={30}
+              height={30}
               className="rounded"
             />
             </>
           ) : (
-            <Image 
-              src="/imagenes/favicon-publimar-tools.png" 
-              alt="PublimarTools" 
-              width={45} 
-              height={45} 
+            <Image
+              src="/imagenes/favicon-publimar-tools.png"
+              alt="PublimarTools"
+              width={45}
+              height={45}
               className="rounded"
             />
           )}
-          <button
-            onClick={toggleSidebar}
-            className="text-white focus:outline-none"
-          >
-            {isSidebarOpen ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
-                />
-              </svg>
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 5l7 7-7 7M5 5l7 7-7 7"
-                />
-              </svg>
-            )}
-          </button>
+          {/* Botón toggle solo en desktop */}
+          {!isMobile && (
+            <button
+              onClick={toggleSidebar}
+              className="text-white focus:outline-none"
+            >
+              {isSidebarOpen ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 5l7 7-7 7M5 5l7 7-7 7"
+                  />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
 
         <nav className="mt-6 flex-1">
@@ -602,6 +637,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                       <Link
                         href={item.href}
                         key={item.name}
+                        onClick={closeSidebar}
                         className={`flex items-center p-2 rounded-md flex-1 relative ${
                           pathname === item.href
                             ? "bg-blue-700 text-white"
@@ -650,6 +686,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                           <li key={subItem.name} className="py-1">
                             <Link
                               href={subItem.href}
+                              onClick={closeSidebar}
                               className={`flex items-center p-2 rounded-md ${
                                 pathname === subItem.href
                                   ? "bg-blue-700 text-white"
@@ -667,6 +704,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
                 ) : (
                   <Link
                     href={item.href}
+                    onClick={closeSidebar}
                     className={`flex items-center p-2 rounded-md relative ${
                       pathname === item.href
                         ? "bg-blue-700 text-white"
@@ -721,12 +759,27 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
         {/* Header */}
         <header className="bg-white shadow-sm">
           <div className="px-4 py-3 flex items-center justify-between">
-            <h1 className="text-xl font-bold"> </h1>
+            <div className="flex items-center gap-4">
+              {/* Botón hamburguesa para mobile */}
+              {isMobile && (
+                <button
+                  onClick={toggleSidebar}
+                  className="text-gray-700 hover:text-blue-900 focus:outline-none"
+                >
+                  {isSidebarOpen ? (
+                    <X className="h-6 w-6" />
+                  ) : (
+                    <Menu className="h-6 w-6" />
+                  )}
+                </button>
+              )}
+              <h1 className="text-xl font-bold"> </h1>
+            </div>
             <div className="flex items-center">
               {status === "success" &&
                 signInCheckResult.signedIn &&
                 signInCheckResult.user && (
-                  <span className="mr-4">{signInCheckResult.user.email}</span>
+                  <span className="mr-4 hidden md:inline">{signInCheckResult.user.email}</span>
                 )}
             </div>
           </div>

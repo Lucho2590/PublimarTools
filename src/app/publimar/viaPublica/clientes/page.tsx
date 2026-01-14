@@ -171,9 +171,9 @@ export default function ClientesPage() {
         <Card>
           <CardContent className="p-0">
             <div className="p-4 overflow-x-auto">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Mostrar</span>
+                  <span className="text-sm text-gray-500 hidden sm:inline">Mostrar</span>
                   <Select
                     value={itemsPerPage.toString()}
                     onValueChange={(value) => {
@@ -190,10 +190,11 @@ export default function ClientesPage() {
                       <SelectItem value="25">25</SelectItem>
                     </SelectContent>
                   </Select>
-                  <span className="text-sm text-gray-500">por página</span>
+                  <span className="text-sm text-gray-500 hidden sm:inline">por página</span>
                 </div>
                 <div className="text-sm text-gray-500">
-                  Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredClients?.length || 0)} de {filteredClients?.length || 0} clientes
+                  <span className="hidden sm:inline">Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredClients?.length || 0)} de </span>
+                  {filteredClients?.length || 0} clientes
                 </div>
               </div>
 
@@ -201,10 +202,10 @@ export default function ClientesPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-left">Nombre/Razón Social</TableHead>
-                    <TableHead className="text-left">Referencia</TableHead>
-                    <TableHead className="text-left">CUIT/CUIL</TableHead>
-                    <TableHead className="text-left">Persona de contacto</TableHead>
-                    <TableHead className="text-left">Teléfono</TableHead>
+                    <TableHead className="text-left hidden lg:table-cell">Referencia</TableHead>
+                    <TableHead className="text-left hidden md:table-cell">CUIT/CUIL</TableHead>
+                    <TableHead className="text-left hidden lg:table-cell">Persona de contacto</TableHead>
+                    <TableHead className="text-left hidden sm:table-cell">Teléfono</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -215,16 +216,16 @@ export default function ClientesPage() {
                         <TableCell className="font-medium">
                           {client.name || "-"}
                         </TableCell>
-                        <TableCell className="text-left">
+                        <TableCell className="text-left hidden lg:table-cell">
                           {client.reference || "-"}
                         </TableCell>
-                        <TableCell className="text-left">
+                        <TableCell className="text-left hidden md:table-cell">
                           {client.cuit || "-"}
                         </TableCell>
-                        <TableCell className="text-left">
+                        <TableCell className="text-left hidden lg:table-cell">
                         {client.contacts?.[0]?.name || client.name || "-"}
                         </TableCell>
-                        <TableCell className="text-left">
+                        <TableCell className="text-left hidden sm:table-cell">
                           {client.contacts?.[0]?.phone || client.phone || "-"}
                         </TableCell>
                         <TableCell className="text-center">
