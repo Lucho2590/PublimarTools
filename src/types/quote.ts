@@ -13,13 +13,13 @@ export type TQuoteItem = {
   // Referencias (no duplicar objetos completos)
   productId?: string;        // ID del producto en la DB (null si es manual)
   variantId?: string;        // ID de la variante seleccionada
-  
+
   // Datos para mostrar rápido (snapshot)
   productName: string;
   description: string;
   variantName?: string;      // ej: "Talle L", "Color Rojo", "2x1m"
   categories?: TProductCategory[]; // Para filtros/reportes
-  
+
   // Datos de la cotización/orden
   quantity: number;
   unitPrice: number;
@@ -29,6 +29,12 @@ export type TQuoteItem = {
   taxAmount: number;
   notes?: string;
   isManual?: boolean;        // true si es un item creado manualmente
+
+  // Campos específicos para Vía Pública
+  periodo?: number;          // Período (meses)
+  costo?: number;            // Costo del dispositivo
+  precioVenta?: number;      // Precio de venta al cliente
+  afiches?: number;          // Costo de afiches/impresión
 };
 
 export type TQuoteComment = {
@@ -60,4 +66,13 @@ export type TQuote = {
   comments?: TQuoteComment[];
   notes?: string;
   publicUrl?: string;
+
+  // Campos específicos para Vía Pública
+  fecha?: Date;                    // Fecha de inicio del servicio
+  factura?: boolean;               // Si se emite factura
+  tipoFactura?: 'A' | 'C';         // Tipo de factura
+  formaPago?: string;              // Forma de pago
+  totalCosto?: number;             // Total de costos
+  totalVenta?: number;             // Total precio de venta
+  ganancia?: number;               // Ganancia (venta - costo)
 };

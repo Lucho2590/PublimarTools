@@ -257,7 +257,7 @@ export function SaleDetailsModal({
             tipo: "Factura B", // Valor por defecto
             numero: typedSale.invoiceNumber,
             fecha: typedSale.createdAt
-              ? new Date(typedSale.createdAt).toISOString().split("T")[0]
+              ? new Date((typedSale.createdAt as any).seconds * 1000).toISOString().split("T")[0]
               : "",
           };
           setFacturas([facturaLegacy]);
