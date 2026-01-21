@@ -504,6 +504,7 @@ export default function NuevoPresupuestoPage() {
             name: data.clienteInput,
             type: EClientType.INDIVIDUAL,
             status: EClientStatus.ACTIVE,
+            section: EClientSection.BANDERAS as EClientSection,
             email: data.email || "",
             phone: data.telefono || "",
             address: data.direccion || "",
@@ -528,6 +529,7 @@ export default function NuevoPresupuestoPage() {
             name: data.clienteInput,
             type: EClientType.INDIVIDUAL,
             status: EClientStatus.ACTIVE,
+            section: EClientSection.BANDERAS as EClientSection,
             email: data.email || "",
             phone: data.telefono || "",
             address: data.direccion || "",
@@ -555,6 +557,7 @@ export default function NuevoPresupuestoPage() {
       const quoteData = {
         number: quoteNumber,
         client: clientData,
+        section: EClientSection.BANDERAS as EClientSection,
         status: EQuoteStatus.DRAFT,
         items: sanitizedItems,
         subtotal: redondearTotal(applyIVATax ? subtotalSinIVA : subtotal),
@@ -619,6 +622,7 @@ export default function NuevoPresupuestoPage() {
         // Guardar los datos del presupuesto para usar después
         const quoteDataTemp = {
           clienteInput: clienteInput.trim(),
+          section: EClientSection.BANDERAS as EClientSection,
           email,
           telefono,
           direccion,
@@ -672,6 +676,7 @@ export default function NuevoPresupuestoPage() {
       // Preparar datos del cliente (usar selectedClient si existe, sino usar campos manuales)
       const clientData = selectedClient
         ? {
+            section: EClientSection.BANDERAS as EClientSection,
             id: selectedClient.id,
             name: selectedClient.name,
             type: selectedClient.type,
@@ -696,6 +701,7 @@ export default function NuevoPresupuestoPage() {
             updatedAt: selectedClient.updatedAt,
           }
         : {
+            section: EClientSection.BANDERAS as EClientSection,
             id: "",
             name: clienteInput,
             type: "individual",

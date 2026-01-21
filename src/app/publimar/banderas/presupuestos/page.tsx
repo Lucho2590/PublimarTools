@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, doc, updateDoc } from "firebase/firestore";
+import { collection, query, orderBy, doc, updateDoc, where } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,6 +41,7 @@ import { toast } from "sonner";
 import { DocumentData } from "firebase/firestore";
 import { formatearPrecio, generateSlug } from "@/lib/utils";
 import QuoteDetailsModal from "./modalPresupuestos/quoteDetailsModal";
+import { EClientSection } from "@/types/client";
 
 export default function PresupuestosPage() {
   const router = useRouter();
@@ -85,7 +86,8 @@ export default function PresupuestosPage() {
 
   // Consulta a Firestore
   const quotesCollection = collection(firestore, collections.QUOTES);
-  const quotesQuery = query(quotesCollection, orderBy("createdAt", "desc"));
+  const quotesQuery = query(quotesCollection, orderBy("createdAt", "desc"),
+  where("client.section", "==", EClientSection.BANDERAS));
 
   const { status, data: quotesData } = useFirestoreCollectionData(quotesQuery, {
     idField: "id",
