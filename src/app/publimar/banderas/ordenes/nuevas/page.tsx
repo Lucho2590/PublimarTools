@@ -41,7 +41,12 @@ import {
   FileText,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
-import { formatDate, formatearPrecio, redondearTotal, formatDateString } from "@/lib/utils";
+import {
+  formatDate,
+  formatearPrecio,
+  redondearTotal,
+  formatDateString,
+} from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TProduct, TProductVariant } from "@/types/product";
 import { toast } from "sonner";
@@ -62,23 +67,20 @@ export default function NuevasOrdenesPage() {
   const firestore = useFirestore();
 
   // Hooks personalizados
-  const { 
-    createOrder, 
-    generateOrderNumber, 
-    createOrderWithDefaults 
-  } = useOrders();
-  
+  const { createOrder, generateOrderNumber, createOrderWithDefaults } =
+    useOrders();
+
   const {
     clients,
     loading: clientsLoading,
-    createClient
+    createClient,
   } = useClients({ section: EClientSection.BANDERAS });
 
   // Productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
   const { status: productsStatus, data: products } = useFirestoreCollectionData(
     productsCollection,
-    { idField: "id" }
+    { idField: "id" },
   );
 
   // Estados para los campos principales
@@ -100,7 +102,7 @@ export default function NuevasOrdenesPage() {
   const [facturas, setFacturas] = useState<TFactura[]>([]);
   const [showAddFactura, setShowAddFactura] = useState(false);
   const [editingFacturaId, setEditingFacturaId] = useState<string | null>(null);
-  
+
   // Estados para el formulario de nueva factura
   const [newFacturaTipo, setNewFacturaTipo] = useState("");
   const [newFacturaNumero, setNewFacturaNumero] = useState("");
@@ -108,7 +110,9 @@ export default function NuevasOrdenesPage() {
   const [newFacturaMonto, setNewFacturaMonto] = useState("");
   const [formaPago, setFormaPago] = useState("");
   const [sena, setSena] = useState("");
-  const [metodoPagoSena, setMetodoPagoSena] = useState<EPaymentMethod>(EPaymentMethod.CASH);
+  const [metodoPagoSena, setMetodoPagoSena] = useState<EPaymentMethod>(
+    EPaymentMethod.CASH,
+  );
   const [bancoSena, setBancoSena] = useState("");
   const [saldo, setSaldo] = useState("");
   const [aFacturar, setAFacturar] = useState(false);
@@ -141,7 +145,8 @@ export default function NuevasOrdenesPage() {
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [isAddingManualItem, setIsAddingManualItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  
+  const [editingManualItemId, setEditingManualItemId] = useState<string | null>(null);
+
   // Estados para item manual
   const [manualItemName, setManualItemName] = useState("");
   const [manualItemMeasure, setManualItemMeasure] = useState("");
@@ -149,7 +154,8 @@ export default function NuevasOrdenesPage() {
   const [manualItemQuantity, setManualItemQuantity] = useState(1);
   const [manualItemPrice, setManualItemPrice] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<TProduct | null>(null);
-  const [selectedVariant, setSelectedVariant] = useState<TProductVariant | null>(null);
+  const [selectedVariant, setSelectedVariant] =
+    useState<TProductVariant | null>(null);
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
   const [itemNotes, setItemNotes] = useState("");
@@ -174,25 +180,25 @@ export default function NuevasOrdenesPage() {
       numero: newFacturaNumero,
       fecha: newFacturaFecha,
     };
-    
+
     if (newFacturaMonto) {
       nuevaFactura.monto = parseFloat(newFacturaMonto);
     }
 
-    setFacturas(prev => [...prev, nuevaFactura]);
-    
+    setFacturas((prev) => [...prev, nuevaFactura]);
+
     // Limpiar formulario
     setNewFacturaTipo("");
     setNewFacturaNumero("");
     setNewFacturaFecha("");
     setNewFacturaMonto("");
     setShowAddFactura(false);
-    
+
     toast.success("Factura agregada correctamente");
   };
 
   const handleEditFactura = (id: string) => {
-    const factura = facturas.find(f => f.id === id);
+    const factura = facturas.find((f) => f.id === id);
     if (factura) {
       setNewFacturaTipo(factura.tipo);
       setNewFacturaNumero(factura.numero);
@@ -209,18 +215,20 @@ export default function NuevasOrdenesPage() {
       return;
     }
 
-    setFacturas(prev => prev.map(factura => 
-      factura.id === editingFacturaId 
-        ? {
-            ...factura,
-            tipo: newFacturaTipo,
-            numero: newFacturaNumero,
-            fecha: newFacturaFecha,
-            ...(newFacturaMonto && { monto: parseFloat(newFacturaMonto) }),
-          }
-        : factura
-    ));
-    
+    setFacturas((prev) =>
+      prev.map((factura) =>
+        factura.id === editingFacturaId
+          ? {
+              ...factura,
+              tipo: newFacturaTipo,
+              numero: newFacturaNumero,
+              fecha: newFacturaFecha,
+              ...(newFacturaMonto && { monto: parseFloat(newFacturaMonto) }),
+            }
+          : factura,
+      ),
+    );
+
     // Limpiar formulario
     setNewFacturaTipo("");
     setNewFacturaNumero("");
@@ -228,12 +236,12 @@ export default function NuevasOrdenesPage() {
     setNewFacturaMonto("");
     setShowAddFactura(false);
     setEditingFacturaId(null);
-    
+
     toast.success("Factura actualizada correctamente");
   };
 
   const handleRemoveFactura = (id: string) => {
-    setFacturas(prev => prev.filter(f => f.id !== id));
+    setFacturas((prev) => prev.filter((f) => f.id !== id));
     toast.success("Factura eliminada correctamente");
   };
 
@@ -250,22 +258,23 @@ export default function NuevasOrdenesPage() {
   const [loading, setLoading] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [isOrderDetailsCollapsed, setIsOrderDetailsCollapsed] = useState(true);
-  const [isContactDetailsCollapsed, setIsContactDetailsCollapsed] = useState(true);
+  const [isContactDetailsCollapsed, setIsContactDetailsCollapsed] =
+    useState(true);
 
   // Función para normalizar texto (quitar acentos y convertir a minúsculas)
   const normalizeText = (text: string) => {
     return text
       .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, ""); // Remover acentos
   };
 
   // Filtrar productos (case-insensitive y sin acentos)
   const filteredProducts = products?.filter((product: any) => {
     const searchNormalized = normalizeText(productSearchTerm);
     return (
-      normalizeText(product.name || '').includes(searchNormalized) ||
-      normalizeText(product.description || '').includes(searchNormalized)
+      normalizeText(product.name || "").includes(searchNormalized) ||
+      normalizeText(product.description || "").includes(searchNormalized)
     );
   });
 
@@ -283,11 +292,11 @@ export default function NuevasOrdenesPage() {
   }
 
   // Calcular descuentos
-const generalDiscountAmount = subtotalSinIVA * (discountPercentage / 100);
-const totalDiscountAmount = generalDiscountAmount + manualDiscount;
+  const generalDiscountAmount = subtotalSinIVA * (discountPercentage / 100);
+  const totalDiscountAmount = generalDiscountAmount + manualDiscount;
 
-// Los descuentos de items ya están en el subtotal, así que solo agregamos los generales
-const total = subtotal - totalDiscountAmount;
+  // Los descuentos de items ya están en el subtotal, así que solo agregamos los generales
+  const total = subtotal - totalDiscountAmount;
 
   // // Calcular descuentos
   // const discountAmount = subtotalSinIVA * (discountPercentage / 100);
@@ -317,16 +326,16 @@ const total = subtotal - totalDiscountAmount;
   // Manejar cuando se escribe manualmente un cliente (sin seleccionar del dropdown)
   const handleClientInputChange = (value: string) => {
     setClienteInput(value);
-    
+
     // Si el valor no coincide con ningún cliente existente, limpiar el clientId
-    const existingClient = clients?.find((c: any) => 
-      c.name.toLowerCase() === value.toLowerCase()
+    const existingClient = clients?.find(
+      (c: any) => c.name.toLowerCase() === value.toLowerCase(),
     );
-    
+
     if (!existingClient) {
       setCliente(""); // Limpiar el ID si es un cliente nuevo/manual
     }
-    
+
     setShowClienteDropdown(true);
     setHighlightedClientIndex(-1); // Resetear el índice al escribir
   };
@@ -336,7 +345,7 @@ const total = subtotal - totalDiscountAmount;
     if (!showClienteDropdown || !clients) return;
 
     const filteredClients = clients.filter((c: any) =>
-      c.name.toLowerCase().includes(clienteInput.toLowerCase())
+      c.name.toLowerCase().includes(clienteInput.toLowerCase()),
     );
 
     if (filteredClients.length === 0) return;
@@ -345,18 +354,21 @@ const total = subtotal - totalDiscountAmount;
       case "ArrowDown":
         e.preventDefault();
         setHighlightedClientIndex((prev) =>
-          prev < filteredClients.length - 1 ? prev + 1 : 0
+          prev < filteredClients.length - 1 ? prev + 1 : 0,
         );
         break;
       case "ArrowUp":
         e.preventDefault();
         setHighlightedClientIndex((prev) =>
-          prev > 0 ? prev - 1 : filteredClients.length - 1
+          prev > 0 ? prev - 1 : filteredClients.length - 1,
         );
         break;
       case "Enter":
         e.preventDefault();
-        if (highlightedClientIndex >= 0 && highlightedClientIndex < filteredClients.length) {
+        if (
+          highlightedClientIndex >= 0 &&
+          highlightedClientIndex < filteredClients.length
+        ) {
           const selectedClient = filteredClients[highlightedClientIndex];
           handleSelectClient(selectedClient.id);
           setClienteInput(selectedClient.name);
@@ -391,26 +403,28 @@ const total = subtotal - totalDiscountAmount;
         cuit: cuit || undefined,
         address: direccion || undefined,
         reference: referencia || undefined,
-        contacts: [{
-          name: personaContacto || clienteInput.trim(),
-          email: email || undefined,
-          phone: telefono || undefined,
-        }],
+        contacts: [
+          {
+            name: personaContacto || clienteInput.trim(),
+            email: email || undefined,
+            phone: telefono || undefined,
+          },
+        ],
       };
 
       // Limpiar valores undefined con protección contra referencias circulares
       const cleanData = (obj: any, seen = new WeakSet()): any => {
         if (obj === null || obj === undefined) return null;
-        if (typeof obj !== 'object') return obj;
-        
+        if (typeof obj !== "object") return obj;
+
         // Protección contra referencias circulares
         if (seen.has(obj)) return {};
         seen.add(obj);
-        
+
         if (Array.isArray(obj)) {
-          return obj.map(item => cleanData(item, seen));
+          return obj.map((item) => cleanData(item, seen));
         }
-        
+
         const cleaned: any = {};
         for (const [key, value] of Object.entries(obj)) {
           if (value !== undefined) {
@@ -421,26 +435,25 @@ const total = subtotal - totalDiscountAmount;
       };
 
       const cleanClientData = cleanData(clientData);
-      console.log('🔧 Creando cliente con datos:', cleanClientData);
+      console.log("🔧 Creando cliente con datos:", cleanClientData);
 
       const newClientId = await createClient(cleanClientData);
-      
+
       // Actualizar el cliente seleccionado
       setCliente(newClientId);
-      
+
       toast.success(`Cliente "${clienteInput}" creado exitosamente`);
-      
+
       // Cerrar dialog y continuar con la orden usando los datos pendientes
       setShowCreateClientDialog(false);
       if (pendingOrderData) {
         await proceedWithOrderCreation({
           ...pendingOrderData,
-          clientId: newClientId
+          clientId: newClientId,
         });
       }
-      
     } catch (error) {
-      console.error('Error al crear cliente:', error);
+      console.error("Error al crear cliente:", error);
       toast.error("Error al crear el cliente");
     } finally {
       setCreatingClient(false);
@@ -467,23 +480,25 @@ const total = subtotal - totalDiscountAmount;
           cuit: cuit || undefined,
           address: direccion || undefined,
           reference: referencia || undefined,
-          contact: (contactoNombre || contactoEmail || contactoTelefono) ? {
-            name: contactoNombre || clienteInput,
-            email: contactoEmail || undefined,
-            phone: contactoTelefono || undefined,
-            position: contactoPosicion || undefined,
-          } : undefined
-        }
+          contact:
+            contactoNombre || contactoEmail || contactoTelefono
+              ? {
+                  name: contactoNombre || clienteInput,
+                  email: contactoEmail || undefined,
+                  phone: contactoTelefono || undefined,
+                  position: contactoPosicion || undefined,
+                }
+              : undefined,
+        },
       };
 
       toast.success("Creando orden con cliente temporal...");
-      
+
       // Cerrar dialog y continuar con la orden
       setShowCreateClientDialog(false);
       await proceedWithOrderCreation(orderDataWithTempClient);
-      
     } catch (error) {
-      console.error('Error al crear orden:', error);
+      console.error("Error al crear orden:", error);
       toast.error("Error al crear la orden");
     } finally {
       setCreatingClient(false);
@@ -496,30 +511,34 @@ const total = subtotal - totalDiscountAmount;
       // Función para limpiar valores undefined recursivamente con protección contra referencias circulares
       const cleanData = (obj: any, seen = new WeakSet()): any => {
         if (obj === null || obj === undefined) return null;
-        if (typeof obj !== 'object') return obj;
-        
+        if (typeof obj !== "object") return obj;
+
         // Filtrar funciones y objetos internos de Firebase
-        if (typeof obj === 'function') return undefined;
-        
+        if (typeof obj === "function") return undefined;
+
         // Protección contra referencias circulares
         if (seen.has(obj)) return {};
         seen.add(obj);
-        
+
         if (Array.isArray(obj)) {
-          return obj.map(item => cleanData(item, seen)).filter(item => item !== undefined);
+          return obj
+            .map((item) => cleanData(item, seen))
+            .filter((item) => item !== undefined);
         }
-        
+
         const cleaned: any = {};
         for (const [key, value] of Object.entries(obj)) {
           // Filtrar campos internos de Firebase/ReactFire
-          if (key.startsWith('_') || 
-              key === 'firestore' || 
-              key === 'auth' ||
-              key === 'converter' ||
-              typeof value === 'function') {
+          if (
+            key.startsWith("_") ||
+            key === "firestore" ||
+            key === "auth" ||
+            key === "converter" ||
+            typeof value === "function"
+          ) {
             continue;
           }
-          
+
           if (value !== undefined) {
             const cleanedValue = cleanData(value, seen);
             if (cleanedValue !== undefined) {
@@ -531,14 +550,13 @@ const total = subtotal - totalDiscountAmount;
       };
 
       const cleanOrderData = cleanData(orderData);
-      console.log('🔧 Datos limpios para crear orden:', cleanOrderData);
+      console.log("🔧 Datos limpios para crear orden:", cleanOrderData);
 
       const orderId = await createOrder(cleanOrderData as any);
       toast.success(`Orden creada exitosamente con ID: ${orderId}`);
       router.push("/publimar/banderas/ordenes");
-      
     } catch (error) {
-      console.error('Error al crear orden:', error);
+      console.error("Error al crear orden:", error);
       toast.error("Error al crear la orden");
     } finally {
       setLoading(false);
@@ -565,7 +583,7 @@ const total = subtotal - totalDiscountAmount;
     };
     if (editingItemId) {
       setItems(
-        items.map((item) => (item.id === editingItemId ? newItem : item))
+        items.map((item) => (item.id === editingItemId ? newItem : item)),
       );
     } else {
       setItems([...items, newItem]);
@@ -574,6 +592,19 @@ const total = subtotal - totalDiscountAmount;
   };
 
   const startEditItem = (item: any) => {
+    // Si es un item manual, abrir el modal de item manual
+    if (item.isManual) {
+      setManualItemName(item.productName || "");
+      setManualItemMeasure(item.variantName === "Sin medida" ? "" : item.variantName || "");
+      setManualItemDescription(item.description || "");
+      setManualItemQuantity(item.quantity || 1);
+      setManualItemPrice(item.unitPrice || 0);
+      setEditingManualItemId(item.id);
+      setIsAddingManualItem(true);
+      return;
+    }
+
+    // Item de producto normal
     setSelectedProduct(item.product);
     setSelectedVariant(item.variant || null);
     setItemQuantity(item.quantity);
@@ -620,8 +651,8 @@ const total = subtotal - totalDiscountAmount;
     }
 
     const newManualItem = {
-      id: `manual_${Date.now()}`,
-      productId: `manual_${Date.now()}`,
+      id: editingManualItemId || `manual_${Date.now()}`,
+      productId: editingManualItemId || `manual_${Date.now()}`,
       productName: manualItemName,
       variantId: null,
       variantName: manualItemMeasure || "Sin medida",
@@ -629,20 +660,30 @@ const total = subtotal - totalDiscountAmount;
       quantity: manualItemQuantity,
       unitPrice: manualItemPrice,
       subtotal: manualItemQuantity * manualItemPrice,
-      isManual: true
+      isManual: true,
     };
 
-    setItems(prev => [...prev, newManualItem]);
-    
+    if (editingManualItemId) {
+      // Modo edición: actualizar el item existente
+      setItems((prev) =>
+        prev.map((item) => (item.id === editingManualItemId ? newManualItem : item))
+      );
+      toast.success("Item manual actualizado exitosamente");
+    } else {
+      // Modo agregar: crear nuevo item
+      setItems((prev) => [...prev, newManualItem]);
+      toast.success("Item manual agregado exitosamente");
+    }
+
     // Limpiar formulario
     setManualItemName("");
     setManualItemMeasure("");
     setManualItemDescription("");
     setManualItemQuantity(1);
     setManualItemPrice(0);
-    
+    setEditingManualItemId(null);
+
     setIsAddingManualItem(false);
-    toast.success("Item manual agregado exitosamente");
   };
 
   // Calcular saldo
@@ -664,6 +705,7 @@ const total = subtotal - totalDiscountAmount;
       setManualItemDescription("");
       setManualItemQuantity(1);
       setManualItemPrice(0);
+      setEditingManualItemId(null);
     }
   }, [isAddingManualItem]);
 
@@ -685,20 +727,21 @@ const total = subtotal - totalDiscountAmount;
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
-    
+
     if (!clienteInput || items.length === 0) {
       toast.error("Debes seleccionar un cliente y agregar al menos un item");
       return;
     }
-    
+
     if (!user) {
       toast.error("Debes estar logueado para crear una orden");
       return;
     }
 
     // Verificar si el cliente existe en la BD
-    const existingClient = clients?.find((c: any) => 
-      c.name.toLowerCase().trim() === clienteInput.toLowerCase().trim()
+    const existingClient = clients?.find(
+      (c: any) =>
+        c.name.toLowerCase().trim() === clienteInput.toLowerCase().trim(),
     );
 
     setLoading(true);
@@ -708,17 +751,19 @@ const total = subtotal - totalDiscountAmount;
     if (sena && parseFloat(sena) > 0) {
       let senaNotes = "Seña/Anticipo";
       if (metodoPagoSena === EPaymentMethod.TRANSFER) {
-        senaNotes += ` - Transferencia${bancoSena ? ` - ${bancoSena}` : ''}`;
+        senaNotes += ` - Transferencia${bancoSena ? ` - ${bancoSena}` : ""}`;
       } else if (metodoPagoSena === EPaymentMethod.MERCADOPAGO) {
         senaNotes += " - Mercado Pago";
       }
 
-      paymentHistory = [{
-        amount: parseFloat(sena),
-        type: "seña",
-        method: metodoPagoSena,
-        notes: senaNotes,
-      }];
+      paymentHistory = [
+        {
+          amount: parseFloat(sena),
+          type: "seña",
+          method: metodoPagoSena,
+          notes: senaNotes,
+        },
+      ];
     }
 
     try {
@@ -734,18 +779,24 @@ const total = subtotal - totalDiscountAmount;
         total: redondearTotal(total),
         applyIVA,
         paymentHistory: paymentHistory,
-        items: items.map(item => ({
+        items: items.map((item) => ({
           id: item.id,
           // Referencias (no duplicar objetos completos)
           productId: item.isManual ? undefined : item.product?.id,
           variantId: item.variant?.id,
-          
+
           // Datos para mostrar rápido (snapshot)
-          productName: item.isManual ? item.productName : item.product?.name || "",
-          description: item.isManual ? item.description : item.product?.description || "",
-          variantName: item.isManual ? item.variantName : item.variant?.size || "",
+          productName: item.isManual
+            ? item.productName
+            : item.product?.name || "",
+          description: item.isManual
+            ? item.description
+            : item.product?.description || "",
+          variantName: item.isManual
+            ? item.variantName
+            : item.variant?.size || "",
           // categories: item.isManual ? [] : item.product?.categories || [],
-          
+
           // Datos de la orden
           quantity: item.quantity,
           unitPrice: item.unitPrice,
@@ -758,20 +809,22 @@ const total = subtotal - totalDiscountAmount;
         })),
       };
 
-      
       const orderData = createOrderWithDefaults({
         ...baseOrderData,
         notes: detalle,
         paymentMethod: formaPago as any,
         isInvoiced: facturado,
         ...(facturas.length > 0 && { invoiceNumber: facturas[0].numero }),
-        ...(facturas.length > 0 && facturas[0].fecha && { invoiceDate: new Date(facturas[0].fecha) }),
+        ...(facturas.length > 0 &&
+          facturas[0].fecha && { invoiceDate: new Date(facturas[0].fecha) }),
         discountPercentage: discountPercentage,
         discountAmount: totalDiscountAmount,
         manualDiscount: manualDiscount,
         // Agregar array de facturas
         facturas: facturas.length > 0 ? facturas : [],
-        ...(fechaEntrega && { estimatedDeliveryDate: new Date(fechaEntrega).getTime() }),
+        ...(fechaEntrega && {
+          estimatedDeliveryDate: new Date(fechaEntrega).getTime(),
+        }),
         // Nueva forma: seña en paymentHistory
         paymentHistory: paymentHistory,
         balance: parseFloat(saldo) || 0,
@@ -805,30 +858,34 @@ const total = subtotal - totalDiscountAmount;
       // Función para limpiar valores undefined recursivamente con protección contra referencias circulares
       const cleanData = (obj: any, seen = new WeakSet()): any => {
         if (obj === null || obj === undefined) return null;
-        if (typeof obj !== 'object') return obj;
-        
+        if (typeof obj !== "object") return obj;
+
         // Filtrar funciones y objetos internos de Firebase
-        if (typeof obj === 'function') return undefined;
-        
+        if (typeof obj === "function") return undefined;
+
         // Protección contra referencias circulares
         if (seen.has(obj)) return {};
         seen.add(obj);
-        
+
         if (Array.isArray(obj)) {
-          return obj.map(item => cleanData(item, seen)).filter(item => item !== undefined);
+          return obj
+            .map((item) => cleanData(item, seen))
+            .filter((item) => item !== undefined);
         }
-        
+
         const cleaned: any = {};
         for (const [key, value] of Object.entries(obj)) {
           // Filtrar campos internos de Firebase/ReactFire
-          if (key.startsWith('_') || 
-              key === 'firestore' || 
-              key === 'auth' ||
-              key === 'converter' ||
-              typeof value === 'function') {
+          if (
+            key.startsWith("_") ||
+            key === "firestore" ||
+            key === "auth" ||
+            key === "converter" ||
+            typeof value === "function"
+          ) {
             continue;
           }
-          
+
           if (value !== undefined) {
             const cleanedValue = cleanData(value, seen);
             if (cleanedValue !== undefined) {
@@ -842,20 +899,21 @@ const total = subtotal - totalDiscountAmount;
       // Limpiar datos antes de enviar a Firebase
       const cleanOrderData = cleanData(orderData);
 
-
       const orderId = await createOrder(cleanOrderData as any);
       toast.success(`Orden creada exitosamente con ID: ${orderId}`);
       router.push("/publimar/banderas/ordenes");
     } catch (error) {
       toast.error(
         "Error al guardar la orden: " +
-          (error instanceof Error ? error.message : "Error desconocido")
+          (error instanceof Error ? error.message : "Error desconocido"),
       );
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
+
+  console.log("Items:", items);
 
   return (
     <div className="p-6">
@@ -951,7 +1009,7 @@ const total = subtotal - totalDiscountAmount;
                         .filter((c: any) =>
                           c.name
                             .toLowerCase()
-                            .includes(clienteInput.toLowerCase())
+                            .includes(clienteInput.toLowerCase()),
                         )
                         .map((c: any, index: number) => (
                           <li
@@ -966,7 +1024,9 @@ const total = subtotal - totalDiscountAmount;
                                   : "transparent",
                               transition: "background-color 0.15s ease",
                             }}
-                            onMouseEnter={() => setHighlightedClientIndex(index)}
+                            onMouseEnter={() =>
+                              setHighlightedClientIndex(index)
+                            }
                             onMouseDown={() => {
                               handleSelectClient(c.id);
                               setClienteInput(c.name);
@@ -1133,7 +1193,7 @@ const total = subtotal - totalDiscountAmount;
                   <Input
                     type="date"
                     value={fechaEntrega}
-                    onChange={(e) => setFechaEntrega((e.target.value).toString())}
+                    onChange={(e) => setFechaEntrega(e.target.value.toString())}
                   />
                 </div>
               </div>
@@ -1156,16 +1216,19 @@ const total = subtotal - totalDiscountAmount;
             <CardTitle>Items</CardTitle>
             <div className="flex gap-2">
               {/* Modal para item manual */}
-              <Dialog open={isAddingManualItem} onOpenChange={setIsAddingManualItem}>
+              <Dialog
+                open={isAddingManualItem}
+                onOpenChange={setIsAddingManualItem}
+              >
                 <DialogTrigger asChild>
-                <Button
-                      size="sm"
-                      variant="outline"
-                      className="bg-gray-600 hover:bg-gray-700 text-white"
-                    >
-                      <FileText className="h-4 w-4 mr-2" />
-                      Item Manual
-                    </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="bg-gray-600 hover:bg-gray-700 text-white"
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Item Manual
+                  </Button>
                   {/* <Button
                     type="button"
                     variant="outline"
@@ -1177,7 +1240,9 @@ const total = subtotal - totalDiscountAmount;
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
-                    <DialogTitle>Agregar item manual</DialogTitle>
+                    <DialogTitle>
+                      {editingManualItemId ? "Editar item manual" : "Agregar item manual"}
+                    </DialogTitle>
                   </DialogHeader>
                   <div className="py-4 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -1200,18 +1265,20 @@ const total = subtotal - totalDiscountAmount;
                         />
                       </div>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label htmlFor="manualDescription">Descripción</Label>
                       <Textarea
                         id="manualDescription"
                         placeholder="Descripción del producto..."
                         value={manualItemDescription}
-                        onChange={(e) => setManualItemDescription(e.target.value)}
+                        onChange={(e) =>
+                          setManualItemDescription(e.target.value)
+                        }
                         rows={3}
                       />
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="manualQuantity">Cantidad</Label>
@@ -1221,7 +1288,9 @@ const total = subtotal - totalDiscountAmount;
                           min="1"
                           placeholder="1"
                           value={manualItemQuantity}
-                          onChange={(e) => setManualItemQuantity(Number(e.target.value))}
+                          onChange={(e) =>
+                            setManualItemQuantity(Number(e.target.value))
+                          }
                         />
                       </div>
                       <div className="space-y-2">
@@ -1233,21 +1302,25 @@ const total = subtotal - totalDiscountAmount;
                           step="0.01"
                           placeholder="0.00"
                           value={manualItemPrice}
-                          onChange={(e) => setManualItemPrice(Number(e.target.value))}
+                          onChange={(e) =>
+                            setManualItemPrice(Number(e.target.value))
+                          }
                         />
                       </div>
                     </div>
-                    
+
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center">
                         <span className="font-medium">Precio total:</span>
                         <span className="text-lg font-bold text-blue-600">
-                          {formatearPrecio(manualItemQuantity * manualItemPrice)}
+                          {formatearPrecio(
+                            manualItemQuantity * manualItemPrice,
+                          )}
                         </span>
                       </div>
                     </div>
                   </div>
-                  
+
                   <DialogFooter>
                     <Button
                       variant="outline"
@@ -1257,15 +1330,19 @@ const total = subtotal - totalDiscountAmount;
                     </Button>
                     <Button
                       onClick={handleAddManualItem}
-                      disabled={!manualItemName || !manualItemQuantity || !manualItemPrice}
+                      disabled={
+                        !manualItemName ||
+                        !manualItemQuantity ||
+                        !manualItemPrice
+                      }
                       className="bg-blue-900 hover:bg-blue-700 text-white"
                     >
-                      Agregar item
+                      {editingManualItemId ? "Actualizar item" : "Agregar item"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
-              
+
               {/* Modal para agregar items desde productos */}
               <Dialog open={isAddingItem} onOpenChange={handleModalClose}>
                 <DialogTrigger asChild>
@@ -1282,7 +1359,9 @@ const total = subtotal - totalDiscountAmount;
                 <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>
-                      {editingItemId ? "Editar item" : "Agregar item a la orden"}
+                      {editingItemId
+                        ? "Editar item"
+                        : "Agregar item a la ordenes"}
                     </DialogTitle>
                   </DialogHeader>
                   <div className="py-4">
@@ -1296,7 +1375,9 @@ const total = subtotal - totalDiscountAmount;
                           <Input
                             placeholder="Buscar producto por nombre o descripción..."
                             value={productSearchTerm}
-                            onChange={(e) => setProductSearchTerm(e.target.value)}
+                            onChange={(e) =>
+                              setProductSearchTerm(e.target.value)
+                            }
                             className="pl-10"
                           />
                         </div>
@@ -1392,21 +1473,25 @@ const total = subtotal - totalDiscountAmount;
                                           ? "border-slate-800 bg-slate-50"
                                           : "hover:border-slate-400"
                                       }`}
-                                      onClick={() => setSelectedVariant(variant)}
+                                      onClick={() =>
+                                        setSelectedVariant(variant)
+                                      }
                                     >
                                       <div className="flex justify-between">
                                         <span className="font-medium">
                                           {variant.size}
                                         </span>
                                         <span className="text-slate-700">
-                                          {formatearPrecio(Number(variant.price))}
+                                          {formatearPrecio(
+                                            Number(variant.price),
+                                          )}
                                         </span>
                                       </div>
                                       <div className="text-sm text-slate-500 mt-1">
                                         Stock: {variant.stock} unidades
                                       </div>
                                     </div>
-                                  )
+                                  ),
                                 )}
                               </div>
                             </div>
@@ -1420,7 +1505,9 @@ const total = subtotal - totalDiscountAmount;
                               min="1"
                               value={itemQuantity}
                               onChange={(e) =>
-                                setItemQuantity(parseInt(e.target.value, 10) || 1)
+                                setItemQuantity(
+                                  parseInt(e.target.value, 10) || 1,
+                                )
                               }
                             />
                           </div>
@@ -1433,7 +1520,9 @@ const total = subtotal - totalDiscountAmount;
                               max="100"
                               value={itemDiscount}
                               onChange={(e) =>
-                                setItemDiscount(parseInt(e.target.value, 10) || 0)
+                                setItemDiscount(
+                                  parseInt(e.target.value, 10) || 0,
+                                )
                               }
                             />
                           </div>
@@ -1456,7 +1545,7 @@ const total = subtotal - totalDiscountAmount;
                                 {formatearPrecio(
                                   selectedVariant
                                     ? Number(selectedVariant.price)
-                                    : 0
+                                    : 0,
                                 )}
                               </p>
                               {itemDiscount > 0 && (
@@ -1467,12 +1556,14 @@ const total = subtotal - totalDiscountAmount;
                                       ? Number(selectedVariant.price)
                                       : 0) *
                                       itemDiscount) /
-                                      100
+                                      100,
                                   )}
                                   )
                                 </p>
                               )}
-                              <p className="text-sm">Cantidad: {itemQuantity}</p>
+                              <p className="text-sm">
+                                Cantidad: {itemQuantity}
+                              </p>
                             </div>
                             <div>
                               <p className="text-lg font-semibold">
@@ -1486,7 +1577,7 @@ const total = subtotal - totalDiscountAmount;
                                         ? Number(selectedVariant.price)
                                         : 0) *
                                         itemDiscount) /
-                                        100)
+                                        100),
                                 )}
                               </p>
                             </div>
@@ -1544,34 +1635,33 @@ const total = subtotal - totalDiscountAmount;
                         <TableCell>
                           <div>
                             <p className="font-medium">
-                              {item.isManual ? item.productName : item.product?.name}
+                              {item.isManual
+                                ? item.productName
+                                : item.product?.name}
                             </p>
-                            {item.isManual ? (
-                              item.variantName && item.variantName !== "Sin medida" && (
-                                <p className="text-sm text-slate-500">
-                                  Medida: {item.variantName}
-                                </p>
-                              )
-                            ) : (
-                              item.variant && (
-                                <p className="text-sm text-slate-500">
-                                  Variante: {item.variant.size}
-                                </p>
-                              )
-                            )}
-                            {item.isManual ? (
-                              item.description && (
-                                <p className="text-xs text-slate-500 mt-1">
-                                  {item.description}
-                                </p>
-                              )
-                            ) : (
-                              item.notes && (
-                                <p className="text-xs text-slate-500 mt-1">
-                                  Nota: {item.notes}
-                                </p>
-                              )
-                            )}
+                            {item.isManual
+                              ? item.variantName &&
+                                item.variantName !== "Sin medida" && (
+                                  <p className="text-sm text-slate-500">
+                                    Medida: {item.variantName}
+                                  </p>
+                                )
+                              : item.variant && (
+                                  <p className="text-sm text-slate-500">
+                                    Variante: {item.variant.size}
+                                  </p>
+                                )}
+                            {item.isManual
+                              ? item.description && (
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    {item.description}
+                                  </p>
+                                )
+                              : item.notes && (
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    Nota: {item.notes}
+                                  </p>
+                                )}
                           </div>
                         </TableCell>
                         <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
@@ -1585,6 +1675,7 @@ const total = subtotal - totalDiscountAmount;
                         <TableCell>
                           <div className="flex space-x-1">
                             <Button
+                              type="button"
                               variant="ghost"
                               size="icon"
                               onClick={() => startEditItem(item)}
@@ -1725,72 +1816,75 @@ const total = subtotal - totalDiscountAmount;
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-4">
-
-                 {/* Seña/Anticipo */}
-            <div>
-              <h4 className="font-medium mb-3">Seña/Anticipo (Opcional)</h4>
-              <div className={`grid ${metodoPagoSena === EPaymentMethod.TRANSFER ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
-                <div className="space-y-2">
-                  <Label>Monto de seña</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    value={sena}
-                    onChange={(e) => setSena(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Método de pago</Label>
-                  <Select
-                    value={metodoPagoSena}
-                    onValueChange={(value) => setMetodoPagoSena(value as EPaymentMethod)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={EPaymentMethod.CASH}>
-                        Efectivo
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.CREDIT_CARD}>
-                        Tarjeta de crédito
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.DEBIT_CARD}>
-                        Tarjeta de débito
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.TRANSFER}>
-                        Transferencia
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.MERCADOPAGO}>
-                        Mercado Pago
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.CHECK}>
-                        Cheque
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {metodoPagoSena === EPaymentMethod.TRANSFER && (
+              {/* Seña/Anticipo */}
+              <div>
+                <h4 className="font-medium mb-3">Seña/Anticipo (Opcional)</h4>
+                <div
+                  className={`grid ${metodoPagoSena === EPaymentMethod.TRANSFER ? "grid-cols-3" : "grid-cols-2"} gap-4`}
+                >
                   <div className="space-y-2">
-                    <Label>Banco</Label>
-                    <Select value={bancoSena} onValueChange={setBancoSena}>
+                    <Label>Monto de seña</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={sena}
+                      onChange={(e) => setSena(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Método de pago</Label>
+                    <Select
+                      value={metodoPagoSena}
+                      onValueChange={(value) =>
+                        setMetodoPagoSena(value as EPaymentMethod)
+                      }
+                    >
                       <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar banco" />
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {BANCOS.map((bancoItem: string) => (
-                          <SelectItem key={bancoItem} value={bancoItem}>
-                            {bancoItem}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value={EPaymentMethod.CASH}>
+                          Efectivo
+                        </SelectItem>
+                        <SelectItem value={EPaymentMethod.CREDIT_CARD}>
+                          Tarjeta de crédito
+                        </SelectItem>
+                        <SelectItem value={EPaymentMethod.DEBIT_CARD}>
+                          Tarjeta de débito
+                        </SelectItem>
+                        <SelectItem value={EPaymentMethod.TRANSFER}>
+                          Transferencia
+                        </SelectItem>
+                        <SelectItem value={EPaymentMethod.MERCADOPAGO}>
+                          Mercado Pago
+                        </SelectItem>
+                        <SelectItem value={EPaymentMethod.CHECK}>
+                          Cheque
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                )}
+                  {metodoPagoSena === EPaymentMethod.TRANSFER && (
+                    <div className="space-y-2">
+                      <Label>Banco</Label>
+                      <Select value={bancoSena} onValueChange={setBancoSena}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar banco" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BANCOS.map((bancoItem: string) => (
+                            <SelectItem key={bancoItem} value={bancoItem}>
+                              {bancoItem}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
               {/* Header con botón agregar */}
               <div className="flex items-center justify-between border-t pt-4 mt-4">
                 <h4 className="font-medium">Facturas</h4>
@@ -1809,7 +1903,10 @@ const total = subtotal - totalDiscountAmount;
               {facturas.length > 0 && (
                 <div className="space-y-2">
                   {facturas.map((factura) => (
-                    <div key={factura.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div
+                      key={factura.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
                       <div className="flex-1">
                         <div className="flex items-center gap-4 text-sm">
                           <span className="font-medium">{factura.tipo}</span>
@@ -1897,7 +1994,11 @@ const total = subtotal - totalDiscountAmount;
                   <div className="flex gap-2 mt-4">
                     <Button
                       type="button"
-                      onClick={editingFacturaId ? handleUpdateFactura : handleAddFactura}
+                      onClick={
+                        editingFacturaId
+                          ? handleUpdateFactura
+                          : handleAddFactura
+                      }
                       className="bg-green-600 hover:bg-green-700"
                     >
                       {editingFacturaId ? "Actualizar" : "Agregar"}
@@ -1968,8 +2069,6 @@ const total = subtotal - totalDiscountAmount;
                 <Input type="number" value={saldo} readOnly />
               </div>
             </div> */}
-
-         
           </CardContent>
         </Card>
 
@@ -2000,42 +2099,90 @@ const total = subtotal - totalDiscountAmount;
       </form>
 
       {/* Dialog para crear cliente nuevo */}
-      <Dialog open={showCreateClientDialog} onOpenChange={setShowCreateClientDialog}>
+      <Dialog
+        open={showCreateClientDialog}
+        onOpenChange={setShowCreateClientDialog}
+      >
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Cliente no encontrado</DialogTitle>
             <div className="text-sm text-muted-foreground">
-              El cliente "<strong>{clienteInput}</strong>" no existe en la base de datos.
-              <br />¿Qué deseas hacer?
+              El cliente "<strong>{clienteInput}</strong>" no existe en la base
+              de datos.
+              <br />
+              ¿Qué deseas hacer?
             </div>
           </DialogHeader>
-          
+
           <div className="py-4">
             <div className="space-y-4">
               <div className="bg-blue-50 p-3 rounded-lg text-sm">
                 <div className="space-y-1">
-                  <div><strong>• Solo esta orden:</strong> Guarda los datos del cliente únicamente en esta orden (cliente temporal)</div>
-                  <div><strong>• Crear cliente:</strong> Guarda el cliente en la base de datos para futuras órdenes</div>
+                  <div>
+                    <strong>• Solo esta orden:</strong> Guarda los datos del
+                    cliente únicamente en esta orden (cliente temporal)
+                  </div>
+                  <div>
+                    <strong>• Crear cliente:</strong> Guarda el cliente en la
+                    base de datos para futuras órdenes
+                  </div>
                 </div>
               </div>
-              
+
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h4 className="font-medium mb-3">Datos del cliente:</h4>
                 <div className="space-y-2 text-sm">
-                  <div><strong>Nombre:</strong> {clienteInput}</div>
-                  {email && <div><strong>Email:</strong> {email}</div>}
-                  {telefono && <div><strong>Teléfono:</strong> {telefono}</div>}
-                  {cuit && <div><strong>CUIT:</strong> {cuit}</div>}
-                  {direccion && <div><strong>Dirección:</strong> {direccion}</div>}
-                  {referencia && <div><strong>Referencia:</strong> {referencia}</div>}
-                  
-                  {(contactoNombre || contactoEmail || contactoTelefono || contactoPosicion) && (
+                  <div>
+                    <strong>Nombre:</strong> {clienteInput}
+                  </div>
+                  {email && (
+                    <div>
+                      <strong>Email:</strong> {email}
+                    </div>
+                  )}
+                  {telefono && (
+                    <div>
+                      <strong>Teléfono:</strong> {telefono}
+                    </div>
+                  )}
+                  {cuit && (
+                    <div>
+                      <strong>CUIT:</strong> {cuit}
+                    </div>
+                  )}
+                  {direccion && (
+                    <div>
+                      <strong>Dirección:</strong> {direccion}
+                    </div>
+                  )}
+                  {referencia && (
+                    <div>
+                      <strong>Referencia:</strong> {referencia}
+                    </div>
+                  )}
+
+                  {(contactoNombre ||
+                    contactoEmail ||
+                    contactoTelefono ||
+                    contactoPosicion) && (
                     <div className="border-t pt-2 mt-3">
                       <strong>Contacto:</strong>
-                      {contactoNombre && <div className="ml-2">• Nombre: {contactoNombre}</div>}
-                      {contactoEmail && <div className="ml-2">• Email: {contactoEmail}</div>}
-                      {contactoTelefono && <div className="ml-2">• Teléfono: {contactoTelefono}</div>}
-                      {contactoPosicion && <div className="ml-2">• Posición: {contactoPosicion}</div>}
+                      {contactoNombre && (
+                        <div className="ml-2">• Nombre: {contactoNombre}</div>
+                      )}
+                      {contactoEmail && (
+                        <div className="ml-2">• Email: {contactoEmail}</div>
+                      )}
+                      {contactoTelefono && (
+                        <div className="ml-2">
+                          • Teléfono: {contactoTelefono}
+                        </div>
+                      )}
+                      {contactoPosicion && (
+                        <div className="ml-2">
+                          • Posición: {contactoPosicion}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2044,8 +2191,8 @@ const total = subtotal - totalDiscountAmount;
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 setShowCreateClientDialog(false);
                 setPendingOrderData(null);
@@ -2056,14 +2203,14 @@ const total = subtotal - totalDiscountAmount;
             >
               Cancelar
             </Button>
-            <Button 
+            <Button
               onClick={handleCreateOrderWithTemporaryClient}
               disabled={creatingClient}
               className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
             >
               {creatingClient ? "Creando..." : "Solo esta orden"}
             </Button>
-            <Button 
+            <Button
               onClick={handleCreateNewClient}
               disabled={creatingClient}
               className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"

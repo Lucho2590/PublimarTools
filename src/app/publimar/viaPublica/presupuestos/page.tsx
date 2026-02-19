@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where } from "firebase/firestore";
+import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp, getDoc, addDoc, getDocs } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,7 +34,9 @@ import {
 import collections from "@/lib/collections";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { EClientSection } from "@/types/client";
-import { Eye, FileText } from "lucide-react";
+import { Eye, Download } from "lucide-react";
+import { toast } from "sonner";
+import { EBillingStatus } from "@/types/billing";
 
 export default function PresupuestosViaPublicaPage() {
   const [searchTerm, setSearchTerm] = useState("");
@@ -121,20 +123,162 @@ export default function PresupuestosViaPublicaPage() {
     const labels = {
       [EQuoteStatus.DRAFT]: "Borrador",
       [EQuoteStatus.SENT]: "Enviado",
-      [EQuoteStatus.CONFIRMED]: "Confirmado",
-      [EQuoteStatus.REJECTED]: "Rechazado",
+      [EQuoteStatus.CONFIRMED]: "Aceptado",
+      [EQuoteStatus.REJECTED]: "Cancelado",
     };
     return labels[status] || status;
   };
 
   const getStatusColor = (status: EQuoteStatus) => {
     const colors = {
-      [EQuoteStatus.DRAFT]: "bg-gray-100 text-gray-800",
-      [EQuoteStatus.SENT]: "bg-blue-100 text-blue-800",
-      [EQuoteStatus.CONFIRMED]: "bg-green-100 text-green-800",
-      [EQuoteStatus.REJECTED]: "bg-red-100 text-red-800",
+      [EQuoteStatus.DRAFT]: "bg-gray-100 text-gray-800 hover:bg-gray-200",
+      [EQuoteStatus.SENT]: "bg-blue-100 text-blue-800 hover:bg-blue-200",
+      [EQuoteStatus.CONFIRMED]: "bg-green-100 text-green-800 hover:bg-green-200",
+      [EQuoteStatus.REJECTED]: "bg-red-100 text-red-800 hover:bg-red-200",
     };
-    return colors[status] || "bg-gray-100 text-gray-800";
+    return colors[status] || "bg-gray-100 text-gray-800 hover:bg-gray-200";
+  };
+
+  // Generar número de facturación
+  const generateBillingNumber = () => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `F-VP-${dateStr}-${random}`;
+  };
+
+  // Verificar si ya existe un billing para este presupuesto
+  const checkExistingBilling = async (quoteId: string): Promise<boolean> => {
+    const billingsCollection = collection(firestore, collections.BILLINGS);
+    const q = query(billingsCollection, where("quoteId", "==", quoteId));
+    const snapshot = await getDocs(q);
+    return !snapshot.empty;
+  };
+
+  // Crear billing desde un presupuesto confirmado
+  const createBillingFromQuote = async (quoteId: string, quoteData: any) => {
+    // Buscar datos completos del cliente
+    let clientData = {
+      id: quoteData.client?.id || '',
+      name: quoteData.client?.name || '',
+      section: quoteData.client?.section || '',
+      cuit: null as string | null,
+      phone: null as string | null,
+      email: null as string | null,
+      address: null as string | null,
+    };
+
+    // Si el presupuesto tiene clientId, buscar datos completos
+    if (quoteData.client?.id) {
+      try {
+        const clientRef = doc(firestore, collections.CLIENTS, quoteData.client.id);
+        const clientSnap = await getDoc(clientRef);
+        if (clientSnap.exists()) {
+          const fullClient = clientSnap.data();
+          clientData = {
+            id: quoteData.client.id,
+            name: fullClient.name || quoteData.client?.name || '',
+            section: fullClient.section || quoteData.client?.section || '',
+            cuit: fullClient.cuit || null,
+            phone: fullClient.phone || null,
+            email: fullClient.email || null,
+            address: fullClient.address || null,
+          };
+        }
+      } catch (e) {
+        console.error("Error fetching client:", e);
+      }
+    }
+
+    const billingData = {
+      number: generateBillingNumber(),
+      quoteId: quoteId,
+      quoteNumber: quoteData.number || 'S/N',
+
+      // Cliente snapshot con datos completos
+      client: clientData,
+
+      // Items snapshot
+      items: quoteData.items?.map((item: any) => ({
+        productName: item.productName || 'Sin nombre',
+        quantity: item.quantity || 1,
+        unitPrice: item.unitPrice || 0,
+        subtotal: item.subtotal || 0,
+        description: item.description || null,
+      })) || [],
+
+      // Formas de pago desde el presupuesto
+      formasPago: quoteData.formasPago?.map((fp: any, index: number) => ({
+        id: `fp-${Date.now()}-${index}`,
+        tipo: fp.tipo || '',
+        monto: fp.monto || 0,
+        cuenta: fp.cuenta || null,
+        factura: fp.factura || false,
+        tipoFactura: fp.tipoFactura || null,
+      })) || [],
+
+      // Importes
+      totalAmount: quoteData.totalVenta || quoteData.total || 0,
+      totalPaid: 0,
+      balance: quoteData.totalVenta || quoteData.total || 0,
+
+      // Historial de pagos vacío
+      paymentHistory: [],
+
+      // Estado inicial
+      status: EBillingStatus.PENDING,
+
+      // Datos adicionales del presupuesto
+      periodos: quoteData.periodos || null,
+      conImpresiones: quoteData.conImpresiones || false,
+      impresiones: quoteData.impresiones || null,
+      notes: quoteData.notes || null,
+
+      // Metadata
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      createdBy: quoteData.createdBy || '',
+    };
+
+    const billingsCollection = collection(firestore, collections.BILLINGS);
+    await addDoc(billingsCollection, billingData);
+  };
+
+  // Cambiar estado del presupuesto
+  const handleStatusChange = async (quoteId: string, newStatus: EQuoteStatus) => {
+    try {
+      const quoteRef = doc(firestore, collections.QUOTES, quoteId);
+
+      // Si cambia a CONFIRMED, crear registro de facturación
+      if (newStatus === EQuoteStatus.CONFIRMED) {
+        const quoteSnap = await getDoc(quoteRef);
+        if (quoteSnap.exists()) {
+          const quoteData = quoteSnap.data();
+          // Verificar si ya existe billing para este presupuesto
+          const existingBilling = await checkExistingBilling(quoteId);
+          if (!existingBilling) {
+            await createBillingFromQuote(quoteId, quoteData);
+            toast.success("Registro de facturación creado automáticamente");
+          }
+        }
+      }
+
+      await updateDoc(quoteRef, {
+        status: newStatus,
+        updatedAt: serverTimestamp(),
+        ...(newStatus === EQuoteStatus.CONFIRMED && { confirmedAt: serverTimestamp() }),
+      });
+      toast.success(`Estado cambiado a ${getStatusLabel(newStatus)}`);
+    } catch (error) {
+      console.error("Error cambiando estado:", error);
+      toast.error("Error al cambiar el estado");
+    }
+  };
+
+  // Placeholder para descarga de PDF
+  const handleDownloadPDF = (quote: TQuote) => {
+    toast.info("Función de PDF pendiente de implementar");
+    // TODO: Implementar generación de PDF
   };
 
   const formatDate = (date: any) => {
@@ -184,8 +328,8 @@ export default function PresupuestosViaPublicaPage() {
                   <SelectItem value="all">Todos los estados</SelectItem>
                   <SelectItem value={EQuoteStatus.DRAFT}>Borrador</SelectItem>
                   <SelectItem value={EQuoteStatus.SENT}>Enviado</SelectItem>
-                  <SelectItem value={EQuoteStatus.CONFIRMED}>Confirmado</SelectItem>
-                  <SelectItem value={EQuoteStatus.REJECTED}>Rechazado</SelectItem>
+                  <SelectItem value={EQuoteStatus.CONFIRMED}>Aceptado</SelectItem>
+                  <SelectItem value={EQuoteStatus.REJECTED}>Cancelado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -260,19 +404,46 @@ export default function PresupuestosViaPublicaPage() {
                           {formatCurrency(quote.total || 0)}
                         </TableCell>
                         <TableCell className="text-center hidden sm:table-cell">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(quote.status)}`}>
-                            {getStatusLabel(quote.status)}
-                          </span>
+                          <Select
+                            value={quote.status}
+                            onValueChange={(value) => handleStatusChange(quote.id, value as EQuoteStatus)}
+                          >
+                            <SelectTrigger
+                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium border-none shadow-none cursor-pointer transition-colors min-w-[80px] h-6 w-24 [&>svg]:hidden ${getStatusColor(quote.status)}`}
+                            >
+                              <SelectValue>
+                                {getStatusLabel(quote.status)}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={EQuoteStatus.DRAFT}>Borrador</SelectItem>
+                              <SelectItem value={EQuoteStatus.SENT}>Enviado</SelectItem>
+                              <SelectItem value={EQuoteStatus.CONFIRMED}>Aceptado</SelectItem>
+                              <SelectItem value={EQuoteStatus.REJECTED}>Cancelado</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </TableCell>
                         <TableCell className="text-center">
-                          <div className="flex justify-center gap-2">
+                          <div className="flex justify-center gap-1">
+                            <Button
+                              asChild
+                              variant="ghost"
+                              size="icon"
+                              title="Ver detalle"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white h-8 w-8"
+                            >
+                              <Link href={`/publimar/viaPublica/presupuestos/${quote.id}`}>
+                                <Eye className="h-4 w-4" />
+                              </Link>
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              title="Ver"
-                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                              title="Descargar PDF"
+                              onClick={() => handleDownloadPDF(quote)}
+                              className="bg-green-600 hover:bg-green-700 hover:text-white text-white h-8 w-8"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Download className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>

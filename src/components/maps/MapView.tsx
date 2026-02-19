@@ -4,7 +4,8 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 're
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { TLocation } from '@/types/location';
+import { TLocation, TLocationDevice } from '@/types/location';
+import { TDeviceType } from '@/types/device';
 import {
   Carousel,
   CarouselContent,
@@ -54,6 +55,7 @@ interface MapViewProps {
   draggableMarker?: { lat: number; lng: number } | null;
   onDraggableMarkerMove?: (lat: number, lng: number) => void;
   onMapReady?: (getCenter: () => [number, number]) => void;
+  deviceTypes?: TDeviceType[];
 }
 
 function MapClickHandler({ onMapClick }: { onMapClick?: (lat: number, lng: number) => void }) {
@@ -145,8 +147,19 @@ export default function MapView({
   onMapClick,
   draggableMarker,
   onDraggableMarkerMove,
-  onMapReady
+  onMapReady,
+  deviceTypes = []
 }: MapViewProps) {
+  // Función para calcular total de afiches de una ubicación
+  const calcularTotalAfiches = (locationDevices: TLocationDevice[] | undefined): number => {
+    if (!locationDevices || locationDevices.length === 0 || deviceTypes.length === 0) return 0;
+
+    return locationDevices.reduce((total, device) => {
+      const deviceType = deviceTypes.find(dt => dt.id === device.deviceTypeId);
+      const afichesPorDispositivo = deviceType?.afiche || 0;
+      return total + (device.quantity * afichesPorDispositivo);
+    }, 0);
+  };
   // Asegurar que el componente solo se renderice en el cliente
   useEffect(() => {
     // Forzar re-render del mapa después del montaje
@@ -245,6 +258,16 @@ export default function MapView({
                       </li>
                     ))}
                   </ul>
+                  {/* Total de afiches */}
+                  {(() => {
+                    const totalAfiches = calcularTotalAfiches(location.devices);
+                    return totalAfiches > 0 ? (
+                      <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between">
+                        <span className="text-sm font-semibold text-gray-600">Total Afiches</span>
+                        <span className="font-bold text-blue-900">{totalAfiches}</span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               )}
             </div>

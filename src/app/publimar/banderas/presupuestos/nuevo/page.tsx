@@ -291,6 +291,7 @@ export default function NuevoPresupuestoPage() {
   };
 
   const startEditItem = (item: QuoteItem) => {
+    console.log("Editamos Item:");
     setSelectedProduct(item.product);
     setSelectedVariant(item.variant || null);
     setItemQuantity(item.quantity);
@@ -1578,15 +1579,17 @@ export default function NuevoPresupuestoPage() {
                         <TableCell>
                           <div className="flex space-x-1">
                             <Button
+                              type="button"
                               variant="ghost"
                               size="icon"
                               onClick={() => startEditItem(item)}
-                              title="Editar"
+                              title="Editarlos"
                               className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
+                              type="button"
                               variant="ghost"
                               size="icon"
                               onClick={() => removeItem(item.id)}

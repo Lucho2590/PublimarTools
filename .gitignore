@@ -45,3 +45,9 @@ serviceAccountKey.json
 
 # .json files
 IMPLEMENTACION_PDF_PRESUPUESTOS.json
+
+# Documentación interna
+FLUJO_VIA_PUBLICA.md
+
+# Scripts de migración
+scripts/

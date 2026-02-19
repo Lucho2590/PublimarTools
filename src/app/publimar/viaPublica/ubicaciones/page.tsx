@@ -158,7 +158,19 @@ export default function UbicacionesPage() {
       id: device.id,
       name: device.name,
       description: device.description,
+      afiche: device.afiche,
     })) || [];
+
+  // Función para calcular total de afiches de una ubicación
+  const calcularTotalAfiches = (locationDevices: TLocationDevice[] | undefined): number => {
+    if (!locationDevices || locationDevices.length === 0) return 0;
+
+    return locationDevices.reduce((total, device) => {
+      const deviceType = deviceTypes.find(dt => dt.id === device.deviceTypeId);
+      const afichesPorDispositivo = deviceType?.afiche || 0;
+      return total + (device.quantity * afichesPorDispositivo);
+    }, 0);
+  };
 
   const locations: TLocation[] =
     (locationsData as any[])?.map((loc) => ({
@@ -595,6 +607,7 @@ export default function UbicacionesPage() {
             draggableMarker={draggableMarker}
             onDraggableMarkerMove={handleDraggableMarkerMove}
             onMapReady={(getCenterFn) => setGetMapCenter(() => getCenterFn)}
+            deviceTypes={deviceTypes}
           />
         )}
       </div>
@@ -630,19 +643,35 @@ export default function UbicacionesPage() {
                 <TableRow>
                   <TableHead>Codigo</TableHead>
                   <TableHead>Direccion</TableHead>
-                  <TableHead>Coordenadas</TableHead>
+                  <TableHead>Dispositivos</TableHead>
+                  <TableHead className="text-center">Afiches</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLocations.map((location) => (
+                {filteredLocations.map((location) => {
+                  const totalAfiches = calcularTotalAfiches(location.devices);
+                  return (
                   <TableRow key={location.id}>
                     <TableCell className="font-medium">
                       {location.code}
                     </TableCell>
                     <TableCell>{location.address || "-"}</TableCell>
-                    <TableCell className="text-sm text-gray-500">
-                      {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+                    <TableCell className="text-sm text-gray-600">
+                      {location.devices && location.devices.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {location.devices.map((d, i) => (
+                            <span key={i} className="bg-gray-100 px-2 py-0.5 rounded text-xs">
+                              {d.quantity} {d.deviceTypeName}
+                            </span>
+                          ))}
+                        </div>
+                      ) : "-"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {totalAfiches > 0 ? (
+                        <span className="font-semibold text-blue-900">{totalAfiches}</span>
+                      ) : "-"}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
@@ -665,7 +694,8 @@ export default function UbicacionesPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}

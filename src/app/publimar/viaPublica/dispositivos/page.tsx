@@ -37,11 +37,12 @@ import { TDeviceType } from '@/types/device';
 
 export default function DispositivosPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({ name: '', description: '' });
+  const [formData, setFormData] = useState({ name: '', description: '', afiche: '' });
   const [editingDevice, setEditingDevice] = useState<{
     id: string;
     name: string;
     description: string;
+    afiche: string;
   } | null>(null);
   const firestore = useFirestore();
 
@@ -60,10 +61,11 @@ export default function DispositivosPage() {
       await addDoc(devicesCollection, {
         name: formData.name.trim(),
         description: formData.description.trim(),
+        afiche: formData.afiche ? parseInt(formData.afiche) : null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      setFormData({ name: '', description: '' });
+      setFormData({ name: '', description: '', afiche: '' });
       toast.success('Tipo de dispositivo creado con exito');
     } catch (error) {
       console.error('Error al crear el dispositivo:', error);
@@ -82,6 +84,7 @@ export default function DispositivosPage() {
       await updateDoc(deviceRef, {
         name: editingDevice.name.trim(),
         description: editingDevice.description.trim(),
+        afiche: editingDevice.afiche ? parseInt(editingDevice.afiche) : null,
         updatedAt: serverTimestamp(),
       });
       setEditingDevice(null);
@@ -157,6 +160,24 @@ export default function DispositivosPage() {
                 rows={3}
               />
             </div>
+            <div>
+              <Label htmlFor="deviceAfiche">Cantidad de Afiches</Label>
+              <Input
+                id="deviceAfiche"
+                type="number"
+                min="0"
+                value={editingDevice ? editingDevice.afiche : formData.afiche}
+                onChange={(e) =>
+                  editingDevice
+                    ? setEditingDevice({
+                        ...editingDevice,
+                        afiche: e.target.value,
+                      })
+                    : setFormData({ ...formData, afiche: e.target.value })
+                }
+                placeholder="Ej: 2"
+              />
+            </div>
           </div>
         </CardContent>
         <CardFooter>
@@ -185,6 +206,7 @@ export default function DispositivosPage() {
               <TableRow>
                 <TableHead className="pl-10">Nombre</TableHead>
                 <TableHead>Descripcion</TableHead>
+                <TableHead className="text-center">Afiches</TableHead>
                 <TableHead className="pr-10 text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -199,6 +221,9 @@ export default function DispositivosPage() {
                     <TableCell className="text-gray-600">
                       {typedDevice.description || '-'}
                     </TableCell>
+                    <TableCell className="text-center">
+                      {typedDevice.afiche ?? '-'}
+                    </TableCell>
                     <TableCell className="pr-8 text-right">
                       <Button
                         onClick={() =>
@@ -206,6 +231,7 @@ export default function DispositivosPage() {
                             id: typedDevice.id,
                             name: typedDevice.name,
                             description: typedDevice.description || '',
+                            afiche: typedDevice.afiche?.toString() || '',
                           })
                         }
                         variant="ghost"
