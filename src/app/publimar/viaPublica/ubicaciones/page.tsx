@@ -209,14 +209,19 @@ export default function UbicacionesPage() {
 
   // Filtrar ubicaciones según tipos de dispositivos seleccionados
   const filteredLocations = useMemo(() => {
-    if (selectedDeviceTypes.size === 0) {
-      return locations; // Si no hay filtros, muestra todo
+    let result = locations;
+
+    if (selectedDeviceTypes.size > 0) {
+      result = locations.filter(location =>
+        location.devices?.some(device =>
+          selectedDeviceTypes.has(device.deviceTypeId)
+        )
+      );
     }
 
-    return locations.filter(location =>
-      location.devices?.some(device =>
-        selectedDeviceTypes.has(device.deviceTypeId)
-      )
+    // Ordenar por código de ubicación (orden natural para manejar números)
+    return result.sort((a, b) =>
+      a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' })
     );
   }, [locations, selectedDeviceTypes]);
 

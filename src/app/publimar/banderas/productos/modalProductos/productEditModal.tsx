@@ -173,49 +173,58 @@ export default function ProductEditModal({
     }));
   };
 
-  // Upload de imagen a Firebase Storage
+  // Upload de imágenes a Firebase Storage (soporta múltiples archivos)
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !productId) return;
+    const files = e.target.files;
+    if (!files || files.length === 0 || !productId) return;
 
-    // Validar tipo de archivo
-    if (!file.type.startsWith('image/')) {
-      toast.error('Por favor selecciona un archivo de imagen válido');
+    // Convertir FileList a array para procesar
+    const fileArray = Array.from(files);
+
+    // Validar todos los archivos primero
+    const invalidFiles = fileArray.filter(file => !file.type.startsWith('image/'));
+    if (invalidFiles.length > 0) {
+      toast.error(`${invalidFiles.length} archivo(s) no son imágenes válidas`);
       return;
     }
 
-    // Validar tamaño (máx 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('La imagen no debe superar los 5MB');
+    const oversizedFiles = fileArray.filter(file => file.size > 5 * 1024 * 1024);
+    if (oversizedFiles.length > 0) {
+      toast.error(`${oversizedFiles.length} imagen(es) superan los 5MB`);
       return;
     }
 
     setUploadingImage(true);
 
     try {
-      // Crear referencia única en Storage
-      const fileName = `${Date.now()}_${file.name}`;
-      const storageRef = ref(storage, `products/${productId}/${fileName}`);
+      const uploadPromises = fileArray.map(async (file) => {
+        // Crear referencia única en Storage
+        const fileName = `${Date.now()}_${file.name}`;
+        const storageRef = ref(storage, `products/${productId}/${fileName}`);
 
-      // Subir archivo
-      await uploadBytes(storageRef, file);
+        // Subir archivo
+        await uploadBytes(storageRef, file);
 
-      // Obtener URL de descarga
-      const downloadURL = await getDownloadURL(storageRef);
+        // Obtener URL de descarga
+        return await getDownloadURL(storageRef);
+      });
 
-      // Agregar URL al formData
+      // Esperar que todas las imágenes se suban
+      const uploadedUrls = await Promise.all(uploadPromises);
+
+      // Agregar URLs al formData
       setFormData((prev) => ({
         ...prev,
-        imageUrls: [...prev.imageUrls, downloadURL],
+        imageUrls: [...prev.imageUrls, ...uploadedUrls],
       }));
 
-      toast.success('Imagen subida exitosamente');
+      toast.success(`${uploadedUrls.length} imagen(es) subida(s) exitosamente`);
 
       // Reset input
       e.target.value = '';
     } catch (error) {
-      console.error('Error al subir imagen:', error);
-      toast.error('Error al subir la imagen');
+      console.error('Error al subir imágenes:', error);
+      toast.error('Error al subir las imágenes');
     } finally {
       setUploadingImage(false);
     }
@@ -465,12 +474,13 @@ export default function ProductEditModal({
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 cursor-pointer transition-colors"
                 >
                   <Upload className="h-4 w-4" />
-                  {uploadingImage ? 'Subiendo...' : 'Subir imagen'}
+                  {uploadingImage ? 'Subiendo...' : 'Subir imágenes'}
                 </Label>
                 <Input
                   id="image-upload"
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleImageUpload}
                   disabled={uploadingImage}
                   className="hidden"
