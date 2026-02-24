@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { TSale, TSaleItem, EPaymentMethod, TFactura, TReturn, TReturnItem } from "@/types/sale";
+import { TSale, TSaleItem, EPaymentMethod, TFactura, TReturn, TReturnItem, TExchangeItem } from "@/types/sale";
 import collections from "@/lib/collections";
 import { useState, useEffect } from "react";
 import {
@@ -142,6 +142,14 @@ export function SaleDetailsModal({
   const [returnItems, setReturnItems] = useState<{[key: number]: number}>({});  // {itemIndex: quantity}
   const [returnReason, setReturnReason] = useState("");
   const [returnToStock, setReturnToStock] = useState(true);
+
+  // Estados para cambios
+  const [isExchangeMode, setIsExchangeMode] = useState(false);
+  const [exchangeItems, setExchangeItems] = useState<TExchangeItem[]>([]);
+  const [exchangeProductId, setExchangeProductId] = useState("");
+  const [exchangeVariantId, setExchangeVariantId] = useState("");
+  const [exchangeQuantity, setExchangeQuantity] = useState(1);
+  const [exchangeUnitPrice, setExchangeUnitPrice] = useState(0);
 
   // Estados para el dialog de cliente
   const [showClientDialog, setShowClientDialog] = useState(false);
@@ -659,10 +667,54 @@ export function SaleDetailsModal({
     onOpenChange(open);
   };
 
+  // Funciones para manejar items de cambio
+  const handleAddExchangeItem = () => {
+    if (!exchangeProductId || !exchangeVariantId || exchangeQuantity <= 0 || exchangeUnitPrice <= 0) {
+      toast.error("Complete todos los campos del producto");
+      return;
+    }
+
+    const product = products[exchangeProductId];
+    const variant = product?.variants?.find((v) => v.id === exchangeVariantId);
+
+    const newExchangeItem: TExchangeItem = {
+      productId: exchangeProductId,
+      variantId: exchangeVariantId,
+      productName: product?.name || "Producto",
+      variantName: variant?.size || "",
+      quantity: exchangeQuantity,
+      unitPrice: exchangeUnitPrice,
+      total: exchangeQuantity * exchangeUnitPrice,
+    };
+
+    setExchangeItems([...exchangeItems, newExchangeItem]);
+
+    // Limpiar campos
+    setExchangeProductId("");
+    setExchangeVariantId("");
+    setExchangeQuantity(1);
+    setExchangeUnitPrice(0);
+  };
+
+  const handleRemoveExchangeItem = (index: number) => {
+    setExchangeItems(exchangeItems.filter((_, i) => i !== index));
+  };
+
+  const handleExchangeVariantChange = (variantId: string) => {
+    setExchangeVariantId(variantId);
+    if (exchangeProductId && variantId) {
+      const product = products[exchangeProductId];
+      const variant = product?.variants?.find((v) => v.id === variantId);
+      if (variant?.price) {
+        setExchangeUnitPrice(Number(variant.price));
+      }
+    }
+  };
+
   const handleProcessReturn = async () => {
     if (!saleRef || !saleId || !typedSale) return;
 
-    // Validar que haya items seleccionados
+    // Validar que haya items seleccionados para devolver
     const selectedItems = Object.entries(returnItems).filter(([_, qty]) => qty > 0);
     if (selectedItems.length === 0) {
       toast.error("Debe seleccionar al menos un item para devolver");
@@ -671,7 +723,13 @@ export function SaleDetailsModal({
 
     // Validar motivo
     if (!returnReason.trim()) {
-      toast.error("Debe especificar un motivo para la devolución");
+      toast.error("Debe especificar un motivo");
+      return;
+    }
+
+    // Si es modo cambio, validar que haya items de cambio
+    if (isExchangeMode && exchangeItems.length === 0) {
+      toast.error("Debe agregar al menos un producto nuevo para el cambio");
       return;
     }
 
@@ -690,7 +748,7 @@ export function SaleDetailsModal({
         totalRefund += refundAmount;
 
         returnItemsArray.push({
-          saleItemId: `${index}`,  // Usar el índice como ID
+          saleItemId: `${index}`,
           productId: item.productId,
           variantId: item.variantId,
           productName: item.productName,
@@ -708,7 +766,6 @@ export function SaleDetailsModal({
             if (productDoc.exists()) {
               const currentProduct = productDoc.data();
 
-              // Si tiene variante, actualizar stock de la variante específica
               if (item.variantId && currentProduct.variants) {
                 await updateDoc(productRef, {
                   variants: currentProduct.variants.map((v: any) =>
@@ -718,7 +775,6 @@ export function SaleDetailsModal({
                   ),
                 });
               } else {
-                // Si no tiene variante, actualizar stock general
                 await updateDoc(productRef, {
                   stock: Number(currentProduct.stock || 0) + quantity,
                 });
@@ -726,47 +782,96 @@ export function SaleDetailsModal({
             }
           } catch (error) {
             console.error(`Error al devolver stock del producto ${item.productId}:`, error);
-            // Continuar con los demás productos aunque uno falle
           }
         }
       }
 
-      // Crear objeto de devolución
+      // Calcular totales de cambio si aplica
+      let exchangeTotal = 0;
+      let priceDifference = 0;
+
+      if (isExchangeMode && exchangeItems.length > 0) {
+        exchangeTotal = exchangeItems.reduce((sum, item) => sum + item.total, 0);
+        priceDifference = exchangeTotal - totalRefund;
+
+        // Descontar stock de productos nuevos
+        for (const exchangeItem of exchangeItems) {
+          if (exchangeItem.productId && !exchangeItem.productId.includes('manual')) {
+            try {
+              const productRef = doc(firestore, collections.PRODUCTS, exchangeItem.productId);
+              const productDoc = await getDoc(productRef);
+
+              if (productDoc.exists()) {
+                const currentProduct = productDoc.data();
+
+                if (exchangeItem.variantId && currentProduct.variants) {
+                  await updateDoc(productRef, {
+                    variants: currentProduct.variants.map((v: any) =>
+                      v.id === exchangeItem.variantId
+                        ? { ...v, stock: Math.max(0, Number(v.stock) - exchangeItem.quantity) }
+                        : v
+                    ),
+                  });
+                } else {
+                  await updateDoc(productRef, {
+                    stock: Math.max(0, Number(currentProduct.stock || 0) - exchangeItem.quantity),
+                  });
+                }
+              }
+            } catch (error) {
+              console.error(`Error al descontar stock del producto ${exchangeItem.productId}:`, error);
+            }
+          }
+        }
+      }
+
+      // Crear objeto de devolución/cambio
       const newReturn: TReturn = {
-        id: `return-${Date.now()}`,
+        id: `${isExchangeMode ? 'exchange' : 'return'}-${Date.now()}`,
         date: new Date(),
         items: returnItemsArray,
         reason: returnReason,
         refundAmount: totalRefund,
         stockReturned: returnToStock,
         notes: "",
+        // Campos de cambio
+        isExchange: isExchangeMode,
+        exchangeItems: isExchangeMode ? exchangeItems : undefined,
+        exchangeTotal: isExchangeMode ? exchangeTotal : undefined,
+        priceDifference: isExchangeMode ? priceDifference : undefined,
       };
 
-      // Actualizar venta con la devolución
+      // Actualizar totales de la venta
       const currentReturns = typedSale.returns || [];
       const updatedReturns = [...currentReturns, newReturn];
-      const totalReturned = (typedSale.totalReturned || 0) + totalRefund;
-      const finalTotal = typedSale.total - totalReturned;
+
+      // Calcular nuevos totales
+      const newTotalReturned = (typedSale.totalReturned || 0) + totalRefund;
+      const newTotalExchanged = (typedSale.totalExchanged || 0) + (isExchangeMode ? exchangeTotal : 0);
+      const newFinalTotal = typedSale.total - newTotalReturned + newTotalExchanged;
 
       await updateDoc(saleRef, {
         returns: updatedReturns,
-        totalReturned: totalReturned,
-        finalTotal: finalTotal,
+        totalReturned: newTotalReturned,
+        totalExchanged: newTotalExchanged,
+        finalTotal: newFinalTotal,
         updatedAt: serverTimestamp(),
       });
 
-      toast.success("Devolución procesada exitosamente");
+      toast.success(isExchangeMode ? "Cambio procesado exitosamente" : "Devolución procesada exitosamente");
 
-      // Limpiar estados del modal
+      // Limpiar estados
       setReturnItems({});
       setReturnReason("");
       setReturnToStock(true);
+      setIsExchangeMode(false);
+      setExchangeItems([]);
       setShowReturnDialog(false);
 
       onSuccess();
     } catch (error) {
-      console.error("Error al procesar devolución:", error);
-      toast.error("Error al procesar la devolución");
+      console.error("Error al procesar:", error);
+      toast.error("Error al procesar la operación");
     } finally {
       setIsLoading(false);
     }
@@ -1641,29 +1746,43 @@ export function SaleDetailsModal({
                 </div>
               </div>
 
-              {/* Historial de Devoluciones */}
+              {/* Historial de Devoluciones y Cambios */}
               {typedSale?.returns && typedSale.returns.length > 0 && (
                 <div className="mt-6">
-                  <h3 className="font-semibold mb-4">Historial de Devoluciones</h3>
+                  <h3 className="font-semibold mb-4">Historial de Devoluciones y Cambios</h3>
                   <div className="space-y-4">
                     {typedSale.returns.map((returnItem, returnIndex) => (
-                      <div key={returnItem.id} className="border rounded-lg p-4 bg-red-50">
+                      <div
+                        key={returnItem.id}
+                        className={`border rounded-lg p-4 ${returnItem.isExchange ? 'bg-purple-50' : 'bg-red-50'}`}
+                      >
                         <div className="flex justify-between items-start mb-3">
                           <div>
-                            <h4 className="font-medium text-red-900">
-                              Devolución #{returnIndex + 1}
+                            <h4 className={`font-medium ${returnItem.isExchange ? 'text-purple-900' : 'text-red-900'}`}>
+                              {returnItem.isExchange ? `Cambio #${returnIndex + 1}` : `Devolución #${returnIndex + 1}`}
                             </h4>
                             <p className="text-sm text-gray-600">
                               {formatDate(returnItem.date)}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="font-bold text-red-900">
-                              -{formatearPrecio(returnItem.refundAmount)}
-                            </p>
+                            {returnItem.isExchange ? (
+                              <p className={`font-bold ${(returnItem.priceDifference || 0) > 0 ? 'text-orange-600' : (returnItem.priceDifference || 0) < 0 ? 'text-green-600' : 'text-gray-600'}`}>
+                                {(returnItem.priceDifference || 0) > 0
+                                  ? `+${formatearPrecio(returnItem.priceDifference || 0)}`
+                                  : (returnItem.priceDifference || 0) < 0
+                                    ? formatearPrecio(returnItem.priceDifference || 0)
+                                    : "Sin diferencia"
+                                }
+                              </p>
+                            ) : (
+                              <p className="font-bold text-red-900">
+                                -{formatearPrecio(returnItem.refundAmount)}
+                              </p>
+                            )}
                             {returnItem.stockReturned && (
                               <p className="text-xs text-green-700">
-                                Stock devuelto
+                                Stock actualizado
                               </p>
                             )}
                           </div>
@@ -1674,27 +1793,73 @@ export function SaleDetailsModal({
                           <p className="text-sm text-gray-600">{returnItem.reason}</p>
                         </div>
 
+                        {/* Items devueltos */}
                         <div className="border-t pt-2 mt-2">
-                          <p className="text-sm font-medium text-gray-700 mb-1">Items devueltos:</p>
+                          <p className="text-sm font-medium text-red-700 mb-1">Items devueltos:</p>
                           <ul className="space-y-1">
                             {returnItem.items.map((item, itemIndex) => (
                               <li key={itemIndex} className="text-sm text-gray-600 flex justify-between">
                                 <span>
                                   {item.productName} {item.variantName && `(${item.variantName})`}
-                                  - Cantidad: {item.quantityReturned}
+                                  {" "}- Cantidad: {item.quantityReturned}
                                 </span>
-                                <span className="font-medium">
+                                <span className="font-medium text-red-600">
                                   -{formatearPrecio(item.refundAmount)}
                                 </span>
                               </li>
                             ))}
                           </ul>
                         </div>
+
+                        {/* Items de cambio (solo si es un cambio) */}
+                        {returnItem.isExchange && returnItem.exchangeItems && returnItem.exchangeItems.length > 0 && (
+                          <div className="border-t pt-2 mt-2">
+                            <p className="text-sm font-medium text-green-700 mb-1">Items nuevos (cambio):</p>
+                            <ul className="space-y-1">
+                              {returnItem.exchangeItems.map((item, itemIndex) => (
+                                <li key={itemIndex} className="text-sm text-gray-600 flex justify-between">
+                                  <span>
+                                    {item.productName} {item.variantName && `(${item.variantName})`}
+                                    {" "}- Cantidad: {item.quantity}
+                                  </span>
+                                  <span className="font-medium text-green-600">
+                                    +{formatearPrecio(item.total)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Resumen del cambio */}
+                        {returnItem.isExchange && (
+                          <div className="border-t pt-2 mt-2 bg-white/50 p-2 rounded">
+                            <div className="flex justify-between text-sm">
+                              <span>Valor devuelto:</span>
+                              <span className="text-red-600">-{formatearPrecio(returnItem.refundAmount)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span>Valor nuevo:</span>
+                              <span className="text-green-600">+{formatearPrecio(returnItem.exchangeTotal || 0)}</span>
+                            </div>
+                            <div className="flex justify-between font-medium border-t pt-1 mt-1">
+                              <span>Diferencia:</span>
+                              <span className={(returnItem.priceDifference || 0) >= 0 ? 'text-orange-600' : 'text-green-600'}>
+                                {(returnItem.priceDifference || 0) > 0
+                                  ? `Cliente pagó: ${formatearPrecio(returnItem.priceDifference || 0)}`
+                                  : (returnItem.priceDifference || 0) < 0
+                                    ? `Se devolvió: ${formatearPrecio(Math.abs(returnItem.priceDifference || 0))}`
+                                    : "Sin diferencia"
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
 
-                  {/* Resumen de devoluciones */}
+                  {/* Resumen general */}
                   <div className="mt-4 p-4 bg-gray-100 rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                       <span className="font-medium">Total Original:</span>
@@ -1704,9 +1869,15 @@ export function SaleDetailsModal({
                       <span className="font-medium">Total Devuelto:</span>
                       <span>-{formatearPrecio(typedSale.totalReturned || 0)}</span>
                     </div>
+                    {(typedSale.totalExchanged || 0) > 0 && (
+                      <div className="flex justify-between items-center text-green-700 mb-2">
+                        <span className="font-medium">Total Cambios (nuevo):</span>
+                        <span>+{formatearPrecio(typedSale.totalExchanged || 0)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center text-lg font-bold border-t pt-2">
                       <span>Total Final:</span>
-                      <span className="text-green-700">
+                      <span className="text-blue-700">
                         {formatearPrecio(typedSale.finalTotal || typedSale.total)}
                       </span>
                     </div>
@@ -1858,19 +2029,47 @@ export function SaleDetailsModal({
         </DialogContent>
       </Dialog>
 
-      {/* Dialog para Devolución */}
-      <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      {/* Dialog para Devolución/Cambio */}
+      <Dialog open={showReturnDialog} onOpenChange={(open) => {
+        setShowReturnDialog(open);
+        if (!open) {
+          setReturnItems({});
+          setReturnReason("");
+          setReturnToStock(true);
+          setIsExchangeMode(false);
+          setExchangeItems([]);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Registrar Devolución</DialogTitle>
+            <DialogTitle>
+              {isExchangeMode ? "Registrar Cambio" : "Registrar Devolución"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Toggle Devolución/Cambio */}
+            <div className="flex items-center gap-4 p-3 bg-gray-100 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="isExchangeMode"
+                  checked={isExchangeMode}
+                  onCheckedChange={(checked) => {
+                    setIsExchangeMode(checked as boolean);
+                    if (!checked) setExchangeItems([]);
+                  }}
+                />
+                <Label htmlFor="isExchangeMode" className="cursor-pointer font-medium">
+                  Es un cambio (el cliente se lleva otro producto)
+                </Label>
+              </div>
+            </div>
+
             <div>
-              <Label>Motivo de la devolución *</Label>
+              <Label>Motivo *</Label>
               <Textarea
                 value={returnReason}
                 onChange={(e) => setReturnReason(e.target.value)}
-                placeholder="Producto defectuoso, talla incorrecta, etc."
+                placeholder={isExchangeMode ? "Cambio de talle, cambio de modelo, etc." : "Producto defectuoso, talla incorrecta, etc."}
                 rows={2}
               />
             </div>
@@ -1882,24 +2081,25 @@ export function SaleDetailsModal({
                 onCheckedChange={(checked) => setReturnToStock(checked as boolean)}
               />
               <Label htmlFor="returnToStock" className="cursor-pointer">
-                Devolver al inventario
+                Devolver productos al inventario
               </Label>
             </div>
 
+            {/* Items a devolver */}
             <div className="border rounded-lg">
-              <div className="bg-gray-50 p-3 border-b">
-                <h4 className="font-medium">Items de la venta</h4>
-                <p className="text-sm text-gray-600">Seleccione los items y cantidades a devolver</p>
+              <div className="bg-red-50 p-3 border-b">
+                <h4 className="font-medium text-red-900">Items a devolver</h4>
+                <p className="text-sm text-red-700">Seleccione los items y cantidades que devuelve el cliente</p>
               </div>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Producto</TableHead>
                     <TableHead>Medida</TableHead>
-                    <TableHead className="text-right">Cantidad Original</TableHead>
+                    <TableHead className="text-right">Cant. Original</TableHead>
                     <TableHead className="text-right">Precio Unit.</TableHead>
-                    <TableHead className="text-right">Cantidad a Devolver</TableHead>
-                    <TableHead className="text-right">Reembolso</TableHead>
+                    <TableHead className="text-right">Cant. a Devolver</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1934,8 +2134,8 @@ export function SaleDetailsModal({
                             className="w-20 text-right"
                           />
                         </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {returnQty > 0 ? formatearPrecio(refundAmount) : "-"}
+                        <TableCell className="text-right font-medium text-red-600">
+                          {returnQty > 0 ? `-${formatearPrecio(refundAmount)}` : "-"}
                         </TableCell>
                       </TableRow>
                     );
@@ -1944,22 +2144,196 @@ export function SaleDetailsModal({
               </Table>
             </div>
 
-            {/* Resumen de devolución */}
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="font-medium">Total a reembolsar:</span>
-                <span className="text-lg font-bold text-blue-900">
-                  {formatearPrecio(
-                    Object.entries(returnItems).reduce((total, [indexStr, qty]) => {
-                      if (qty === 0) return total;
-                      const index = parseInt(indexStr);
-                      const item = typedSale?.items[index];
-                      if (!item) return total;
-                      return total + (item.total / item.quantity) * qty;
-                    }, 0)
-                  )}
-                </span>
+            {/* Sección de productos nuevos (solo en modo cambio) */}
+            {isExchangeMode && (
+              <div className="border rounded-lg">
+                <div className="bg-green-50 p-3 border-b">
+                  <h4 className="font-medium text-green-900">Productos nuevos (lo que se lleva)</h4>
+                  <p className="text-sm text-green-700">Agregue los productos que el cliente se lleva a cambio</p>
+                </div>
+
+                {/* Formulario para agregar producto nuevo */}
+                <div className="p-4 border-b bg-gray-50">
+                  <div className="grid grid-cols-5 gap-3">
+                    <div>
+                      <Label className="text-xs">Producto</Label>
+                      <Select value={exchangeProductId} onValueChange={setExchangeProductId}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Seleccionar..." />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-48 overflow-y-auto">
+                          {Object.entries(products).map(([id, product]) => {
+                            const hasStock = product?.variants?.some((v) => Number(v.stock) > 0) ?? false;
+                            return (
+                              <SelectItem key={id} value={id} disabled={!hasStock}>
+                                {product?.name}
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Variante</Label>
+                      <Select
+                        value={exchangeVariantId}
+                        onValueChange={handleExchangeVariantChange}
+                        disabled={!exchangeProductId}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Seleccionar..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {exchangeProductId && products[exchangeProductId]?.variants?.map((variant) => (
+                            <SelectItem
+                              key={variant.id}
+                              value={variant.id}
+                              disabled={Number(variant.stock) <= 0}
+                            >
+                              {variant.size} {Number(variant.stock) <= 0 && "(Sin stock)"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Cantidad</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={exchangeQuantity}
+                        onChange={(e) => setExchangeQuantity(Number(e.target.value))}
+                        className="h-9"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Precio Unit.</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={exchangeUnitPrice}
+                        onChange={(e) => setExchangeUnitPrice(Number(e.target.value))}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        onClick={handleAddExchangeItem}
+                        disabled={!exchangeProductId || !exchangeVariantId || exchangeQuantity <= 0 || exchangeUnitPrice <= 0}
+                        className="bg-green-600 hover:bg-green-700 h-9"
+                        size="sm"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Agregar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista de productos nuevos agregados */}
+                {exchangeItems.length > 0 && (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Producto</TableHead>
+                        <TableHead>Medida</TableHead>
+                        <TableHead className="text-right">Cantidad</TableHead>
+                        <TableHead className="text-right">Precio Unit.</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
+                        <TableHead className="text-center">Quitar</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {exchangeItems.map((item, index) => (
+                        <TableRow key={index}>
+                          <TableCell>{item.productName}</TableCell>
+                          <TableCell>{item.variantName || "N/A"}</TableCell>
+                          <TableCell className="text-right">{item.quantity}</TableCell>
+                          <TableCell className="text-right">{formatearPrecio(item.unitPrice)}</TableCell>
+                          <TableCell className="text-right font-medium text-green-600">
+                            +{formatearPrecio(item.total)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveExchangeItem(index)}
+                              className="h-8 w-8 text-red-500 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+
+                {exchangeItems.length === 0 && (
+                  <div className="p-4 text-center text-gray-500">
+                    No hay productos nuevos agregados
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Resumen */}
+            <div className={`p-4 rounded-lg ${isExchangeMode ? 'bg-purple-50' : 'bg-blue-50'}`}>
+              {(() => {
+                const totalReturn = Object.entries(returnItems).reduce((total, [indexStr, qty]) => {
+                  if (qty === 0) return total;
+                  const index = parseInt(indexStr);
+                  const item = typedSale?.items[index];
+                  if (!item) return total;
+                  return total + (item.total / item.quantity) * qty;
+                }, 0);
+
+                const totalExchange = exchangeItems.reduce((sum, item) => sum + item.total, 0);
+                const difference = totalExchange - totalReturn;
+
+                return (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span>Valor de lo devuelto:</span>
+                      <span className="font-medium text-red-600">-{formatearPrecio(totalReturn)}</span>
+                    </div>
+
+                    {isExchangeMode && (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <span>Valor de lo nuevo:</span>
+                          <span className="font-medium text-green-600">+{formatearPrecio(totalExchange)}</span>
+                        </div>
+                        <div className="border-t pt-2 mt-2">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold">Diferencia:</span>
+                            <span className={`text-lg font-bold ${difference > 0 ? 'text-orange-600' : difference < 0 ? 'text-green-600' : 'text-gray-600'}`}>
+                              {difference > 0
+                                ? `Cliente debe: ${formatearPrecio(difference)}`
+                                : difference < 0
+                                  ? `Devolver al cliente: ${formatearPrecio(Math.abs(difference))}`
+                                  : "Sin diferencia"
+                              }
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {!isExchangeMode && (
+                      <div className="border-t pt-2 mt-2">
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold">Total a reembolsar:</span>
+                          <span className="text-lg font-bold text-blue-900">
+                            {formatearPrecio(totalReturn)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
           <DialogFooter>
@@ -1970,6 +2344,8 @@ export function SaleDetailsModal({
                 setReturnItems({});
                 setReturnReason("");
                 setReturnToStock(true);
+                setIsExchangeMode(false);
+                setExchangeItems([]);
               }}
             >
               Cancelar
@@ -1979,7 +2355,7 @@ export function SaleDetailsModal({
               disabled={isLoading}
               className="bg-green-600 hover:bg-green-700"
             >
-              {isLoading ? "Procesando..." : "Procesar Devolución"}
+              {isLoading ? "Procesando..." : isExchangeMode ? "Procesar Cambio" : "Procesar Devolución"}
             </Button>
           </DialogFooter>
         </DialogContent>

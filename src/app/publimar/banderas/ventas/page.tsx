@@ -38,6 +38,7 @@ const BANCOS = ["Galicia", "Frances"];
 export default function VentasPage() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("all");
   const [selectedInvoiced, setSelectedInvoiced] = useState<string>("all");
+  const [selectedReturns, setSelectedReturns] = useState<string>("all");
   const today = new Date();
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: today,
@@ -121,7 +122,19 @@ export default function VentasPage() {
       ) || false;
     }
 
-    return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesDateRange && matchesProduct;
+    // Filtrar por devoluciones y cambios
+    const hasReturns = typedSale.returns && typedSale.returns.length > 0;
+    const hasOnlyReturns = hasReturns && typedSale.returns?.some(r => !r.isExchange);
+    const hasExchanges = hasReturns && typedSale.returns?.some(r => r.isExchange);
+
+    const matchesReturns =
+      selectedReturns === "all" ||
+      (selectedReturns === "with" && hasReturns) ||
+      (selectedReturns === "returns-only" && hasOnlyReturns && !hasExchanges) ||
+      (selectedReturns === "exchanges-only" && hasExchanges) ||
+      (selectedReturns === "without" && !hasReturns);
+
+    return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesDateRange && matchesProduct && matchesReturns;
   });
 
   // Calcular total de ventas filtradas
@@ -136,6 +149,7 @@ export default function VentasPage() {
     const hoy = new Date();
     setSelectedPaymentMethod("all");
     setSelectedInvoiced("all");
+    setSelectedReturns("all");
     setDateRange({ from: hoy, to: hoy });
     setSelectedBank("all");
     setSearchProductTerm("");
@@ -362,6 +376,22 @@ export default function VentasPage() {
                 </SelectContent>
               </Select>
 
+              <Select
+                value={selectedReturns}
+                onValueChange={setSelectedReturns}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Dev/Cambios" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="with">Con dev/cambios</SelectItem>
+                  <SelectItem value="returns-only">Solo devoluciones</SelectItem>
+                  <SelectItem value="exchanges-only">Solo cambios</SelectItem>
+                  <SelectItem value="without">Sin dev/cambios</SelectItem>
+                </SelectContent>
+              </Select>
+
               <DateRangePicker
                 value={dateRange}
                 onChange={setDateRange}
@@ -464,9 +494,17 @@ export default function VentasPage() {
                           <TableCell className="text-right">
                             {formatearPrecio(redondearADecena(typedSale.finalTotal ?? typedSale.total))}
                             {typedSale.returns && typedSale.returns.length > 0 && (
-                              <span className="text-xs text-orange-600 ml-1" title="Tiene devoluciones">
-                                *
-                              </span>
+                              (() => {
+                                const hasExchanges = typedSale.returns?.some(r => r.isExchange);
+                                const hasReturnsOnly = typedSale.returns?.some(r => !r.isExchange);
+                                if (hasExchanges && hasReturnsOnly) {
+                                  return <span className="text-xs text-purple-600 ml-1" title="Tiene devoluciones y cambios">◆</span>;
+                                } else if (hasExchanges) {
+                                  return <span className="text-xs text-purple-600 ml-1" title="Tiene cambios">↔</span>;
+                                } else {
+                                  return <span className="text-xs text-orange-600 ml-1" title="Tiene devoluciones">↩</span>;
+                                }
+                              })()
                             )}
                           </TableCell>
                           <TableCell className="text-center">

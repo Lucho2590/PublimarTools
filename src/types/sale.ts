@@ -44,6 +44,17 @@ export interface TReturnItem {
   refundAmount: number;       // Monto a reembolsar
 }
 
+// Items nuevos en un cambio
+export interface TExchangeItem {
+  productId: string;
+  variantId: string;
+  productName: string;
+  variantName?: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
 export interface TReturn {
   id: string;
   date: Date;
@@ -53,6 +64,11 @@ export interface TReturn {
   stockReturned: boolean;      // Si se devolvió al inventario
   createdBy?: string;          // Usuario que registró la devolución
   notes?: string;              // Notas adicionales
+  // Campos para cambios
+  isExchange?: boolean;        // True si es un cambio (no solo devolución)
+  exchangeItems?: TExchangeItem[];  // Items nuevos que se lleva el cliente
+  exchangeTotal?: number;      // Total de los items nuevos
+  priceDifference?: number;    // Diferencia: + cliente debe, - se le devuelve
 }
 
 export interface TSale {
@@ -91,8 +107,9 @@ export interface TSale {
   createdAt: Date;
   updatedAt: Date;
   orderId?: string;
-  // Sistema de devoluciones
-  returns?: TReturn[];         // Historial de devoluciones
-  totalReturned?: number;      // Total devuelto
-  finalTotal?: number;         // Total después de devoluciones
+  // Sistema de devoluciones y cambios
+  returns?: TReturn[];         // Historial de devoluciones y cambios
+  totalReturned?: number;      // Total devuelto (suma de refundAmount)
+  totalExchanged?: number;     // Total de items nuevos en cambios (suma de exchangeTotal)
+  finalTotal?: number;         // Total final = total - totalReturned + totalExchanged
 } 

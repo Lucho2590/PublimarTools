@@ -215,7 +215,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (monthlySalesData) {
       const total = monthlySalesData.reduce(
-        (sum, sale) => sum + (sale.total || 0),
+        (sum, sale) => sum + (sale.finalTotal ?? sale.total ?? 0),
         0
       );
       setMonthlySales(total);
@@ -225,7 +225,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (yearlySalesData) {
       const total = yearlySalesData.reduce(
-        (sum, sale) => sum + (sale.total || 0),
+        (sum, sale) => sum + (sale.finalTotal ?? sale.total ?? 0),
         0
       );
       setYearlySales(total);
