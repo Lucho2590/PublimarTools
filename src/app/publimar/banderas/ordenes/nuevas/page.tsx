@@ -59,7 +59,9 @@ import collections from "@/lib/collections";
 // Hooks personalizados
 import { useOrders } from "@/hooks/useOrders";
 import { useClients } from "@/hooks/useClients";
+import { useQuotes } from "@/hooks/useQuotes";
 import { EClientStatus, EClientSection } from "@/types/client";
+import { EQuoteStatus, TQuote } from "@/types/quote";
 
 export default function NuevasOrdenesPage() {
   const router = useRouter();
@@ -75,6 +77,14 @@ export default function NuevasOrdenesPage() {
     loading: clientsLoading,
     createClient,
   } = useClients({ section: EClientSection.BANDERAS });
+
+  const { quotes, loading: quotesLoading } = useQuotes();
+
+  // Estados para presupuestos del cliente
+  const [clientQuotes, setClientQuotes] = useState<TQuote[]>([]);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [showQuoteSelector, setShowQuoteSelector] = useState(false);
+  console.log("Quotes del cliente:", clientQuotes);
 
   // Productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
@@ -145,7 +155,10 @@ export default function NuevasOrdenesPage() {
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [isAddingManualItem, setIsAddingManualItem] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editingManualItemId, setEditingManualItemId] = useState<string | null>(null);
+  const [editingManualItemId, setEditingManualItemId] = useState<string | null>(
+    null,
+  );
+  console.log("Items actuales:", items);
 
   // Estados para item manual
   const [manualItemName, setManualItemName] = useState("");
@@ -321,6 +334,46 @@ export default function NuevasOrdenesPage() {
     setContactoEmail(contacto?.email || "");
     setContactoTelefono(contacto?.phone || "");
     setContactoPosicion(contacto?.position || "");
+
+    // Filtrar presupuestos del cliente seleccionado (CONFIRMED o SENT)
+    const filteredQuotes = quotes.filter(
+      (q) =>
+        q.client?.id === clientId &&
+        (q.status === EQuoteStatus.CONFIRMED || q.status === EQuoteStatus.SENT),
+    );
+    setClientQuotes(filteredQuotes);
+    setSelectedQuoteId(null);
+    setShowQuoteSelector(false);
+  };
+
+  // Importar items de un presupuesto
+  const handleImportQuoteItems = (quoteId: string) => {
+    const quote = clientQuotes.find((q) => q.id === quoteId);
+    if (!quote?.items) return;
+
+    // Mapear items del presupuesto al formato de la orden
+    // Los items del presupuesto tienen product y variant como objetos anidados
+    const importedItems = quote.items.map((item: any, index: number) => ({
+      id: `imported_${Date.now()}_${index}`,
+      product: item.product || null,
+      variant: item.variant || null,
+      productId: item.product?.id || item.productId,
+      productName: item.product?.name || item.productName,
+      variantId: item.variant?.id || item.variantId,
+      variantName: item.variant?.size || item.variantName,
+      description: item.product?.description || item.description || "",
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      discount: item.discount || 0,
+      subtotal: item.subtotal,
+      notes: item.notes || "",
+      isManual: item.isManual || item.product?.id?.startsWith("manual-") || false,
+    }));
+
+    setItems(importedItems);
+    setSelectedQuoteId(quoteId);
+    setShowQuoteSelector(false);
+    toast.success(`Items importados del presupuesto ${quote.number}`);
   };
 
   // Manejar cuando se escribe manualmente un cliente (sin seleccionar del dropdown)
@@ -595,7 +648,9 @@ export default function NuevasOrdenesPage() {
     // Si es un item manual, abrir el modal de item manual
     if (item.isManual) {
       setManualItemName(item.productName || "");
-      setManualItemMeasure(item.variantName === "Sin medida" ? "" : item.variantName || "");
+      setManualItemMeasure(
+        item.variantName === "Sin medida" ? "" : item.variantName || "",
+      );
       setManualItemDescription(item.description || "");
       setManualItemQuantity(item.quantity || 1);
       setManualItemPrice(item.unitPrice || 0);
@@ -666,7 +721,9 @@ export default function NuevasOrdenesPage() {
     if (editingManualItemId) {
       // Modo edición: actualizar el item existente
       setItems((prev) =>
-        prev.map((item) => (item.id === editingManualItemId ? newManualItem : item))
+        prev.map((item) =>
+          item.id === editingManualItemId ? newManualItem : item,
+        ),
       );
       toast.success("Item manual actualizado exitosamente");
     } else {
@@ -1052,6 +1109,49 @@ export default function NuevasOrdenesPage() {
               </div>
             </div>
 
+            {/* Selector de presupuestos del cliente */}
+            {cliente && clientQuotes.length > 0 && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-blue-700">
+                    Este cliente tiene {clientQuotes.length} presupuesto(s)
+                    disponible(s)
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowQuoteSelector(!showQuoteSelector)}
+                  >
+                    <FileText className="w-4 h-4 mr-1" />
+                    Importar presupuesto
+                  </Button>
+                </div>
+
+                {showQuoteSelector && (
+                  <div className="mt-2 space-y-2">
+                    {clientQuotes.map((quote) => (
+                      <div
+                        key={quote.id}
+                        className="flex items-center justify-between p-2 bg-white rounded border cursor-pointer hover:bg-gray-50"
+                        onClick={() => handleImportQuoteItems(quote.id)}
+                      >
+                        <div>
+                          <span className="font-medium">{quote.number}</span>
+                          <span className="text-sm text-gray-500 ml-2">
+                            {formatearPrecio(quote.total)}
+                          </span>
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {quote.items?.length || 0} items
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>Dirección</Label>
@@ -1241,7 +1341,9 @@ export default function NuevasOrdenesPage() {
                 <DialogContent className="sm:max-w-[500px]">
                   <DialogHeader>
                     <DialogTitle>
-                      {editingManualItemId ? "Editar item manual" : "Agregar item manual"}
+                      {editingManualItemId
+                        ? "Editar item manual"
+                        : "Agregar item manual"}
                     </DialogTitle>
                   </DialogHeader>
                   <div className="py-4 space-y-4">
