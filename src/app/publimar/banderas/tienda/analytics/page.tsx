@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useFirestore } from "reactfire";
 import {
   collection,
@@ -16,6 +16,7 @@ import {
   TSearchQuery,
   TConversionFunnel,
 } from "@/types/analytics";
+import { TAbandonedCart } from "@/types/abandonedCart";
 import {
   Card,
   CardContent,
@@ -31,51 +32,119 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import {
   BarChart3,
   TrendingUp,
+  TrendingDown,
   ShoppingCart,
   Eye,
   Search,
   AlertCircle,
   DollarSign,
   Users,
-  ArrowUpRight,
-  ArrowDownRight,
   Package,
+  Smartphone,
+  Monitor,
+  Tablet,
+  RefreshCw,
+  ShoppingBag,
+  XCircle,
+  Clock,
+  Target,
 } from "lucide-react";
+
+// Formatear moneda
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+// Formatear porcentaje
+const formatPercent = (value: number) => {
+  return `${(value * 100).toFixed(1)}%`;
+};
+
+// Componente de barra de progreso
+const ProgressBar = ({ value, max, color = "bg-blue-600" }: { value: number; max: number; color?: string }) => {
+  const percent = max > 0 ? (value / max) * 100 : 0;
+  return (
+    <div className="w-full bg-gray-200 rounded-full h-2.5">
+      <div className={`h-2.5 rounded-full ${color}`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
+    </div>
+  );
+};
+
+// Componente KPI Card
+const KPICard = ({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  trend,
+  trendValue,
+  color = "text-primary"
+}: {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  icon: any;
+  trend?: "up" | "down" | "neutral";
+  trendValue?: string;
+  color?: string;
+}) => (
+  <Card>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+      <Icon className={`h-4 w-4 ${color}`} />
+    </CardHeader>
+    <CardContent>
+      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+      {subtitle && (
+        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+          {trend === "up" && <TrendingUp className="h-3 w-3 text-green-600" />}
+          {trend === "down" && <TrendingDown className="h-3 w-3 text-red-600" />}
+          {trendValue && <span className={trend === "up" ? "text-green-600" : trend === "down" ? "text-red-600" : ""}>{trendValue}</span>}
+          {subtitle}
+        </p>
+      )}
+    </CardContent>
+  </Card>
+);
 
 export default function AnalyticsPage() {
   const firestore = useFirestore();
 
   const [loading, setLoading] = useState(true);
-  const [topProducts, setTopProducts] = useState<TProductAnalytics[]>([]);
-  const [searchesWithNoResults, setSearchesWithNoResults] = useState<TSearchQuery[]>([]);
-  const [funnelStats, setFunnelStats] = useState({
-    totalSessions: 0,
-    viewedOnly: 0,
-    addedToCart: 0,
-    checkedOut: 0,
-    purchased: 0,
-    viewToCartRate: 0,
-    cartToCheckoutRate: 0,
-    checkoutToPurchaseRate: 0,
-    overallConversionRate: 0,
-  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [dateRange, setDateRange] = useState("30"); // días
 
-  useEffect(() => {
-    loadAnalytics();
-  }, []);
+  // Data states
+  const [topProducts, setTopProducts] = useState<TProductAnalytics[]>([]);
+  const [allSearches, setAllSearches] = useState<TSearchQuery[]>([]);
+  const [funnelData, setFunnelData] = useState<TConversionFunnel[]>([]);
+  const [abandonedCarts, setAbandonedCarts] = useState<TAbandonedCart[]>([]);
+
+  // Calcular fecha límite basada en el rango seleccionado
+  const dateLimit = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - parseInt(dateRange));
+    return Timestamp.fromDate(date);
+  }, [dateRange]);
 
   const loadAnalytics = async () => {
     try {
-      setLoading(true);
+      setRefreshing(true);
 
-      // 1. Cargar productos más vistos (top 10)
+      // 1. Cargar productos (top 20 por vistas)
       const productsQuery = query(
         collection(firestore, "productAnalytics"),
         orderBy("viewsCount", "desc"),
-        limit(10)
+        limit(20)
       );
       const productsSnapshot = await getDocs(productsQuery);
       const productsData = productsSnapshot.docs.map((doc) => ({
@@ -84,75 +153,168 @@ export default function AnalyticsPage() {
       })) as TProductAnalytics[];
       setTopProducts(productsData);
 
-      // 2. Cargar búsquedas sin resultados (últimas 50)
+      // 2. Cargar todas las búsquedas (últimas 200)
       const searchesQuery = query(
         collection(firestore, "searchQueries"),
-        where("resultsCount", "==", 0),
         orderBy("timestamp", "desc"),
-        limit(50)
+        limit(200)
       );
       const searchesSnapshot = await getDocs(searchesQuery);
-      const searchesData = searchesSnapshot.docs.map((doc) =>
-        doc.data()
-      ) as TSearchQuery[];
-      setSearchesWithNoResults(searchesData);
+      const searchesData = searchesSnapshot.docs.map((doc) => doc.data()) as TSearchQuery[];
+      setAllSearches(searchesData);
 
-      // 3. Calcular estadísticas del embudo de conversión
+      // 3. Cargar embudos de conversión
       const funnelQuery = query(collection(firestore, "conversionFunnels"));
       const funnelSnapshot = await getDocs(funnelQuery);
-      const funnelData = funnelSnapshot.docs.map((doc) =>
-        doc.data()
-      ) as TConversionFunnel[];
+      const funnelDataResult = funnelSnapshot.docs.map((doc) => doc.data()) as TConversionFunnel[];
+      setFunnelData(funnelDataResult);
 
-      const totalSessions = funnelData.length;
-      const viewedOnly = funnelData.filter((f) => f.stage === "viewed").length;
-      const addedToCart = funnelData.filter(
-        (f) => f.stage === "added_to_cart" || f.stage === "checkout" || f.stage === "purchased"
-      ).length;
-      const checkedOut = funnelData.filter(
-        (f) => f.stage === "checkout" || f.stage === "purchased"
-      ).length;
-      const purchased = funnelData.filter((f) => f.stage === "purchased").length;
+      // 4. Cargar carritos abandonados
+      const cartsQuery = query(
+        collection(firestore, "abandonedCarts"),
+        orderBy("lastActivityAt", "desc"),
+        limit(100)
+      );
+      const cartsSnapshot = await getDocs(cartsQuery);
+      const cartsData = cartsSnapshot.docs.map((doc) => ({
+        ...doc.data(),
+        id: doc.id,
+      })) as TAbandonedCart[];
+      setAbandonedCarts(cartsData);
 
-      const viewToCartRate = totalSessions > 0 ? (addedToCart / totalSessions) * 100 : 0;
-      const cartToCheckoutRate = addedToCart > 0 ? (checkedOut / addedToCart) * 100 : 0;
-      const checkoutToPurchaseRate = checkedOut > 0 ? (purchased / checkedOut) * 100 : 0;
-      const overallConversionRate = totalSessions > 0 ? (purchased / totalSessions) * 100 : 0;
-
-      setFunnelStats({
-        totalSessions,
-        viewedOnly,
-        addedToCart,
-        checkedOut,
-        purchased,
-        viewToCartRate,
-        cartToCheckoutRate,
-        checkoutToPurchaseRate,
-        overallConversionRate,
-      });
     } catch (error) {
       console.error("Error loading analytics:", error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  // Agrupar búsquedas sin resultados por término
-  const groupedSearches = searchesWithNoResults.reduce((acc, search) => {
-    const term = search.searchTerm.toLowerCase();
-    if (!acc[term]) {
-      acc[term] = { term, count: 0, lastSearched: search.timestamp };
-    }
-    acc[term].count++;
-    if (search.timestamp > acc[term].lastSearched) {
-      acc[term].lastSearched = search.timestamp;
-    }
-    return acc;
-  }, {} as Record<string, { term: string; count: number; lastSearched: Timestamp }>);
+  useEffect(() => {
+    loadAnalytics();
+  }, [dateRange]);
 
-  const topSearchesNoResults = Object.values(groupedSearches)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
+  // ==========================================
+  // CÁLCULOS DE MÉTRICAS
+  // ==========================================
+
+  // KPIs principales
+  const kpis = useMemo(() => {
+    const totalRevenue = topProducts.reduce((sum, p) => sum + (p.totalRevenue || 0), 0);
+    const totalViews = topProducts.reduce((sum, p) => sum + (p.viewsCount || 0), 0);
+    const totalPurchases = topProducts.reduce((sum, p) => sum + (p.purchasedCount || 0), 0);
+    const totalAddToCart = topProducts.reduce((sum, p) => sum + (p.addToCartCount || 0), 0);
+
+    const totalSessions = funnelData.length;
+    const purchasedSessions = funnelData.filter(f => f.stage === "purchased").length;
+    const conversionRate = totalSessions > 0 ? purchasedSessions / totalSessions : 0;
+
+    const activeAbandonedCarts = abandonedCarts.filter(c => !c.converted && c.abandoned);
+    const abandonedValue = activeAbandonedCarts.reduce((sum, c) => sum + (c.total || 0), 0);
+    const avgCartValue = totalPurchases > 0 ? totalRevenue / totalPurchases : 0;
+
+    return {
+      totalRevenue,
+      totalViews,
+      totalPurchases,
+      totalAddToCart,
+      totalSessions,
+      conversionRate,
+      abandonedCartsCount: activeAbandonedCarts.length,
+      abandonedValue,
+      avgCartValue,
+    };
+  }, [topProducts, funnelData, abandonedCarts]);
+
+  // Estadísticas del embudo
+  const funnelStats = useMemo(() => {
+    const total = funnelData.length;
+    const viewed = funnelData.filter(f => f.stage === "viewed").length;
+    const addedToCart = funnelData.filter(f =>
+      f.stage === "added_to_cart" || f.stage === "checkout" || f.stage === "purchased"
+    ).length;
+    const checkedOut = funnelData.filter(f =>
+      f.stage === "checkout" || f.stage === "purchased"
+    ).length;
+    const purchased = funnelData.filter(f => f.stage === "purchased").length;
+
+    return {
+      total,
+      viewed,
+      addedToCart,
+      checkedOut,
+      purchased,
+      viewToCartRate: total > 0 ? addedToCart / total : 0,
+      cartToCheckoutRate: addedToCart > 0 ? checkedOut / addedToCart : 0,
+      checkoutToPurchaseRate: checkedOut > 0 ? purchased / checkedOut : 0,
+      overallRate: total > 0 ? purchased / total : 0,
+    };
+  }, [funnelData]);
+
+  // Búsquedas agrupadas
+  const searchStats = useMemo(() => {
+    const withResults = allSearches.filter(s => s.resultsCount > 0);
+    const withoutResults = allSearches.filter(s => s.resultsCount === 0);
+
+    // Agrupar por término
+    const groupByTerm = (searches: TSearchQuery[]) => {
+      const grouped: Record<string, { term: string; count: number; lastSearched: Timestamp }> = {};
+      searches.forEach(s => {
+        const term = s.searchTerm.toLowerCase();
+        if (!grouped[term]) {
+          grouped[term] = { term, count: 0, lastSearched: s.timestamp };
+        }
+        grouped[term].count++;
+        if (s.timestamp > grouped[term].lastSearched) {
+          grouped[term].lastSearched = s.timestamp;
+        }
+      });
+      return Object.values(grouped).sort((a, b) => b.count - a.count);
+    };
+
+    return {
+      total: allSearches.length,
+      withResults: withResults.length,
+      withoutResults: withoutResults.length,
+      topSuccessful: groupByTerm(withResults).slice(0, 10),
+      topFailed: groupByTerm(withoutResults).slice(0, 10),
+    };
+  }, [allSearches]);
+
+  // Dispositivos (de carritos abandonados que tienen metadata)
+  const deviceStats = useMemo(() => {
+    const devices = { mobile: 0, desktop: 0, tablet: 0 };
+    abandonedCarts.forEach(cart => {
+      const device = cart.metadata?.deviceType || "desktop";
+      if (device in devices) {
+        devices[device as keyof typeof devices]++;
+      }
+    });
+    const total = devices.mobile + devices.desktop + devices.tablet;
+    return {
+      ...devices,
+      total,
+      mobilePercent: total > 0 ? devices.mobile / total : 0,
+      desktopPercent: total > 0 ? devices.desktop / total : 0,
+      tabletPercent: total > 0 ? devices.tablet / total : 0,
+    };
+  }, [abandonedCarts]);
+
+  // Top productos por revenue
+  const topByRevenue = useMemo(() => {
+    return [...topProducts]
+      .filter(p => p.totalRevenue > 0)
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, 10);
+  }, [topProducts]);
+
+  // Top productos por conversión
+  const topByConversion = useMemo(() => {
+    return [...topProducts]
+      .filter(p => p.viewsCount >= 5 && p.conversionRate > 0)
+      .sort((a, b) => b.conversionRate - a.conversionRate)
+      .slice(0, 10);
+  }, [topProducts]);
 
   if (loading) {
     return (
@@ -168,303 +330,402 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Analytics Avanzado</h1>
-        <p className="text-muted-foreground">
-          Análisis detallado del comportamiento de usuarios en la tienda online
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Analytics Dashboard</h1>
+          <p className="text-muted-foreground">
+            Métricas y análisis de la tienda BanderasMDP
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {[
+            { value: "7", label: "7 días" },
+            { value: "30", label: "30 días" },
+            { value: "90", label: "90 días" },
+            { value: "365", label: "1 año" },
+          ].map((option) => (
+            <Button
+              key={option.value}
+              variant={dateRange === option.value ? "default" : "outline"}
+              size="sm"
+              onClick={() => setDateRange(option.value)}
+            >
+              {option.label}
+            </Button>
+          ))}
+          <Button variant="outline" size="sm" onClick={loadAnalytics} disabled={refreshing}>
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+      </div>
+
+      {/* KPIs Principales */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <KPICard
+          title="Revenue Total"
+          value={formatCurrency(kpis.totalRevenue)}
+          icon={DollarSign}
+          color="text-green-600"
+          subtitle="de productos vendidos"
+        />
+        <KPICard
+          title="Sesiones"
+          value={kpis.totalSessions}
+          icon={Users}
+          subtitle="visitantes únicos"
+        />
+        <KPICard
+          title="Conversión"
+          value={formatPercent(kpis.conversionRate)}
+          icon={Target}
+          color={kpis.conversionRate >= 0.02 ? "text-green-600" : "text-orange-600"}
+          subtitle="de visita a compra"
+        />
+        <KPICard
+          title="Carritos Abandonados"
+          value={kpis.abandonedCartsCount}
+          icon={ShoppingCart}
+          color="text-red-600"
+          subtitle={`${formatCurrency(kpis.abandonedValue)} perdidos`}
+        />
+        <KPICard
+          title="Ticket Promedio"
+          value={formatCurrency(kpis.avgCartValue)}
+          icon={ShoppingBag}
+          subtitle="valor por compra"
+        />
       </div>
 
       {/* Embudo de Conversión */}
-      <div>
-        <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-          <TrendingUp className="h-6 w-6" />
-          Embudo de Conversión
-        </h2>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Embudo de Conversión
+          </CardTitle>
+          <CardDescription>
+            Recorrido de los usuarios desde la visita hasta la compra
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-6">
+            {/* Visualización del embudo */}
+            <div className="grid grid-cols-4 gap-4 text-center">
+              {[
+                { label: "Visitaron", value: funnelStats.total, color: "bg-blue-600", icon: Eye },
+                { label: "Agregaron al Carrito", value: funnelStats.addedToCart, color: "bg-green-600", icon: ShoppingCart },
+                { label: "Checkout", value: funnelStats.checkedOut, color: "bg-orange-600", icon: Package },
+                { label: "Compraron", value: funnelStats.purchased, color: "bg-purple-600", icon: DollarSign },
+              ].map((step, idx) => (
+                <div key={step.label} className="relative">
+                  <div className={`${step.color} text-white rounded-lg p-4`}>
+                    <step.icon className="h-6 w-6 mx-auto mb-2" />
+                    <div className="text-2xl font-bold">{step.value}</div>
+                    <div className="text-xs opacity-90">{step.label}</div>
+                  </div>
+                  {idx < 3 && (
+                    <div className="absolute top-1/2 -right-2 transform -translate-y-1/2 text-gray-400 text-xl">
+                      →
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total Sesiones
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{funnelStats.totalSessions}</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                <Users className="h-3 w-3 inline mr-1" />
-                Visitantes únicos
-              </p>
-            </CardContent>
-          </Card>
+            {/* Tasas de conversión entre etapas */}
+            <div className="grid grid-cols-3 gap-4 pt-4 border-t">
+              <div className="text-center">
+                <div className="text-lg font-semibold text-green-600">
+                  {formatPercent(funnelStats.viewToCartRate)}
+                </div>
+                <div className="text-xs text-muted-foreground">Vista → Carrito</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-semibold text-orange-600">
+                  {formatPercent(funnelStats.cartToCheckoutRate)}
+                </div>
+                <div className="text-xs text-muted-foreground">Carrito → Checkout</div>
+              </div>
+              <div className="text-center">
+                <div className="text-lg font-semibold text-purple-600">
+                  {formatPercent(funnelStats.checkoutToPurchaseRate)}
+                </div>
+                <div className="text-xs text-muted-foreground">Checkout → Compra</div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Agregaron al Carrito
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{funnelStats.addedToCart}</div>
-              <p className="text-xs text-green-600 mt-1">
-                <ArrowUpRight className="h-3 w-3 inline mr-1" />
-                {funnelStats.viewToCartRate.toFixed(1)}% conversión
-              </p>
-            </CardContent>
-          </Card>
+      {/* Grid de 2 columnas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Iniciaron Checkout
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{funnelStats.checkedOut}</div>
-              <p className="text-xs text-green-600 mt-1">
-                <ArrowUpRight className="h-3 w-3 inline mr-1" />
-                {funnelStats.cartToCheckoutRate.toFixed(1)}% del carrito
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Compraron
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-green-600">{funnelStats.purchased}</div>
-              <p className="text-xs text-green-600 mt-1">
-                <ArrowUpRight className="h-3 w-3 inline mr-1" />
-                {funnelStats.overallConversionRate.toFixed(1)}% conversión total
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Visualización del embudo */}
+        {/* Top Productos por Vistas */}
         <Card>
           <CardHeader>
-            <CardTitle>Visualización del Embudo</CardTitle>
-            <CardDescription>Etapas del proceso de compra</CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Top Productos por Vistas
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Producto</TableHead>
+                  <TableHead className="text-right">Vistas</TableHead>
+                  <TableHead className="text-right">Carrito</TableHead>
+                  <TableHead className="text-right">Conv.</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {topProducts.slice(0, 10).map((product, idx) => (
+                  <TableRow key={product.productId}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-sm">{idx + 1}.</span>
+                        <span className="font-medium truncate max-w-[150px]">{product.productName}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">{product.viewsCount}</TableCell>
+                    <TableCell className="text-right">{product.addToCartCount}</TableCell>
+                    <TableCell className="text-right">
+                      <span className={product.conversionRate >= 0.1 ? "text-green-600 font-semibold" : ""}>
+                        {formatPercent(product.conversionRate)}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Top Productos por Revenue */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-green-600" />
+              Top Productos por Revenue
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {topByRevenue.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Producto</TableHead>
+                    <TableHead className="text-right">Vendidos</TableHead>
+                    <TableHead className="text-right">Revenue</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {topByRevenue.map((product, idx) => (
+                    <TableRow key={product.productId}>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground text-sm">{idx + 1}.</span>
+                          <span className="font-medium truncate max-w-[150px]">{product.productName}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">{product.purchasedCount}</TableCell>
+                      <TableCell className="text-right font-semibold text-green-600">
+                        {formatCurrency(product.totalRevenue)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <DollarSign className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                <p>Aún no hay ventas registradas</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Búsquedas Exitosas */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Top Búsquedas
+            </CardTitle>
+            <CardDescription>
+              {searchStats.total} búsquedas totales ({searchStats.withResults} con resultados)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {searchStats.topSuccessful.length > 0 ? (
+              <div className="space-y-3">
+                {searchStats.topSuccessful.slice(0, 8).map((search, idx) => (
+                  <div key={search.term} className="flex items-center gap-3">
+                    <span className="text-muted-foreground text-sm w-5">{idx + 1}.</span>
+                    <span className="font-mono bg-gray-100 px-2 py-1 rounded text-sm flex-1 truncate">
+                      {search.term}
+                    </span>
+                    <span className="text-sm font-medium">{search.count}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Search className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                <p>Sin búsquedas registradas</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Búsquedas Sin Resultados */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-orange-600" />
+              Búsquedas Sin Resultados
+            </CardTitle>
+            <CardDescription>
+              Oportunidades de mejora - productos que los usuarios buscan pero no encuentran
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {searchStats.topFailed.length > 0 ? (
+              <div className="space-y-3">
+                {searchStats.topFailed.slice(0, 8).map((search, idx) => (
+                  <div key={search.term} className="flex items-center gap-3">
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span className="font-mono bg-red-50 px-2 py-1 rounded text-sm flex-1 truncate text-red-700">
+                      {search.term}
+                    </span>
+                    <span className="text-sm font-medium text-red-600">{search.count}x</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <AlertCircle className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                <p>¡Todas las búsquedas encontraron resultados!</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Fila inferior */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Dispositivos */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5" />
+              Dispositivos
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {/* Vistas */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-blue-600" />
-                    <span className="font-medium">Visualizaron Productos</span>
+              <div className="flex items-center gap-3">
+                <Smartphone className="h-5 w-5 text-blue-600" />
+                <div className="flex-1">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Mobile</span>
+                    <span className="font-medium">{deviceStats.mobile} ({formatPercent(deviceStats.mobilePercent)})</span>
                   </div>
-                  <span className="text-sm text-muted-foreground">
-                    {funnelStats.totalSessions} sesiones (100%)
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div className="bg-blue-600 h-3 rounded-full" style={{ width: "100%" }}></div>
+                  <ProgressBar value={deviceStats.mobile} max={deviceStats.total} color="bg-blue-600" />
                 </div>
               </div>
-
-              {/* Carrito */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <ShoppingCart className="h-4 w-4 text-green-600" />
-                    <span className="font-medium">Agregaron al Carrito</span>
+              <div className="flex items-center gap-3">
+                <Monitor className="h-5 w-5 text-green-600" />
+                <div className="flex-1">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Desktop</span>
+                    <span className="font-medium">{deviceStats.desktop} ({formatPercent(deviceStats.desktopPercent)})</span>
                   </div>
-                  <span className="text-sm text-muted-foreground">
-                    {funnelStats.addedToCart} sesiones ({funnelStats.viewToCartRate.toFixed(1)}%)
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-green-600 h-3 rounded-full"
-                    style={{ width: `${funnelStats.viewToCartRate}%` }}
-                  ></div>
+                  <ProgressBar value={deviceStats.desktop} max={deviceStats.total} color="bg-green-600" />
                 </div>
               </div>
-
-              {/* Checkout */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-orange-600" />
-                    <span className="font-medium">Iniciaron Checkout</span>
+              <div className="flex items-center gap-3">
+                <Tablet className="h-5 w-5 text-purple-600" />
+                <div className="flex-1">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Tablet</span>
+                    <span className="font-medium">{deviceStats.tablet} ({formatPercent(deviceStats.tabletPercent)})</span>
                   </div>
-                  <span className="text-sm text-muted-foreground">
-                    {funnelStats.checkedOut} sesiones (
-                    {((funnelStats.checkedOut / funnelStats.totalSessions) * 100).toFixed(1)}%)
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-orange-600 h-3 rounded-full"
-                    style={{
-                      width: `${(funnelStats.checkedOut / funnelStats.totalSessions) * 100}%`,
-                    }}
-                  ></div>
-                </div>
-              </div>
-
-              {/* Compra */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-purple-600" />
-                    <span className="font-medium">Completaron Compra</span>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    {funnelStats.purchased} sesiones ({funnelStats.overallConversionRate.toFixed(1)}
-                    %)
-                  </span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-3">
-                  <div
-                    className="bg-purple-600 h-3 rounded-full"
-                    style={{ width: `${funnelStats.overallConversionRate}%` }}
-                  ></div>
+                  <ProgressBar value={deviceStats.tablet} max={deviceStats.total} color="bg-purple-600" />
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Productos Más Vistos */}
-      <div>
-        <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-          <BarChart3 className="h-6 w-6" />
-          Productos Más Vistos
-        </h2>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Top 10 Productos por Vistas</CardTitle>
-            <CardDescription>
-              Productos con mayor cantidad de visualizaciones
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Producto</TableHead>
-                  <TableHead className="text-right">Vistas</TableHead>
-                  <TableHead className="text-right">En Carrito</TableHead>
-                  <TableHead className="text-right">Comprados</TableHead>
-                  <TableHead className="text-right">Tasa Conversión</TableHead>
-                  <TableHead className="text-right">Ingresos</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topProducts.length > 0 ? (
-                  topProducts.map((product, index) => (
-                    <TableRow key={product.productId}>
-                      <TableCell className="font-medium">{index + 1}</TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{product.productName}</div>
-                          {product.productSku && (
-                            <div className="text-xs text-muted-foreground">
-                              SKU: {product.productSku}
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-right">{product.viewsCount}</TableCell>
-                      <TableCell className="text-right">{product.addToCartCount}</TableCell>
-                      <TableCell className="text-right font-semibold text-green-600">
-                        {product.purchasedCount}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <span
-                          className={
-                            product.conversionRate >= 0.1
-                              ? "text-green-600 font-semibold"
-                              : product.conversionRate >= 0.05
-                              ? "text-orange-600"
-                              : "text-red-600"
-                          }
-                        >
-                          {(product.conversionRate * 100).toFixed(1)}%
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        ${product.totalRevenue.toLocaleString("es-AR")}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground">
-                      No hay datos de productos aún
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Búsquedas Sin Resultados */}
-      <div>
-        <h2 className="text-2xl font-semibold mb-4 flex items-center gap-2">
-          <Search className="h-6 w-6" />
-          Búsquedas Sin Resultados
-        </h2>
-
+        {/* Carritos Abandonados Resumen */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-orange-600" />
-              Top 10 Búsquedas Sin Resultados
+              <ShoppingCart className="h-5 w-5 text-red-600" />
+              Carritos Abandonados
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">{kpis.abandonedCartsCount}</div>
+                  <div className="text-xs text-muted-foreground">Abandonados</div>
+                </div>
+                <div className="text-center p-3 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">{formatCurrency(kpis.abandonedValue)}</div>
+                  <div className="text-xs text-muted-foreground">Valor perdido</div>
+                </div>
+              </div>
+              <div className="pt-2 border-t">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Promedio por carrito</span>
+                  <span className="font-medium">
+                    {kpis.abandonedCartsCount > 0
+                      ? formatCurrency(kpis.abandonedValue / kpis.abandonedCartsCount)
+                      : formatCurrency(0)
+                    }
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Mejores Conversores */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-green-600" />
+              Mejores Conversores
             </CardTitle>
             <CardDescription>
-              Términos que los usuarios buscan pero no encuentran productos
+              Productos con mejor tasa de conversión (mín. 5 vistas)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Término de Búsqueda</TableHead>
-                  <TableHead className="text-right">Cantidad de Búsquedas</TableHead>
-                  <TableHead className="text-right">Última Búsqueda</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topSearchesNoResults.length > 0 ? (
-                  topSearchesNoResults.map((search, index) => (
-                    <TableRow key={search.term}>
-                      <TableCell className="font-medium">{index + 1}</TableCell>
-                      <TableCell>
-                        <span className="font-mono bg-gray-100 px-2 py-1 rounded text-sm">
-                          {search.term}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">{search.count}</TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">
-                        {search.lastSearched.toDate().toLocaleDateString("es-AR")}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      No hay búsquedas sin resultados registradas
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            {topByConversion.length > 0 ? (
+              <div className="space-y-3">
+                {topByConversion.slice(0, 5).map((product, idx) => (
+                  <div key={product.productId} className="flex items-center gap-3">
+                    <span className="text-muted-foreground text-sm w-5">{idx + 1}.</span>
+                    <span className="flex-1 truncate text-sm">{product.productName}</span>
+                    <span className="text-green-600 font-semibold text-sm">
+                      {formatPercent(product.conversionRate)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">
+                <Target className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                <p>Se necesitan más datos</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

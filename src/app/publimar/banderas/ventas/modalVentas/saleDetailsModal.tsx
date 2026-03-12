@@ -17,7 +17,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { TSale, TSaleItem, EPaymentMethod, TFactura, TReturn, TReturnItem, TExchangeItem } from "@/types/sale";
+import {
+  TSale,
+  TSaleItem,
+  EPaymentMethod,
+  TFactura,
+  TReturn,
+  TReturnItem,
+  TExchangeItem,
+} from "@/types/sale";
 import collections from "@/lib/collections";
 import { useState, useEffect } from "react";
 import {
@@ -88,7 +96,7 @@ export function SaleDetailsModal({
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [items, setItems] = useState<TSaleItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<EPaymentMethod | null>(
-    null
+    null,
   );
   const [isInvoiced, setIsInvoiced] = useState<boolean | null>(null);
   const [invoiceNumber, setInvoiceNumber] = useState<string>("");
@@ -135,11 +143,13 @@ export function SaleDetailsModal({
   const [clientEmail, setClientEmail] = useState<string>("");
   const [clientPhone, setClientPhone] = useState<string>("");
   const [clientCuit, setClientCuit] = useState<string>("");
-  const [clientSection, setClientSection] = useState<EClientSection>(EClientSection.BANDERAS);
+  const [clientSection, setClientSection] = useState<EClientSection>(
+    EClientSection.BANDERAS,
+  );
 
   // Estados para devoluciones
   const [showReturnDialog, setShowReturnDialog] = useState(false);
-  const [returnItems, setReturnItems] = useState<{[key: number]: number}>({});  // {itemIndex: quantity}
+  const [returnItems, setReturnItems] = useState<{ [key: number]: number }>({}); // {itemIndex: quantity}
   const [returnReason, setReturnReason] = useState("");
   const [returnToStock, setReturnToStock] = useState(true);
 
@@ -167,7 +177,7 @@ export function SaleDetailsModal({
   const {
     clients,
     loading: clientsLoading,
-    createClient
+    createClient,
   } = useClients({ section: EClientSection.BANDERAS });
 
   // Estado para fecha editable
@@ -178,7 +188,7 @@ export function SaleDetailsModal({
     saleRef ?? doc(firestore, collections.SALES, "dummy"),
     {
       idField: "id",
-    }
+    },
   );
 
   const typedSale = sale as unknown as TSale;
@@ -200,7 +210,7 @@ export function SaleDetailsModal({
           typedSale.items,
           typedSale.applyIVA || false,
           typedSale.discountPercentage || 0,
-          typedSale.manualDiscount || 0
+          typedSale.manualDiscount || 0,
         );
       }
       if (typedSale?.paymentMethod) {
@@ -265,7 +275,9 @@ export function SaleDetailsModal({
             tipo: "Factura B", // Valor por defecto
             numero: typedSale.invoiceNumber,
             fecha: typedSale.createdAt
-              ? new Date((typedSale.createdAt as any).seconds * 1000).toISOString().split("T")[0]
+              ? new Date((typedSale.createdAt as any).seconds * 1000)
+                  .toISOString()
+                  .split("T")[0]
               : "",
           };
           setFacturas([facturaLegacy]);
@@ -295,7 +307,7 @@ export function SaleDetailsModal({
     try {
       const categoriesCollection = collection(
         firestore,
-        collections.products.CATEGORIES
+        collections.products.CATEGORIES,
       );
       const categoriesSnapshot = await getDocs(categoriesCollection);
       const categoriesMap: Record<string, TProductCategory> = {};
@@ -317,7 +329,7 @@ export function SaleDetailsModal({
     itemsToCalculate: TSaleItem[],
     shouldApplyIVA: boolean,
     discountPerc: number,
-    manualDisc: number
+    manualDisc: number,
   ) => {
     const initialSubtotal = calculateSubtotal(itemsToCalculate);
     const taxRate = 21; // IVA del 21%
@@ -330,19 +342,19 @@ export function SaleDetailsModal({
       // Si aplicamos IVA, los precios son finales (con IVA incluido)
       // Calculamos el IVA que está incluido en el subtotal ORIGINAL
       calculatedTaxAmount = redondearTotal(
-        initialSubtotal * (taxRate / (100 + taxRate))
+        initialSubtotal * (taxRate / (100 + taxRate)),
       );
       calculatedSubtotalSinIVA = redondearTotal(
-        initialSubtotal - calculatedTaxAmount
+        initialSubtotal - calculatedTaxAmount,
       );
     }
 
     // Los descuentos se calculan sobre el subtotal completo (con IVA incluido)
     const calculatedDiscountAmount = redondearTotal(
-      initialSubtotal * (discountPerc / 100)
+      initialSubtotal * (discountPerc / 100),
     );
     const totalAfterDiscounts = redondearTotal(
-      initialSubtotal - calculatedDiscountAmount - manualDisc
+      initialSubtotal - calculatedDiscountAmount - manualDisc,
     );
 
     setSubtotal(initialSubtotal);
@@ -365,7 +377,7 @@ export function SaleDetailsModal({
       quantity,
       unitPrice,
       total: quantity * unitPrice,
-    
+
       // variantName: undefined
     };
 
@@ -460,8 +472,8 @@ export function SaleDetailsModal({
                 fecha: newFacturaFecha,
                 ...(newFacturaMonto && { monto: parseFloat(newFacturaMonto) }),
               }
-            : f
-        )
+            : f,
+        ),
       );
       toast.success("Factura actualizada correctamente");
     } else {
@@ -533,7 +545,7 @@ export function SaleDetailsModal({
     setShowClienteDropdown(true);
     setHighlightedClientIndex(-1);
     const clientExists = clients?.some(
-      (c: any) => c.name.toLowerCase().trim() === value.toLowerCase().trim()
+      (c: any) => c.name.toLowerCase().trim() === value.toLowerCase().trim(),
     );
     if (!clientExists) {
       setCliente("");
@@ -541,14 +553,15 @@ export function SaleDetailsModal({
   };
 
   const handleClientKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const filteredClients = clients?.filter((c: any) =>
-      c.name.toLowerCase().includes(clienteInput.toLowerCase())
-    ) || [];
+    const filteredClients =
+      clients?.filter((c: any) =>
+        c.name.toLowerCase().includes(clienteInput.toLowerCase()),
+      ) || [];
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightedClientIndex((prev) =>
-        prev < filteredClients.length - 1 ? prev + 1 : prev
+        prev < filteredClients.length - 1 ? prev + 1 : prev,
       );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
@@ -575,11 +588,16 @@ export function SaleDetailsModal({
         type: "individual",
         status: "active",
         section: EClientSection.BANDERAS,
-        contacts: personaContacto || email || telefono ? [{
-          name: personaContacto || clienteInput,
-          email: email || "",
-          phone: telefono || "",
-        }] : [],
+        contacts:
+          personaContacto || email || telefono
+            ? [
+                {
+                  name: personaContacto || clienteInput,
+                  email: email || "",
+                  phone: telefono || "",
+                },
+              ]
+            : [],
       };
 
       const newClientId = await createClient(clientData);
@@ -587,7 +605,7 @@ export function SaleDetailsModal({
       setShowClienteDropdown(false);
       toast.success(`Cliente "${clienteInput}" creado exitosamente`);
     } catch (error) {
-      console.error('Error al crear cliente:', error);
+      console.error("Error al crear cliente:", error);
       toast.error("Error al crear el cliente");
     }
   };
@@ -600,7 +618,7 @@ export function SaleDetailsModal({
     setClientEmail(email || "");
     setClientPhone(telefono || "");
     setClientCuit(cuit || "");
-    
+
     // Cerrar el dialog
     setShowClientDialog(false);
     toast.success("Cliente actualizado correctamente");
@@ -669,7 +687,12 @@ export function SaleDetailsModal({
 
   // Funciones para manejar items de cambio
   const handleAddExchangeItem = () => {
-    if (!exchangeProductId || !exchangeVariantId || exchangeQuantity <= 0 || exchangeUnitPrice <= 0) {
+    if (
+      !exchangeProductId ||
+      !exchangeVariantId ||
+      exchangeQuantity <= 0 ||
+      exchangeUnitPrice <= 0
+    ) {
       toast.error("Complete todos los campos del producto");
       return;
     }
@@ -715,7 +738,10 @@ export function SaleDetailsModal({
     if (!saleRef || !saleId || !typedSale) return;
 
     // Validar que haya items seleccionados para devolver
-    const selectedItems = Object.entries(returnItems).filter(([_, qty]) => qty > 0);
+    const selectedItems = Object.entries(returnItems).filter(
+      ([_, qty]) => qty > 0,
+    );
+
     if (selectedItems.length === 0) {
       toast.error("Debe seleccionar al menos un item para devolver");
       return;
@@ -758,9 +784,18 @@ export function SaleDetailsModal({
         });
 
         // Devolver stock si está marcado
-        if (returnToStock && !item.isManual && item.productId && !item.productId.includes('manual')) {
+        if (
+          returnToStock &&
+          !item.isManual &&
+          item.productId &&
+          !item.productId.includes("manual")
+        ) {
           try {
-            const productRef = doc(firestore, collections.PRODUCTS, item.productId);
+            const productRef = doc(
+              firestore,
+              collections.PRODUCTS,
+              item.productId,
+            );
             const productDoc = await getDoc(productRef);
 
             if (productDoc.exists()) {
@@ -771,7 +806,7 @@ export function SaleDetailsModal({
                   variants: currentProduct.variants.map((v: any) =>
                     v.id === item.variantId
                       ? { ...v, stock: Number(v.stock) + quantity }
-                      : v
+                      : v,
                   ),
                 });
               } else {
@@ -781,7 +816,10 @@ export function SaleDetailsModal({
               }
             }
           } catch (error) {
-            console.error(`Error al devolver stock del producto ${item.productId}:`, error);
+            console.error(
+              `Error al devolver stock del producto ${item.productId}:`,
+              error,
+            );
           }
         }
       }
@@ -791,14 +829,24 @@ export function SaleDetailsModal({
       let priceDifference = 0;
 
       if (isExchangeMode && exchangeItems.length > 0) {
-        exchangeTotal = exchangeItems.reduce((sum, item) => sum + item.total, 0);
+        exchangeTotal = exchangeItems.reduce(
+          (sum, item) => sum + item.total,
+          0,
+        );
         priceDifference = exchangeTotal - totalRefund;
 
         // Descontar stock de productos nuevos
         for (const exchangeItem of exchangeItems) {
-          if (exchangeItem.productId && !exchangeItem.productId.includes('manual')) {
+          if (
+            exchangeItem.productId &&
+            !exchangeItem.productId.includes("manual")
+          ) {
             try {
-              const productRef = doc(firestore, collections.PRODUCTS, exchangeItem.productId);
+              const productRef = doc(
+                firestore,
+                collections.PRODUCTS,
+                exchangeItem.productId,
+              );
               const productDoc = await getDoc(productRef);
 
               if (productDoc.exists()) {
@@ -808,18 +856,30 @@ export function SaleDetailsModal({
                   await updateDoc(productRef, {
                     variants: currentProduct.variants.map((v: any) =>
                       v.id === exchangeItem.variantId
-                        ? { ...v, stock: Math.max(0, Number(v.stock) - exchangeItem.quantity) }
-                        : v
+                        ? {
+                            ...v,
+                            stock: Math.max(
+                              0,
+                              Number(v.stock) - exchangeItem.quantity,
+                            ),
+                          }
+                        : v,
                     ),
                   });
                 } else {
                   await updateDoc(productRef, {
-                    stock: Math.max(0, Number(currentProduct.stock || 0) - exchangeItem.quantity),
+                    stock: Math.max(
+                      0,
+                      Number(currentProduct.stock || 0) - exchangeItem.quantity,
+                    ),
                   });
                 }
               }
             } catch (error) {
-              console.error(`Error al descontar stock del producto ${exchangeItem.productId}:`, error);
+              console.error(
+                `Error al descontar stock del producto ${exchangeItem.productId}:`,
+                error,
+              );
             }
           }
         }
@@ -827,7 +887,7 @@ export function SaleDetailsModal({
 
       // Crear objeto de devolución/cambio
       const newReturn: TReturn = {
-        id: `${isExchangeMode ? 'exchange' : 'return'}-${Date.now()}`,
+        id: `${isExchangeMode ? "exchange" : "return"}-${Date.now()}`,
         date: new Date(),
         items: returnItemsArray,
         reason: returnReason,
@@ -836,9 +896,9 @@ export function SaleDetailsModal({
         notes: "",
         // Campos de cambio
         isExchange: isExchangeMode,
-        exchangeItems: isExchangeMode ? exchangeItems : undefined,
-        exchangeTotal: isExchangeMode ? exchangeTotal : undefined,
-        priceDifference: isExchangeMode ? priceDifference : undefined,
+        exchangeItems: isExchangeMode ? exchangeItems : [],
+        exchangeTotal: isExchangeMode ? exchangeTotal : 0,
+        priceDifference: isExchangeMode ? priceDifference : 0,
       };
 
       // Actualizar totales de la venta
@@ -847,9 +907,16 @@ export function SaleDetailsModal({
 
       // Calcular nuevos totales
       const newTotalReturned = (typedSale.totalReturned || 0) + totalRefund;
-      const newTotalExchanged = (typedSale.totalExchanged || 0) + (isExchangeMode ? exchangeTotal : 0);
-      const newFinalTotal = typedSale.total - newTotalReturned + newTotalExchanged;
-
+      const newTotalExchanged =
+        (typedSale.totalExchanged || 0) + (isExchangeMode ? exchangeTotal : 0);
+      const newFinalTotal =
+        typedSale.total - newTotalReturned + newTotalExchanged;
+      console.log("venta actualizada", {
+        returns: updatedReturns,
+        totalReturned: newTotalReturned,
+        totalExchanged: newTotalExchanged,
+        finalTotal: newFinalTotal,
+      });
       await updateDoc(saleRef, {
         returns: updatedReturns,
         totalReturned: newTotalReturned,
@@ -858,7 +925,11 @@ export function SaleDetailsModal({
         updatedAt: serverTimestamp(),
       });
 
-      toast.success(isExchangeMode ? "Cambio procesado exitosamente" : "Devolución procesada exitosamente");
+      toast.success(
+        isExchangeMode
+          ? "Cambio procesado exitosamente"
+          : "Devolución procesada exitosamente",
+      );
 
       // Limpiar estados
       setReturnItems({});
@@ -897,12 +968,12 @@ export function SaleDetailsModal({
         // Sistema de múltiples facturas
         facturas: facturas.length > 0 ? facturas : [],
       };
-      
+
       // Fecha editada
       if (editedDate) {
         // Convertir la fecha del input (YYYY-MM-DD) a timestamp de Firebase
         // Usar la fecha local al mediodía para evitar problemas de zona horaria
-        const [year, month, day] = editedDate.split('-').map(Number);
+        const [year, month, day] = editedDate.split("-").map(Number);
         const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
         updateData.createdAt = Timestamp.fromDate(dateObj) as unknown as Date;
         updateData.updatedAt = serverTimestamp() as unknown as Date;
@@ -962,7 +1033,7 @@ export function SaleDetailsModal({
     if (!saleRef || !saleId) return;
 
     const confirmDelete = window.confirm(
-      "¿Está seguro que desea eliminar esta venta? Esta acción no se puede deshacer."
+      "¿Está seguro que desea eliminar esta venta? Esta acción no se puede deshacer.",
     );
 
     if (!confirmDelete) return;
@@ -1218,7 +1289,9 @@ export function SaleDetailsModal({
                       )}
                       {isEditing && (
                         <div className="flex items-center gap-2">
-                          <Label className="text-sm font-medium">Cliente:</Label>
+                          <Label className="text-sm font-medium">
+                            Cliente:
+                          </Label>
                           <div className="flex-1">
                             <Input
                               value={clientName || ""}
@@ -1439,7 +1512,7 @@ export function SaleDetailsModal({
                             value={discountPercentage}
                             onChange={(e) =>
                               handleDiscountPercentageChange(
-                                Number(e.target.value)
+                                Number(e.target.value),
                               )
                             }
                             disabled={!isEditing}
@@ -1518,7 +1591,7 @@ export function SaleDetailsModal({
                                 <SelectItem key={id} value={id}>
                                   {category.name}
                                 </SelectItem>
-                              )
+                              ),
                             )}
                           </SelectContent>
                         </Select>
@@ -1550,7 +1623,7 @@ export function SaleDetailsModal({
                             {filteredProducts.map(([id, product]) => {
                               const hasStock =
                                 product?.variants?.some(
-                                  (variant) => Number(variant.stock) > 0
+                                  (variant) => Number(variant.stock) > 0,
                                 ) ?? false;
                               return (
                                 <SelectItem
@@ -1602,7 +1675,7 @@ export function SaleDetailsModal({
                                     {Number(variant.stock) <= 0 &&
                                       "(Sin stock)"}
                                   </SelectItem>
-                                )
+                                ),
                               )}
                           </SelectContent>
                         </Select>
@@ -1698,11 +1771,12 @@ export function SaleDetailsModal({
                               {products[item.productId]?.name ||
                                 item.productName ||
                                 "Producto no encontrado"}
-                              {item.isManual || item.productId?.includes("manual") && (
-                                <p className="text-sm text-gray-400 size-1">
-                                  {item.description}
-                                </p>
-                              )}
+                              {item.isManual ||
+                                (item.productId?.includes("manual") && (
+                                  <p className="text-sm text-gray-400 size-1">
+                                    {item.description}
+                                  </p>
+                                ))}
                             </TableCell>
                             {/* <TableCell>
                             {products[item.productId]?.categories
@@ -1749,17 +1823,23 @@ export function SaleDetailsModal({
               {/* Historial de Devoluciones y Cambios */}
               {typedSale?.returns && typedSale.returns.length > 0 && (
                 <div className="mt-6">
-                  <h3 className="font-semibold mb-4">Historial de Devoluciones y Cambios</h3>
+                  <h3 className="font-semibold mb-4">
+                    Historial de Devoluciones y Cambios
+                  </h3>
                   <div className="space-y-4">
                     {typedSale.returns.map((returnItem, returnIndex) => (
                       <div
                         key={returnItem.id}
-                        className={`border rounded-lg p-4 ${returnItem.isExchange ? 'bg-purple-50' : 'bg-red-50'}`}
+                        className={`border rounded-lg p-4 ${returnItem.isExchange ? "bg-purple-50" : "bg-red-50"}`}
                       >
                         <div className="flex justify-between items-start mb-3">
                           <div>
-                            <h4 className={`font-medium ${returnItem.isExchange ? 'text-purple-900' : 'text-red-900'}`}>
-                              {returnItem.isExchange ? `Cambio #${returnIndex + 1}` : `Devolución #${returnIndex + 1}`}
+                            <h4
+                              className={`font-medium ${returnItem.isExchange ? "text-purple-900" : "text-red-900"}`}
+                            >
+                              {returnItem.isExchange
+                                ? `Cambio #${returnIndex + 1}`
+                                : `Devolución #${returnIndex + 1}`}
                             </h4>
                             <p className="text-sm text-gray-600">
                               {formatDate(returnItem.date)}
@@ -1767,13 +1847,16 @@ export function SaleDetailsModal({
                           </div>
                           <div className="text-right">
                             {returnItem.isExchange ? (
-                              <p className={`font-bold ${(returnItem.priceDifference || 0) > 0 ? 'text-orange-600' : (returnItem.priceDifference || 0) < 0 ? 'text-green-600' : 'text-gray-600'}`}>
+                              <p
+                                className={`font-bold ${(returnItem.priceDifference || 0) > 0 ? "text-orange-600" : (returnItem.priceDifference || 0) < 0 ? "text-green-600" : "text-gray-600"}`}
+                              >
                                 {(returnItem.priceDifference || 0) > 0
                                   ? `+${formatearPrecio(returnItem.priceDifference || 0)}`
                                   : (returnItem.priceDifference || 0) < 0
-                                    ? formatearPrecio(returnItem.priceDifference || 0)
-                                    : "Sin diferencia"
-                                }
+                                    ? formatearPrecio(
+                                        returnItem.priceDifference || 0,
+                                      )
+                                    : "Sin diferencia"}
                               </p>
                             ) : (
                               <p className="font-bold text-red-900">
@@ -1789,19 +1872,29 @@ export function SaleDetailsModal({
                         </div>
 
                         <div className="mb-2">
-                          <p className="text-sm font-medium text-gray-700">Motivo:</p>
-                          <p className="text-sm text-gray-600">{returnItem.reason}</p>
+                          <p className="text-sm font-medium text-gray-700">
+                            Motivo:
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {returnItem.reason}
+                          </p>
                         </div>
 
                         {/* Items devueltos */}
                         <div className="border-t pt-2 mt-2">
-                          <p className="text-sm font-medium text-red-700 mb-1">Items devueltos:</p>
+                          <p className="text-sm font-medium text-red-700 mb-1">
+                            Items devueltos:
+                          </p>
                           <ul className="space-y-1">
                             {returnItem.items.map((item, itemIndex) => (
-                              <li key={itemIndex} className="text-sm text-gray-600 flex justify-between">
+                              <li
+                                key={itemIndex}
+                                className="text-sm text-gray-600 flex justify-between"
+                              >
                                 <span>
-                                  {item.productName} {item.variantName && `(${item.variantName})`}
-                                  {" "}- Cantidad: {item.quantityReturned}
+                                  {item.productName}{" "}
+                                  {item.variantName && `(${item.variantName})`}{" "}
+                                  - Cantidad: {item.quantityReturned}
                                 </span>
                                 <span className="font-medium text-red-600">
                                   -{formatearPrecio(item.refundAmount)}
@@ -1812,45 +1905,66 @@ export function SaleDetailsModal({
                         </div>
 
                         {/* Items de cambio (solo si es un cambio) */}
-                        {returnItem.isExchange && returnItem.exchangeItems && returnItem.exchangeItems.length > 0 && (
-                          <div className="border-t pt-2 mt-2">
-                            <p className="text-sm font-medium text-green-700 mb-1">Items nuevos (cambio):</p>
-                            <ul className="space-y-1">
-                              {returnItem.exchangeItems.map((item, itemIndex) => (
-                                <li key={itemIndex} className="text-sm text-gray-600 flex justify-between">
-                                  <span>
-                                    {item.productName} {item.variantName && `(${item.variantName})`}
-                                    {" "}- Cantidad: {item.quantity}
-                                  </span>
-                                  <span className="font-medium text-green-600">
-                                    +{formatearPrecio(item.total)}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
+                        {returnItem.isExchange &&
+                          returnItem.exchangeItems &&
+                          returnItem.exchangeItems.length > 0 && (
+                            <div className="border-t pt-2 mt-2">
+                              <p className="text-sm font-medium text-green-700 mb-1">
+                                Items nuevos (cambio):
+                              </p>
+                              <ul className="space-y-1">
+                                {returnItem.exchangeItems.map(
+                                  (item, itemIndex) => (
+                                    <li
+                                      key={itemIndex}
+                                      className="text-sm text-gray-600 flex justify-between"
+                                    >
+                                      <span>
+                                        {item.productName}{" "}
+                                        {item.variantName &&
+                                          `(${item.variantName})`}{" "}
+                                        - Cantidad: {item.quantity}
+                                      </span>
+                                      <span className="font-medium text-green-600">
+                                        +{formatearPrecio(item.total)}
+                                      </span>
+                                    </li>
+                                  ),
+                                )}
+                              </ul>
+                            </div>
+                          )}
 
                         {/* Resumen del cambio */}
                         {returnItem.isExchange && (
                           <div className="border-t pt-2 mt-2 bg-white/50 p-2 rounded">
                             <div className="flex justify-between text-sm">
                               <span>Valor devuelto:</span>
-                              <span className="text-red-600">-{formatearPrecio(returnItem.refundAmount)}</span>
+                              <span className="text-red-600">
+                                -{formatearPrecio(returnItem.refundAmount)}
+                              </span>
                             </div>
                             <div className="flex justify-between text-sm">
                               <span>Valor nuevo:</span>
-                              <span className="text-green-600">+{formatearPrecio(returnItem.exchangeTotal || 0)}</span>
+                              <span className="text-green-600">
+                                +
+                                {formatearPrecio(returnItem.exchangeTotal || 0)}
+                              </span>
                             </div>
                             <div className="flex justify-between font-medium border-t pt-1 mt-1">
                               <span>Diferencia:</span>
-                              <span className={(returnItem.priceDifference || 0) >= 0 ? 'text-orange-600' : 'text-green-600'}>
+                              <span
+                                className={
+                                  (returnItem.priceDifference || 0) >= 0
+                                    ? "text-orange-600"
+                                    : "text-green-600"
+                                }
+                              >
                                 {(returnItem.priceDifference || 0) > 0
                                   ? `Cliente pagó: ${formatearPrecio(returnItem.priceDifference || 0)}`
                                   : (returnItem.priceDifference || 0) < 0
                                     ? `Se devolvió: ${formatearPrecio(Math.abs(returnItem.priceDifference || 0))}`
-                                    : "Sin diferencia"
-                                }
+                                    : "Sin diferencia"}
                               </span>
                             </div>
                           </div>
@@ -1867,18 +1981,26 @@ export function SaleDetailsModal({
                     </div>
                     <div className="flex justify-between items-center text-red-700 mb-2">
                       <span className="font-medium">Total Devuelto:</span>
-                      <span>-{formatearPrecio(typedSale.totalReturned || 0)}</span>
+                      <span>
+                        -{formatearPrecio(typedSale.totalReturned || 0)}
+                      </span>
                     </div>
                     {(typedSale.totalExchanged || 0) > 0 && (
                       <div className="flex justify-between items-center text-green-700 mb-2">
-                        <span className="font-medium">Total Cambios (nuevo):</span>
-                        <span>+{formatearPrecio(typedSale.totalExchanged || 0)}</span>
+                        <span className="font-medium">
+                          Total Cambios (nuevo):
+                        </span>
+                        <span>
+                          +{formatearPrecio(typedSale.totalExchanged || 0)}
+                        </span>
                       </div>
                     )}
                     <div className="flex justify-between items-center text-lg font-bold border-t pt-2">
                       <span>Total Final:</span>
                       <span className="text-blue-700">
-                        {formatearPrecio(typedSale.finalTotal || typedSale.total)}
+                        {formatearPrecio(
+                          typedSale.finalTotal || typedSale.total,
+                        )}
                       </span>
                     </div>
                   </div>
@@ -1987,7 +2109,7 @@ export function SaleDetailsModal({
                 }
               />
             </div>
-            
+
             {/* Preview del subtotal */}
             {manualItem.unitPrice > 0 && (
               <div className="bg-gray-50 p-3 rounded">
@@ -2004,7 +2126,7 @@ export function SaleDetailsModal({
                     {formatearPrecio(
                       manualItem.unitPrice *
                         manualItem.quantity *
-                        (1 - manualItem.discount / 100)
+                        (1 - manualItem.discount / 100),
                     )}
                   </div>
                 </div>
@@ -2030,16 +2152,19 @@ export function SaleDetailsModal({
       </Dialog>
 
       {/* Dialog para Devolución/Cambio */}
-      <Dialog open={showReturnDialog} onOpenChange={(open) => {
-        setShowReturnDialog(open);
-        if (!open) {
-          setReturnItems({});
-          setReturnReason("");
-          setReturnToStock(true);
-          setIsExchangeMode(false);
-          setExchangeItems([]);
-        }
-      }}>
+      <Dialog
+        open={showReturnDialog}
+        onOpenChange={(open) => {
+          setShowReturnDialog(open);
+          if (!open) {
+            setReturnItems({});
+            setReturnReason("");
+            setReturnToStock(true);
+            setIsExchangeMode(false);
+            setExchangeItems([]);
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
@@ -2058,7 +2183,10 @@ export function SaleDetailsModal({
                     if (!checked) setExchangeItems([]);
                   }}
                 />
-                <Label htmlFor="isExchangeMode" className="cursor-pointer font-medium">
+                <Label
+                  htmlFor="isExchangeMode"
+                  className="cursor-pointer font-medium"
+                >
                   Es un cambio (el cliente se lleva otro producto)
                 </Label>
               </div>
@@ -2069,7 +2197,11 @@ export function SaleDetailsModal({
               <Textarea
                 value={returnReason}
                 onChange={(e) => setReturnReason(e.target.value)}
-                placeholder={isExchangeMode ? "Cambio de talle, cambio de modelo, etc." : "Producto defectuoso, talla incorrecta, etc."}
+                placeholder={
+                  isExchangeMode
+                    ? "Cambio de talle, cambio de modelo, etc."
+                    : "Producto defectuoso, talla incorrecta, etc."
+                }
                 rows={2}
               />
             </div>
@@ -2078,7 +2210,9 @@ export function SaleDetailsModal({
               <Checkbox
                 id="returnToStock"
                 checked={returnToStock}
-                onCheckedChange={(checked) => setReturnToStock(checked as boolean)}
+                onCheckedChange={(checked) =>
+                  setReturnToStock(checked as boolean)
+                }
               />
               <Label htmlFor="returnToStock" className="cursor-pointer">
                 Devolver productos al inventario
@@ -2089,7 +2223,6 @@ export function SaleDetailsModal({
             <div className="border rounded-lg">
               <div className="bg-red-50 p-3 border-b">
                 <h4 className="font-medium text-red-900">Items a devolver</h4>
-                <p className="text-sm text-red-700">Seleccione los items y cantidades que devuelve el cliente</p>
               </div>
               <Table>
                 <TableHeader>
@@ -2098,26 +2231,37 @@ export function SaleDetailsModal({
                     <TableHead>Medida</TableHead>
                     <TableHead className="text-right">Cant. Original</TableHead>
                     <TableHead className="text-right">Precio Unit.</TableHead>
-                    <TableHead className="text-right">Cant. a Devolver</TableHead>
+                    <TableHead className="text-right">
+                      Cant. a Devolver
+                    </TableHead>
                     <TableHead className="text-right">Valor</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {typedSale?.items.map((item, index) => {
                     const returnQty = returnItems[index] || 0;
-                    const refundAmount = returnQty > 0 ? (item.total / item.quantity) * returnQty : 0;
+                    const refundAmount =
+                      returnQty > 0
+                        ? (item.total / item.quantity) * returnQty
+                        : 0;
 
                     return (
                       <TableRow key={index}>
                         <TableCell>
                           {item.productName}
                           {item.isManual && (
-                            <span className="text-xs text-gray-500 ml-2">(Manual)</span>
+                            <span className="text-xs text-gray-500 ml-2">
+                              (Manual)
+                            </span>
                           )}
                         </TableCell>
                         <TableCell>{item.variantName || "N/A"}</TableCell>
-                        <TableCell className="text-right">{item.quantity}</TableCell>
-                        <TableCell className="text-right">{formatearPrecio(item.unitPrice)}</TableCell>
+                        <TableCell className="text-right">
+                          {item.quantity}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {formatearPrecio(item.unitPrice)}
+                        </TableCell>
                         <TableCell className="text-right">
                           <Input
                             type="number"
@@ -2125,17 +2269,22 @@ export function SaleDetailsModal({
                             max={item.quantity}
                             value={returnQty}
                             onChange={(e) => {
-                              const value = Math.min(item.quantity, Math.max(0, parseInt(e.target.value) || 0));
-                              setReturnItems(prev => ({
+                              const value = Math.min(
+                                item.quantity,
+                                Math.max(0, parseInt(e.target.value) || 0),
+                              );
+                              setReturnItems((prev) => ({
                                 ...prev,
-                                [index]: value
+                                [index]: value,
                               }));
                             }}
                             className="w-20 text-right"
                           />
                         </TableCell>
                         <TableCell className="text-right font-medium text-red-600">
-                          {returnQty > 0 ? `-${formatearPrecio(refundAmount)}` : "-"}
+                          {returnQty > 0
+                            ? `-${formatearPrecio(refundAmount)}`
+                            : "-"}
                         </TableCell>
                       </TableRow>
                     );
@@ -2148,8 +2297,12 @@ export function SaleDetailsModal({
             {isExchangeMode && (
               <div className="border rounded-lg">
                 <div className="bg-green-50 p-3 border-b">
-                  <h4 className="font-medium text-green-900">Productos nuevos (lo que se lleva)</h4>
-                  <p className="text-sm text-green-700">Agregue los productos que el cliente se lleva a cambio</p>
+                  <h4 className="font-medium text-green-900">
+                    Productos nuevos (lo que se lleva)
+                  </h4>
+                  <p className="text-sm text-green-700">
+                    Agregue los productos que el cliente se lleva a cambio
+                  </p>
                 </div>
 
                 {/* Formulario para agregar producto nuevo */}
@@ -2157,15 +2310,25 @@ export function SaleDetailsModal({
                   <div className="grid grid-cols-5 gap-3">
                     <div>
                       <Label className="text-xs">Producto</Label>
-                      <Select value={exchangeProductId} onValueChange={setExchangeProductId}>
+                      <Select
+                        value={exchangeProductId}
+                        onValueChange={setExchangeProductId}
+                      >
                         <SelectTrigger className="h-9">
                           <SelectValue placeholder="Seleccionar..." />
                         </SelectTrigger>
                         <SelectContent className="max-h-48 overflow-y-auto">
                           {Object.entries(products).map(([id, product]) => {
-                            const hasStock = product?.variants?.some((v) => Number(v.stock) > 0) ?? false;
+                            const hasStock =
+                              product?.variants?.some(
+                                (v) => Number(v.stock) > 0,
+                              ) ?? false;
                             return (
-                              <SelectItem key={id} value={id} disabled={!hasStock}>
+                              <SelectItem
+                                key={id}
+                                value={id}
+                                disabled={!hasStock}
+                              >
                                 {product?.name}
                               </SelectItem>
                             );
@@ -2184,15 +2347,19 @@ export function SaleDetailsModal({
                           <SelectValue placeholder="Seleccionar..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {exchangeProductId && products[exchangeProductId]?.variants?.map((variant) => (
-                            <SelectItem
-                              key={variant.id}
-                              value={variant.id}
-                              disabled={Number(variant.stock) <= 0}
-                            >
-                              {variant.size} {Number(variant.stock) <= 0 && "(Sin stock)"}
-                            </SelectItem>
-                          ))}
+                          {exchangeProductId &&
+                            products[exchangeProductId]?.variants?.map(
+                              (variant) => (
+                                <SelectItem
+                                  key={variant.id}
+                                  value={variant.id}
+                                  disabled={Number(variant.stock) <= 0}
+                                >
+                                  {variant.size}{" "}
+                                  {Number(variant.stock) <= 0 && "(Sin stock)"}
+                                </SelectItem>
+                              ),
+                            )}
                         </SelectContent>
                       </Select>
                     </div>
@@ -2202,7 +2369,9 @@ export function SaleDetailsModal({
                         type="number"
                         min="1"
                         value={exchangeQuantity}
-                        onChange={(e) => setExchangeQuantity(Number(e.target.value))}
+                        onChange={(e) =>
+                          setExchangeQuantity(Number(e.target.value))
+                        }
                         className="h-9"
                       />
                     </div>
@@ -2212,7 +2381,9 @@ export function SaleDetailsModal({
                         type="number"
                         min="0"
                         value={exchangeUnitPrice}
-                        onChange={(e) => setExchangeUnitPrice(Number(e.target.value))}
+                        onChange={(e) =>
+                          setExchangeUnitPrice(Number(e.target.value))
+                        }
                         className="h-9"
                       />
                     </div>
@@ -2220,7 +2391,12 @@ export function SaleDetailsModal({
                       <Button
                         type="button"
                         onClick={handleAddExchangeItem}
-                        disabled={!exchangeProductId || !exchangeVariantId || exchangeQuantity <= 0 || exchangeUnitPrice <= 0}
+                        disabled={
+                          !exchangeProductId ||
+                          !exchangeVariantId ||
+                          exchangeQuantity <= 0 ||
+                          exchangeUnitPrice <= 0
+                        }
                         className="bg-green-600 hover:bg-green-700 h-9"
                         size="sm"
                       >
@@ -2239,7 +2415,9 @@ export function SaleDetailsModal({
                         <TableHead>Producto</TableHead>
                         <TableHead>Medida</TableHead>
                         <TableHead className="text-right">Cantidad</TableHead>
-                        <TableHead className="text-right">Precio Unit.</TableHead>
+                        <TableHead className="text-right">
+                          Precio Unit.
+                        </TableHead>
                         <TableHead className="text-right">Total</TableHead>
                         <TableHead className="text-center">Quitar</TableHead>
                       </TableRow>
@@ -2249,8 +2427,12 @@ export function SaleDetailsModal({
                         <TableRow key={index}>
                           <TableCell>{item.productName}</TableCell>
                           <TableCell>{item.variantName || "N/A"}</TableCell>
-                          <TableCell className="text-right">{item.quantity}</TableCell>
-                          <TableCell className="text-right">{formatearPrecio(item.unitPrice)}</TableCell>
+                          <TableCell className="text-right">
+                            {item.quantity}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatearPrecio(item.unitPrice)}
+                          </TableCell>
                           <TableCell className="text-right font-medium text-green-600">
                             +{formatearPrecio(item.total)}
                           </TableCell>
@@ -2279,42 +2461,55 @@ export function SaleDetailsModal({
             )}
 
             {/* Resumen */}
-            <div className={`p-4 rounded-lg ${isExchangeMode ? 'bg-purple-50' : 'bg-blue-50'}`}>
+            <div
+              className={`p-4 rounded-lg ${isExchangeMode ? "bg-purple-50" : "bg-blue-50"}`}
+            >
               {(() => {
-                const totalReturn = Object.entries(returnItems).reduce((total, [indexStr, qty]) => {
-                  if (qty === 0) return total;
-                  const index = parseInt(indexStr);
-                  const item = typedSale?.items[index];
-                  if (!item) return total;
-                  return total + (item.total / item.quantity) * qty;
-                }, 0);
+                const totalReturn = Object.entries(returnItems).reduce(
+                  (total, [indexStr, qty]) => {
+                    if (qty === 0) return total;
+                    const index = parseInt(indexStr);
+                    const item = typedSale?.items[index];
+                    if (!item) return total;
+                    return total + (item.total / item.quantity) * qty;
+                  },
+                  0,
+                );
 
-                const totalExchange = exchangeItems.reduce((sum, item) => sum + item.total, 0);
+                const totalExchange = exchangeItems.reduce(
+                  (sum, item) => sum + item.total,
+                  0,
+                );
                 const difference = totalExchange - totalReturn;
 
                 return (
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <span>Valor de lo devuelto:</span>
-                      <span className="font-medium text-red-600">-{formatearPrecio(totalReturn)}</span>
+                      <span className="font-medium text-red-600">
+                        -{formatearPrecio(totalReturn)}
+                      </span>
                     </div>
 
                     {isExchangeMode && (
                       <>
                         <div className="flex justify-between items-center">
                           <span>Valor de lo nuevo:</span>
-                          <span className="font-medium text-green-600">+{formatearPrecio(totalExchange)}</span>
+                          <span className="font-medium text-green-600">
+                            +{formatearPrecio(totalExchange)}
+                          </span>
                         </div>
                         <div className="border-t pt-2 mt-2">
                           <div className="flex justify-between items-center">
                             <span className="font-bold">Diferencia:</span>
-                            <span className={`text-lg font-bold ${difference > 0 ? 'text-orange-600' : difference < 0 ? 'text-green-600' : 'text-gray-600'}`}>
+                            <span
+                              className={`text-lg font-bold ${difference > 0 ? "text-orange-600" : difference < 0 ? "text-green-600" : "text-gray-600"}`}
+                            >
                               {difference > 0
                                 ? `Cliente debe: ${formatearPrecio(difference)}`
                                 : difference < 0
                                   ? `Devolver al cliente: ${formatearPrecio(Math.abs(difference))}`
-                                  : "Sin diferencia"
-                              }
+                                  : "Sin diferencia"}
                             </span>
                           </div>
                         </div>
@@ -2355,7 +2550,11 @@ export function SaleDetailsModal({
               disabled={isLoading}
               className="bg-green-600 hover:bg-green-700"
             >
-              {isLoading ? "Procesando..." : isExchangeMode ? "Procesar Cambio" : "Procesar Devolución"}
+              {isLoading
+                ? "Procesando..."
+                : isExchangeMode
+                  ? "Procesar Cambio"
+                  : "Procesar Devolución"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2412,7 +2611,7 @@ export function SaleDetailsModal({
                         .filter((c: any) =>
                           c.name
                             .toLowerCase()
-                            .includes(clienteInput.toLowerCase())
+                            .includes(clienteInput.toLowerCase()),
                         )
                         .map((c: any, index: number) => (
                           <li
@@ -2427,7 +2626,9 @@ export function SaleDetailsModal({
                                   : "transparent",
                               transition: "background-color 0.15s ease",
                             }}
-                            onMouseEnter={() => setHighlightedClientIndex(index)}
+                            onMouseEnter={() =>
+                              setHighlightedClientIndex(index)
+                            }
                             onMouseDown={() => {
                               handleSelectClient(c.id);
                               setClienteInput(c.name);
@@ -2479,10 +2680,7 @@ export function SaleDetailsModal({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>CUIT</Label>
-                <Input
-                  value={cuit}
-                  onChange={(e) => setCuit(e.target.value)}
-                />
+                <Input value={cuit} onChange={(e) => setCuit(e.target.value)} />
               </div>
             </div>
 

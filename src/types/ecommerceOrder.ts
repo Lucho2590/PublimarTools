@@ -103,6 +103,11 @@ export interface TEcommerceOrder {
   // Si después se convierte en una orden del CRM, guardamos la referencia
   crmOrderId?: string; // ID de la TOrder en la colección "orders"
 
+  // Relación con Venta (se crea cuando se envía/entrega)
+  saleId?: string; // ID de la venta en la colección "sales"
+  saleNumber?: string; // Número de venta (V-YYYYMMDD-...)
+  saleProcessedAt?: Timestamp; // Cuando se procesó la venta y descontó el stock
+
   // Timestamps
   createdAt: Timestamp;
   updatedAt: Timestamp;

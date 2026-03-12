@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { TEcommerceOrder, EcommerceOrderStatus } from "@/types/ecommerceOrder";
 import { toast } from "sonner";
+import { processOrderSale, isOrderAlreadyProcessed, cancelOrderSale } from "@/lib/ecommerceHelpers";
 
 // Helper para convertir Timestamp a Date
 const timestampToDate = (timestamp: any): Date | null => {
@@ -80,6 +81,12 @@ export default function OrderDetailPage({ params }: { params: { orderId: string 
       setUpdating(true);
       const orderRef = doc(firestore, "ecommerceOrders", order.id);
 
+      // Primero obtener el pedido actualizado de Firestore (puede tener saleId que el estado local no tiene)
+      const freshOrderSnap = await getDoc(orderRef);
+      const freshOrder = freshOrderSnap.exists()
+        ? { ...freshOrderSnap.data(), id: freshOrderSnap.id } as TEcommerceOrder
+        : order;
+
       const updates: any = {
         status: newStatus,
         updatedAt: serverTimestamp(),
@@ -98,7 +105,29 @@ export default function OrderDetailPage({ params }: { params: { orderId: string 
 
       await updateDoc(orderRef, updates);
 
-      toast.success("Estado actualizado correctamente");
+      // Procesar venta y descontar stock cuando se envía o entrega (solo la primera vez)
+      if ((newStatus === "shipped" || newStatus === "delivered") && !isOrderAlreadyProcessed(freshOrder)) {
+        try {
+          const { saleNumber } = await processOrderSale(firestore, freshOrder);
+          toast.success(`Venta ${saleNumber} creada y stock descontado`);
+        } catch (saleError) {
+          console.error("Error procesando venta:", saleError);
+          toast.error("Estado actualizado pero hubo un error al procesar la venta");
+        }
+      }
+      // Cancelar venta y devolver stock cuando se cancela (si tenía venta)
+      else if (newStatus === "cancelled" && isOrderAlreadyProcessed(freshOrder)) {
+        try {
+          await cancelOrderSale(firestore, freshOrder);
+          toast.success("Venta anulada y stock devuelto");
+        } catch (cancelError) {
+          console.error("Error cancelando venta:", cancelError);
+          toast.error("Estado actualizado pero hubo un error al cancelar la venta");
+        }
+      } else {
+        toast.success("Estado actualizado correctamente");
+      }
+
       await loadOrder(); // Recargar el pedido
     } catch (error) {
       console.error("Error actualizando estado:", error);
@@ -370,6 +399,41 @@ export default function OrderDetailPage({ params }: { params: { orderId: string 
               </div>
             </CardContent>
           </Card>
+
+          {/* Venta Asociada */}
+          {order.saleId && (
+            <Card className={order.status === "cancelled"
+              ? "border-red-200 bg-red-50"
+              : "border-green-200 bg-green-50"
+            }>
+              <CardHeader className="pb-2">
+                <CardTitle className={`flex items-center gap-2 ${
+                  order.status === "cancelled" ? "text-red-800" : "text-green-800"
+                }`}>
+                  <Package className="h-5 w-5" />
+                  {order.status === "cancelled" ? "Venta Anulada" : "Venta Procesada"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className={order.status === "cancelled" ? "text-red-700" : "text-green-700"}>
+                    Número de venta:
+                  </span>
+                  <span className={`font-mono font-semibold ${
+                    order.status === "cancelled" ? "text-red-800 line-through" : "text-green-800"
+                  }`}>
+                    {order.saleNumber}
+                  </span>
+                </div>
+                <div className={`text-xs ${order.status === "cancelled" ? "text-red-600" : "text-green-600"}`}>
+                  {order.status === "cancelled"
+                    ? "Stock devuelto automáticamente"
+                    : "Stock descontado automáticamente"
+                  }
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Información Adicional */}
           <Card>
