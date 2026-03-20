@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/pagination";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory } from "@/types/product";
-import { Edit } from "lucide-react";
+import { Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
 import { formatearPrecio, redondearADecena } from "@/lib/utils";
@@ -204,6 +204,24 @@ export default function ProductosPage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedProductId(null);
+  };
+
+  const handleDeleteProduct = async (productId: string, productName: string) => {
+    const confirmDelete = window.confirm(
+      `¿Estás seguro de que querés eliminar "${productName}"? Esta acción no se puede deshacer.`
+    );
+
+    if (!confirmDelete) return;
+
+    try {
+      await deleteDoc(doc(firestore, collections.PRODUCTS, productId));
+      toast.success("Producto eliminado correctamente");
+      // Limpiar selección si el producto eliminado estaba seleccionado
+      setSelectedProducts(prev => prev.filter(id => id !== productId));
+    } catch (error) {
+      console.error("Error al eliminar el producto:", error);
+      toast.error("Error al eliminar el producto");
+    }
   };
 
   const handleApplyIncrease = async () => {
@@ -470,16 +488,28 @@ export default function ProductosPage() {
                           )}
                         </TableCell> */}
                         <TableCell className="text-center">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="Editar"
-                            type="button" 
-                            className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                            onClick={() => handleEditProduct(typedProduct.id)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <div className="flex justify-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Editar"
+                              type="button"
+                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                              onClick={() => handleEditProduct(typedProduct.id)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Eliminar"
+                              type="button"
+                              className="bg-red-600 hover:bg-red-700 hover:text-white text-white"
+                              onClick={() => handleDeleteProduct(typedProduct.id, typedProduct.name)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

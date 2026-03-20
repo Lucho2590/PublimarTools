@@ -676,6 +676,16 @@ export function SaleDetailsModal({
 
     // Limpiar fecha editada
     setEditedDate("");
+
+    // Limpiar datos del cliente
+    setCliente("");
+    setClienteInput("");
+    setClientName("");
+    setContactName("");
+    setClientAddress("");
+    setClientEmail("");
+    setClientPhone("");
+    setClientCuit("");
   };
 
   const handleModalClose = (open: boolean) => {
@@ -969,15 +979,8 @@ export function SaleDetailsModal({
         facturas: facturas.length > 0 ? facturas : [],
       };
 
-      // Fecha editada
-      if (editedDate) {
-        // Convertir la fecha del input (YYYY-MM-DD) a timestamp de Firebase
-        // Usar la fecha local al mediodía para evitar problemas de zona horaria
-        const [year, month, day] = editedDate.split("-").map(Number);
-        const dateObj = new Date(year, month - 1, day, 12, 0, 0, 0);
-        updateData.createdAt = Timestamp.fromDate(dateObj) as unknown as Date;
-        updateData.updatedAt = serverTimestamp() as unknown as Date;
-      }
+      // Registrar fecha de actualización
+      updateData.updatedAt = serverTimestamp() as unknown as Date;
       if (paymentMethod) {
         updateData.paymentMethod = paymentMethod;
         if (paymentMethod === EPaymentMethod.TRANSFER && selectedBank) {
