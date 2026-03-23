@@ -197,6 +197,12 @@ export function SaleDetailsModal({
     if (open) {
       loadProducts();
       loadCategories();
+
+      // Validar que los datos corresponden al saleId actual (evita race condition)
+      if (!typedSale?.id || typedSale.id !== saleId) {
+        return;
+      }
+
       if (typedSale?.items) {
         setItems(typedSale.items);
 
@@ -286,7 +292,7 @@ export function SaleDetailsModal({
         }
       }
     }
-  }, [open, typedSale]);
+  }, [open, typedSale, saleId]);
 
   const loadProducts = async () => {
     try {
@@ -686,6 +692,15 @@ export function SaleDetailsModal({
     setClientEmail("");
     setClientPhone("");
     setClientCuit("");
+
+    // Limpiar estados del dialog de cliente (faltaban)
+    setPersonaContacto("");
+    setDireccion("");
+    setEmail("");
+    setCuit("");
+    setTelefono("");
+    setShowClienteDropdown(false);
+    setHighlightedClientIndex(-1);
   };
 
   const handleModalClose = (open: boolean) => {
@@ -993,6 +1008,18 @@ export function SaleDetailsModal({
           updateData.invoiceNumber = invoiceNumber;
         }
       }
+      // Fecha de creación editada (mantiene la hora original)
+      if (editedDate && typedSale?.createdAt) {
+        const originalDate =
+          typeof typedSale.createdAt === "object" && "seconds" in typedSale.createdAt
+            ? new Date((typedSale.createdAt as any).seconds * 1000)
+            : new Date(typedSale.createdAt);
+        const [year, month, day] = editedDate.split("-").map(Number);
+        const newDate = new Date(originalDate);
+        newDate.setFullYear(year, month - 1, day);
+        updateData.createdAt = Timestamp.fromDate(newDate);
+      }
+
       // Datos del cliente
       if (cliente) {
         // Si hay un cliente seleccionado de la DB, guardar su ID
