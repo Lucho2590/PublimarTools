@@ -1,5 +1,6 @@
 'use client';
 
+import React, { memo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
@@ -15,7 +16,7 @@ interface NavItemProps {
   onNavigate: () => void;
 }
 
-export function NavItem({
+export const NavItem = memo(function NavItem({
   item,
   isExpanded,
   isSidebarOpen,
@@ -36,6 +37,7 @@ export function NavItem({
           <div className="flex items-center">
             <Link
               href={item.href}
+              prefetch={true}
               onClick={onNavigate}
               className={cn(
                 "flex items-center p-2 rounded-md flex-1 relative transition-colors",
@@ -85,6 +87,7 @@ export function NavItem({
       ) : (
         <Link
           href={item.href}
+          prefetch={true}
           onClick={onNavigate}
           className={cn(
             "flex items-center p-2 rounded-md relative transition-colors",
@@ -108,9 +111,9 @@ export function NavItem({
       )}
     </li>
   );
-}
+});
 
-function SubNavItem({
+const SubNavItem = memo(function SubNavItem({
   item,
   onNavigate,
 }: {
@@ -125,6 +128,7 @@ function SubNavItem({
     <li className="py-1">
       <Link
         href={item.href}
+        prefetch={true}
         onClick={onNavigate}
         className={cn(
           "flex items-center p-2 rounded-md transition-colors",
@@ -138,4 +142,4 @@ function SubNavItem({
       </Link>
     </li>
   );
-}
+});

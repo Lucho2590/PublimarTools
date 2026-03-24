@@ -1,6 +1,6 @@
 'use client';
 
-import React, { ReactNode, useState, useEffect } from "react";
+import React, { ReactNode, useState, useEffect, useCallback } from "react";
 import { useSigninCheck } from "reactfire";
 import { signOut } from "firebase/auth";
 import { useAuth } from "reactfire";
@@ -14,56 +14,47 @@ interface IDashboardLayoutProps {
 
 export default function DashboardLayout({ children }: IDashboardLayoutProps) {
   const isMobile = useIsMobile();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(!isMobile);
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const auth = useAuth();
   const { status, data: signInCheckResult } = useSigninCheck();
-  const [mounted, setMounted] = useState(false);
   const unviewedCount = useUnviewedCount();
 
+  // Sincronizar sidebar con mobile/desktop
   useEffect(() => {
-    setMounted(true);
+    setIsSidebarOpen(!isMobile);
+  }, [isMobile]);
+
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen(prev => !prev);
   }, []);
 
-  // En mobile, cerrar el sidebar por defecto
-  useEffect(() => {
+  const closeSidebar = useCallback(() => {
     if (isMobile) {
       setIsSidebarOpen(false);
-    } else {
-      setIsSidebarOpen(true);
     }
   }, [isMobile]);
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
-
-  const closeSidebar = () => {
-    if (isMobile) {
-      setIsSidebarOpen(false);
-    }
-  };
-
-  const toggleItem = (itemName: string) => {
+  const toggleItem = useCallback((itemName: string) => {
     setExpandedItems((prev) =>
       prev.includes(itemName)
         ? prev.filter((name) => name !== itemName)
         : [itemName]
     );
-  };
+  }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await signOut(auth);
     } catch (error) {
       console.error("Error al cerrar sesión:", error);
     }
-  };
+  }, [auth]);
 
-  if (!mounted || status === "loading") {
+  if (status === "loading") {
     return (
-      <div className="flex items-center justify-center h-screen">
-        Cargando...
+      <div className="flex items-center justify-center h-screen bg-blue-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
