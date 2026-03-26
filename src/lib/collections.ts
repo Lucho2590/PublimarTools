@@ -3,6 +3,7 @@ const collections = {
   products: {
     VARIANTS: "variants",
     CATEGORIES: "categories",
+    GROUPS: "productGroups",
   },
   CLIENTS: "clients",
   QUOTES: "quotes",

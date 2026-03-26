@@ -17,6 +17,14 @@ export enum EProductCategory {
     createdAt: Date;
     updatedAt: Date;
   };
+
+  export type TProductGroup = {
+    id: string;
+    name: string;
+    description?: string;
+    createdAt: Date;
+    updatedAt: Date;
+  };
   
   export interface TProductVariant {
     id: string;
@@ -36,6 +44,7 @@ export enum EProductCategory {
     description?: string;
     variants: TProductVariant[];
     categories: string[];
+    group?: string; // ID del grupo al que pertenece
     taxRate?: number; // Opcional para compatibilidad con productos existentes
     price: number | string;
     stock: number | string;

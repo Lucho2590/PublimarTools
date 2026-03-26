@@ -16,9 +16,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import collections from "@/lib/collections";
-import { TProductCategory, TProductVariant } from "@/types/product";
+import { TProductCategory, TProductGroup, TProductVariant } from "@/types/product";
 import { Trash2 } from "lucide-react";
 import { generateSlug } from "@/lib/utils";
 
@@ -37,10 +44,20 @@ export default function NuevoProductoPage() {
     idField: "id",
   });
 
+  // Obtener grupos
+  const groupsCollection = collection(
+    firestore,
+    collections.products.GROUPS
+  );
+  const { data: groups } = useFirestoreCollectionData(groupsCollection, {
+    idField: "id",
+  });
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     categories: [] as string[],
+    group: "",
     imageUrls: [] as string[],
     sku: "",
     lowStock: false,
@@ -156,6 +173,13 @@ export default function NuevoProductoPage() {
             variant="outline"
             className="bg-blue-900 hover:bg-blue-900 hover:text-white  text-white"
           >
+            <Link href="/publimar/banderas/grupos">Gestionar Grupos</Link>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            className="bg-blue-900 hover:bg-blue-900 hover:text-white  text-white"
+          >
             <Link href="/publimar/banderas/categorias">Gestionar Categorías</Link>
           </Button>
           <Button
@@ -205,6 +229,37 @@ export default function NuevoProductoPage() {
                 onChange={handleChange}
                 rows={4}
               />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="group">Grupo</Label>
+                <Select
+                  value={formData.group || "sin-grupo"}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, group: value === "sin-grupo" ? "" : value }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Seleccionar grupo" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-48 overflow-y-auto">
+                    <SelectItem value="sin-grupo">Sin grupo</SelectItem>
+                    {groups
+                      ?.sort((a, b) => {
+                        const nameA = (a as unknown as TProductGroup).name;
+                        const nameB = (b as unknown as TProductGroup).name;
+                        return nameA.localeCompare(nameB);
+                      })
+                      .map((group) => {
+                        const typedGroup = group as unknown as TProductGroup;
+                        return (
+                          <SelectItem key={typedGroup.id} value={typedGroup.id}>
+                            {typedGroup.name}
+                          </SelectItem>
+                        );
+                      })}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">

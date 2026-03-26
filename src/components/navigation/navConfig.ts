@@ -17,6 +17,7 @@ import {
   Calendar,
   Eye,
   LayoutGrid,
+  FolderOpen,
   LucideIcon,
 } from "lucide-react";
 
@@ -43,6 +44,11 @@ export const navConfig: NavItem[] = [
         name: "Productos",
         href: "/publimar/banderas/productos",
         icon: Package,
+      },
+      {
+        name: "Grupos",
+        href: "/publimar/banderas/grupos",
+        icon: FolderOpen,
       },
       {
         name: "Clientes",

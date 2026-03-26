@@ -33,7 +33,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import collections from "@/lib/collections";
-import { TProduct, TProductCategory } from "@/types/product";
+import { TProduct, TProductCategory, TProductGroup } from "@/types/product";
 import { Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
@@ -43,6 +43,7 @@ import ProductEditModal from "./modalProductos/productEditModal";
 export default function ProductosPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [selectedVariant, setSelectedVariant] = useState<{
     [key: string]: string;
   }>({});
@@ -71,11 +72,23 @@ export default function ProductosPage() {
     }
   );
 
+  // Consulta a Firestore para grupos
+  const groupsCollection = collection(
+    firestore,
+    collections.products.GROUPS
+  );
+  const { data: groups } = useFirestoreCollectionData(
+    groupsCollection,
+    {
+      idField: "id",
+    }
+  );
+
   const { status, data: products } = useFirestoreCollectionData(productsQuery, {
     idField: "id",
   });
 
-  // Filtrar productos según la búsqueda y categoría
+  // Filtrar productos según la búsqueda, categoría y grupo
   const filteredProducts = products?.filter((product) => {
     const typedProduct = product as unknown as TProduct;
     const matchesSearch = typedProduct.name
@@ -85,7 +98,11 @@ export default function ProductosPage() {
       selectedCategory === "all" ||
       (typedProduct.categories &&
         typedProduct.categories.includes(selectedCategory));
-    return matchesSearch && matchesCategory;
+    const matchesGroup =
+      selectedGroup === "all" ||
+      typedProduct.group === selectedGroup ||
+      (selectedGroup === "sin-grupo" && !typedProduct.group);
+    return matchesSearch && matchesCategory && matchesGroup;
   });
 
   // Calcular índices para la paginación
@@ -272,20 +289,66 @@ export default function ProductosPage() {
   const handleDownloadExcel = () => {
     if (!filteredProducts) return;
 
-    const data = filteredProducts.flatMap((product) => {
-      const typedProduct = product as unknown as TProduct;
-      return typedProduct.variants?.map((variant) => ({
-        SKU: variant.sku || '-',
-        Nombre: typedProduct.name,
-        Medida: variant.size || '-',
-        Precio: Number(variant.price).toFixed(2),
-        'Precio con IVA': calculatePriceWithTax(Number(variant.price), typedProduct.taxRate || 21).toFixed(2)
-      })) || [];
+    const wb = XLSX.utils.book_new();
+
+    // Crear un mapa de grupos: groupId -> groupName
+    const groupMap = new Map<string, string>();
+    groups?.forEach((group) => {
+      const typedGroup = group as unknown as TProductGroup;
+      groupMap.set(typedGroup.id, typedGroup.name);
     });
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Productos");
+    // Agrupar productos por grupo
+    const productsByGroup = new Map<string, TProduct[]>();
+
+    filteredProducts.forEach((product) => {
+      const typedProduct = product as unknown as TProduct;
+      const groupId = typedProduct.group || 'sin-grupo';
+
+      if (!productsByGroup.has(groupId)) {
+        productsByGroup.set(groupId, []);
+      }
+      productsByGroup.get(groupId)!.push(typedProduct);
+    });
+
+    // Ordenar los grupos alfabéticamente por nombre
+    const sortedGroupIds = Array.from(productsByGroup.keys()).sort((a, b) => {
+      const nameA = a === 'sin-grupo' ? 'ZZZ' : (groupMap.get(a) || a);
+      const nameB = b === 'sin-grupo' ? 'ZZZ' : (groupMap.get(b) || b);
+      return nameA.localeCompare(nameB);
+    });
+
+    // Crear una hoja por cada grupo
+    sortedGroupIds.forEach((groupId) => {
+      const productsInGroup = productsByGroup.get(groupId) || [];
+      const groupName = groupId === 'sin-grupo' ? 'Sin Grupo' : (groupMap.get(groupId) || 'Grupo Desconocido');
+
+      // Nombre de hoja válido para Excel (max 31 caracteres, sin caracteres especiales)
+      const sheetName = groupName.substring(0, 31).replace(/[\\/*?:\[\]]/g, '');
+
+      const data = productsInGroup
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .flatMap((product) => {
+          return product.variants?.map((variant) => ({
+            SKU: variant.sku || '-',
+            Nombre: product.name,
+            Medida: variant.size || '-',
+            Precio: Number(variant.price).toFixed(2),
+          })) || [];
+        });
+
+      if (data.length > 0) {
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      }
+    });
+
+    // Si no hay hojas creadas, crear una vacía
+    if (wb.SheetNames.length === 0) {
+      const ws = XLSX.utils.json_to_sheet([]);
+      XLSX.utils.book_append_sheet(wb, ws, "Productos");
+    }
+
     XLSX.writeFile(wb, "productos.xlsx");
   };
 
@@ -335,6 +398,32 @@ export default function ProductosPage() {
                     </SelectItem>
                   );
                 })}
+              </SelectContent>
+            </Select>
+            <Select
+              value={selectedGroup}
+              onValueChange={setSelectedGroup}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Filtrar por grupo" />
+              </SelectTrigger>
+              <SelectContent className="max-h-48 overflow-y-auto">
+                <SelectItem value="all">Todos los grupos</SelectItem>
+                <SelectItem value="sin-grupo">Sin grupo</SelectItem>
+                {groups
+                  ?.sort((a, b) => {
+                    const nameA = (a as unknown as TProductGroup).name;
+                    const nameB = (b as unknown as TProductGroup).name;
+                    return nameA.localeCompare(nameB);
+                  })
+                  .map((group) => {
+                    const typedGroup = group as unknown as TProductGroup;
+                    return (
+                      <SelectItem key={typedGroup.id} value={typedGroup.id}>
+                        {typedGroup.name}
+                      </SelectItem>
+                    );
+                  })}
               </SelectContent>
             </Select>
             <div className="flex items-center gap-2 ml-auto">

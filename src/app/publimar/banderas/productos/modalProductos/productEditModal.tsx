@@ -21,9 +21,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import collections from "@/lib/collections";
-import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
+import { TProduct, TProductCategory, TProductGroup, TProductVariant } from "@/types/product";
 import { Trash2, Bell, ShoppingCartIcon, Upload, X, Image as ImageIcon } from "lucide-react";
 import { generateSlug } from "@/lib/utils";
 
@@ -48,6 +55,7 @@ export default function ProductEditModal({
     name: "",
     description: "",
     categories: [] as string[],
+    group: "",
     imageUrls: [] as string[],
     hasVariants: true,
     price: "",
@@ -71,6 +79,7 @@ export default function ProductEditModal({
       name: "",
       description: "",
       categories: [] as string[],
+      group: "",
       imageUrls: [] as string[],
       hasVariants: true,
       price: "",
@@ -94,6 +103,15 @@ export default function ProductEditModal({
     collections.products.CATEGORIES
   );
   const { data: categories } = useFirestoreCollectionData(categoriesCollection, {
+    idField: "id",
+  });
+
+  // Obtener grupos
+  const groupsCollection = collection(
+    firestore,
+    collections.products.GROUPS
+  );
+  const { data: groups } = useFirestoreCollectionData(groupsCollection, {
     idField: "id",
   });
 
@@ -122,6 +140,7 @@ export default function ProductEditModal({
           name: product.name || "",
           description: product.description || "",
           categories: Array.isArray(product.categories) ? product.categories : [],
+          group: product.group || "",
           imageUrls: Array.isArray(product.imageUrls) ? product.imageUrls : [],
           hasVariants: true,
           price: "",
@@ -284,6 +303,7 @@ export default function ProductEditModal({
         name: formData.name || "",
         description: formData.description || "",
         categories: formData.categories || [],
+        group: formData.group || "",
         imageUrls: formData.imageUrls,
         hasVariants: true,
         price: null,
@@ -432,6 +452,37 @@ export default function ProductEditModal({
                   onChange={handleChange}
                   rows={4}
                 />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="group">Grupo</Label>
+                  <Select
+                    value={formData.group || "sin-grupo"}
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, group: value === "sin-grupo" ? "" : value }))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar grupo" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-48 overflow-y-auto">
+                      <SelectItem value="sin-grupo">Sin grupo</SelectItem>
+                      {groups
+                        ?.sort((a, b) => {
+                          const nameA = (a as unknown as TProductGroup).name;
+                          const nameB = (b as unknown as TProductGroup).name;
+                          return nameA.localeCompare(nameB);
+                        })
+                        .map((group) => {
+                          const typedGroup = group as unknown as TProductGroup;
+                          return (
+                            <SelectItem key={typedGroup.id} value={typedGroup.id}>
+                              {typedGroup.name}
+                            </SelectItem>
+                          );
+                        })}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">
