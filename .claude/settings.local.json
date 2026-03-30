@@ -9,7 +9,9 @@
       "Bash(npm install:*)",
       "Bash(npx shadcn@latest add sheet)",
       "Bash(npx tsc:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(head:*)"
     ],
     "deny": [],
     "ask": []

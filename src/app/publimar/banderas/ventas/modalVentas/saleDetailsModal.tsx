@@ -1008,17 +1008,7 @@ export function SaleDetailsModal({
           updateData.invoiceNumber = invoiceNumber;
         }
       }
-      // Fecha de creación editada (mantiene la hora original)
-      if (editedDate && typedSale?.createdAt) {
-        const originalDate =
-          typeof typedSale.createdAt === "object" && "seconds" in typedSale.createdAt
-            ? new Date((typedSale.createdAt as any).seconds * 1000)
-            : new Date(typedSale.createdAt);
-        const [year, month, day] = editedDate.split("-").map(Number);
-        const newDate = new Date(originalDate);
-        newDate.setFullYear(year, month - 1, day);
-        updateData.createdAt = Timestamp.fromDate(newDate);
-      }
+      //Registrar cambio de fecha de creacion.
 
       // Datos del cliente
       if (cliente) {
