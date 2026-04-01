@@ -550,7 +550,10 @@ export default function OrderDetailsPage({
         discountPercentage: orderData.discountPercentage || 0,
         discountAmount: orderData.discountAmount || 0,
         manualDiscount: orderData.manualDiscount || 0,
-        paymentMethod: (orderData.paymentMethod as EPaymentMethod) || EPaymentMethod.CASH,
+        paymentMethod: (orderData.paymentMethod as EPaymentMethod)
+          || (orderData.paymentHistory?.length > 0
+            ? orderData.paymentHistory[orderData.paymentHistory.length - 1].method
+            : EPaymentMethod.CASH),
         department: ESaleDepartment.BANDERAS,
         isInvoiced: orderData.isInvoiced || false,
         invoiceNumber: orderData.invoiceNumber || "",
