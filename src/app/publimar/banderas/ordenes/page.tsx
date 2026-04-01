@@ -101,7 +101,10 @@ export default function PedidosPage() {
         discountPercentage: order.discountPercentage || 0,
         discountAmount: order.discountAmount || 0,
         manualDiscount: order.manualDiscount || 0,
-        paymentMethod: (order.paymentMethod as EPaymentMethod) || EPaymentMethod.CASH,
+        paymentMethod: (order.paymentMethod as EPaymentMethod)
+          || (order.paymentHistory?.length > 0
+            ? order.paymentHistory[order.paymentHistory.length - 1].method
+            : EPaymentMethod.CASH),
         department: ESaleDepartment.BANDERAS,
         isInvoiced: order.isInvoiced || false,
         invoiceNumber: order.invoiceNumber || "",
