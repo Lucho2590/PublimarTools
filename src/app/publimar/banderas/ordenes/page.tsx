@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
@@ -242,29 +242,43 @@ export default function PedidosPage() {
     }
   };
 
-  // Consulta a Firestore
-  const ordersCollection = collection(firestore, collections.ORDERS);
-  const ordersQuery = query(ordersCollection, orderBy("createdAt", "desc"));
+  // Memoizar collection
+  const ordersCollection = useMemo(
+    () => collection(firestore, collections.ORDERS),
+    [firestore]
+  );
+
+  // Query con filtro de estado en Firestore (en vez de traer TODOS y filtrar en JS)
+  const ordersQuery = useMemo(() => {
+    const constraints: any[] = [];
+
+    if (statusFilter !== "all") {
+      constraints.push(where("status", "==", statusFilter));
+    }
+
+    constraints.push(orderBy("createdAt", "desc"));
+
+    return query(ordersCollection, ...constraints);
+  }, [ordersCollection, statusFilter]);
 
   const { status, data: orders } = useFirestoreCollectionData(ordersQuery, {
     idField: "id",
   });
 
-  
-  // Filtrar pedidos según la búsqueda y estado
-  const filteredOrders = orders?.filter((order) => {
-    const matchesSearch =
-      order.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.client?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.client?.reference?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.reference?.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus =
-      statusFilter === "all" || order.status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
+  // Filtrar solo por búsqueda de texto (estado ya filtrado en Firestore)
+  const filteredOrders = useMemo(() => {
+    if (!searchTerm) return orders;
+    const search = searchTerm.toLowerCase();
+    return orders?.filter((order) => {
+      return (
+        order.number?.toLowerCase().includes(search) ||
+        order.clientName?.toLowerCase().includes(search) ||
+        order.client?.name?.toLowerCase().includes(search) ||
+        order.client?.reference?.toLowerCase().includes(search) ||
+        order.reference?.toLowerCase().includes(search)
+      );
+    });
+  }, [orders, searchTerm]);
 
   // Calcular índices para la paginación
   const indexOfLastItem = currentPage * itemsPerPage;

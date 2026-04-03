@@ -1,8 +1,8 @@
 'use client';
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy } from "firebase/firestore";
+import { collection, query, orderBy, where } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,15 @@ import { formatearPrecio, redondearADecena } from "@/lib/utils";
 import { SaleDetailsModal } from "./modalVentas/saleDetailsModal";
 import { Eye, Trophy } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TProduct } from "@/types/product";
 
@@ -59,90 +68,116 @@ export default function VentasPage() {
       .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
   };
 
-  // Consulta a Firestore
-  const salesCollection = collection(firestore, collections.SALES);
-  const salesQuery = query(salesCollection, orderBy("createdAt", "desc"));
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+
+  // Memoizar collection para evitar recrearla en cada render
+  const salesCollection = useMemo(
+    () => collection(firestore, collections.SALES),
+    [firestore]
+  );
+
+  // Query con filtro de fechas en Firestore (en vez de traer TODOS y filtrar en JS)
+  const salesQuery = useMemo(() => {
+    const constraints: any[] = [];
+
+    if (dateRange?.from) {
+      const startOfDay = new Date(dateRange.from);
+      startOfDay.setHours(0, 0, 0, 0);
+      constraints.push(where("createdAt", ">=", startOfDay));
+    }
+
+    if (dateRange?.to) {
+      const endOfDay = new Date(dateRange.to);
+      endOfDay.setHours(23, 59, 59, 999);
+      constraints.push(where("createdAt", "<=", endOfDay));
+    }
+
+    constraints.push(orderBy("createdAt", "desc"));
+
+    return query(salesCollection, ...constraints);
+  }, [salesCollection, dateRange]);
 
   const { status, data: sales } = useFirestoreCollectionData(salesQuery, {
     idField: "id",
   });
-//  console.log(sales)
 
+  // Filtrar ventas según los filtros restantes (fecha ya filtrada en Firestore)
+  const filteredSales = useMemo(() => {
+    return sales?.filter((sale) => {
+      const typedSale = sale as unknown as TSale;
+      const matchesPaymentMethod =
+        selectedPaymentMethod === "all" ||
+        typedSale.paymentMethod === selectedPaymentMethod;
+      const matchesInvoiced =
+        selectedInvoiced === "all" ||
+        (selectedInvoiced === "yes" && typedSale.isInvoiced) ||
+        (selectedInvoiced === "no" && !typedSale.isInvoiced);
 
-  // Obtener productos para el Top 5
-  const productsCollection = collection(firestore, collections.PRODUCTS);
-  const { data: products } = useFirestoreCollectionData(productsCollection, {
-    idField: "id",
-  });
+      // Filtro de banco solo si es transferencia
+      const matchesBank =
+        selectedPaymentMethod !== EPaymentMethod.TRANSFER
+        || selectedBank === "all"
+        || (typedSale.bank && typedSale.bank === selectedBank);
 
-  // Filtrar ventas según los filtros seleccionados
-  const filteredSales = sales?.filter((sale) => {
-    const typedSale = sale as unknown as TSale;
-    const matchesPaymentMethod =
-      selectedPaymentMethod === "all" ||
-      typedSale.paymentMethod === selectedPaymentMethod;
-    const matchesInvoiced =
-      selectedInvoiced === "all" ||
-      (selectedInvoiced === "yes" && typedSale.isInvoiced) ||
-      (selectedInvoiced === "no" && !typedSale.isInvoiced);
+      // Filtrar por producto (case-insensitive y sin acentos)
+      let matchesProduct = true;
+      if (searchProductTerm.trim() !== "") {
+        const searchNormalized = normalizeText(searchProductTerm);
+        matchesProduct = typedSale.items?.some((item) =>
+          normalizeText(item.productName || '').includes(searchNormalized)
+        ) || false;
+      }
 
-    // Filtro de banco solo si es transferencia
-    const matchesBank =
-      selectedPaymentMethod !== EPaymentMethod.TRANSFER
-      || selectedBank === "all"
-      || (typedSale.bank && typedSale.bank === selectedBank);
+      // Filtrar por devoluciones y cambios
+      const hasReturns = typedSale.returns && typedSale.returns.length > 0;
+      const hasOnlyReturns = hasReturns && typedSale.returns?.some(r => !r.isExchange);
+      const hasExchanges = hasReturns && typedSale.returns?.some(r => r.isExchange);
 
-    // Filtrar por fecha
-    let saleDate: Date | null = null;
-    if (typedSale.createdAt instanceof Date) {
-      saleDate = typedSale.createdAt;
-    } else if (typedSale.createdAt && typeof typedSale.createdAt === 'object' && 'seconds' in typedSale.createdAt) {
-      saleDate = new Date((typedSale.createdAt as { seconds: number }).seconds * 1000);
+      const matchesReturns =
+        selectedReturns === "all" ||
+        (selectedReturns === "with" && hasReturns) ||
+        (selectedReturns === "returns-only" && hasOnlyReturns && !hasExchanges) ||
+        (selectedReturns === "exchanges-only" && hasExchanges) ||
+        (selectedReturns === "without" && !hasReturns);
+
+      return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesProduct && matchesReturns;
+    });
+  }, [sales, selectedPaymentMethod, selectedInvoiced, selectedBank, searchProductTerm, selectedReturns]);
+
+  // Calcular total de ventas filtradas (memoizado)
+  const totalVentas = useMemo(() => {
+    return filteredSales?.reduce((sum, sale) => {
+      const typedSale = sale as unknown as TSale;
+      return sum + (typedSale.finalTotal ?? typedSale.total);
+    }, 0) || 0;
+  }, [filteredSales]);
+
+  // Paginación
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredSales?.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil((filteredSales?.length || 0) / itemsPerPage);
+
+  const getPageNumbers = () => {
+    const pageNumbers = [];
+    const maxPagesToShow = 5;
+    if (totalPages <= maxPagesToShow) {
+      for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
+    } else if (currentPage <= 3) {
+      for (let i = 1; i <= 4; i++) pageNumbers.push(i);
+      pageNumbers.push(-1, totalPages);
+    } else if (currentPage >= totalPages - 2) {
+      pageNumbers.push(1, -1);
+      for (let i = totalPages - 3; i <= totalPages; i++) pageNumbers.push(i);
+    } else {
+      pageNumbers.push(1, -1);
+      for (let i = currentPage - 1; i <= currentPage + 1; i++) pageNumbers.push(i);
+      pageNumbers.push(-1, totalPages);
     }
-    if (!saleDate) return false;
-
-    // Filtrar por rango de fechas
-    let matchesDateRange = true;
-    if (dateRange?.from && dateRange?.to) {
-      const startOfDay = new Date(dateRange.from);
-      startOfDay.setHours(0, 0, 0, 0);
-
-      const endOfDay = new Date(dateRange.to);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      matchesDateRange = saleDate >= startOfDay && saleDate <= endOfDay;
-    }
-
-    // Filtrar por producto (case-insensitive y sin acentos)
-    let matchesProduct = true;
-    if (searchProductTerm.trim() !== "") {
-      const searchNormalized = normalizeText(searchProductTerm);
-      matchesProduct = typedSale.items?.some((item) =>
-        normalizeText(item.productName || '').includes(searchNormalized)
-      ) || false;
-    }
-
-    // Filtrar por devoluciones y cambios
-    const hasReturns = typedSale.returns && typedSale.returns.length > 0;
-    const hasOnlyReturns = hasReturns && typedSale.returns?.some(r => !r.isExchange);
-    const hasExchanges = hasReturns && typedSale.returns?.some(r => r.isExchange);
-
-    const matchesReturns =
-      selectedReturns === "all" ||
-      (selectedReturns === "with" && hasReturns) ||
-      (selectedReturns === "returns-only" && hasOnlyReturns && !hasExchanges) ||
-      (selectedReturns === "exchanges-only" && hasExchanges) ||
-      (selectedReturns === "without" && !hasReturns);
-
-    return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesDateRange && matchesProduct && matchesReturns;
-  });
-
-  // Calcular total de ventas filtradas
-  const totalVentas = filteredSales?.reduce((sum, sale) => {
-    const typedSale = sale as unknown as TSale;
-    // Usar finalTotal si existe (con devoluciones), sino usar total
-    return sum + (typedSale.finalTotal ?? typedSale.total);
-  }, 0) || 0;
+    return pageNumbers;
+  };
 
   // Limpiar todos los filtros y volver al día actual
   const limpiarFiltros = () => {
@@ -153,6 +188,7 @@ export default function VentasPage() {
     setDateRange({ from: hoy, to: hoy });
     setSelectedBank("all");
     setSearchProductTerm("");
+    setCurrentPage(1);
   };
 
   // Formatear fecha
@@ -207,7 +243,7 @@ export default function VentasPage() {
 
   // Función para obtener el Top 5 de productos más vendidos según período
   const getTopProducts = (period: "month" | "year") => {
-    if (!sales || !products) return [];
+    if (!sales) return [];
 
     const now = new Date();
     let startDate: Date;
@@ -329,6 +365,7 @@ export default function VentasPage() {
                 onValueChange={(value) => {
                   setSelectedPaymentMethod(value);
                   if (value !== "transfer") setSelectedBank("all");
+                  setCurrentPage(1);
                 }}
               >
                 <SelectTrigger className="w-[180px]">
@@ -460,6 +497,31 @@ export default function VentasPage() {
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto p-6">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Mostrar</span>
+                  <Select
+                    value={itemsPerPage.toString()}
+                    onValueChange={(value) => {
+                      setItemsPerPage(Number(value));
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-[100px]">
+                      <SelectValue placeholder="25" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="25">25</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-gray-500">por página</span>
+                </div>
+                <div className="text-sm text-gray-500">
+                  Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredSales?.length || 0)} de {filteredSales?.length || 0} ventas
+                </div>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -472,8 +534,8 @@ export default function VentasPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredSales && filteredSales.length > 0 ? (
-                    filteredSales.map((sale) => {
+                  {currentItems && currentItems.length > 0 ? (
+                    currentItems.map((sale) => {
                       const typedSale = sale as unknown as TSale;
                       return (
                         <TableRow key={typedSale.id}>
@@ -535,6 +597,42 @@ export default function VentasPage() {
                   )}
                 </TableBody>
               </Table>
+
+              {totalPages > 1 && (
+                <div className="mt-4">
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                      {getPageNumbers().map((pageNumber, index) => (
+                        <PaginationItem key={index}>
+                          {pageNumber === -1 ? (
+                            <PaginationEllipsis />
+                          ) : (
+                            <PaginationLink
+                              onClick={() => setCurrentPage(pageNumber)}
+                              isActive={currentPage === pageNumber}
+                              className={currentPage === pageNumber ? "bg-blue-900 text-white" : ""}
+                            >
+                              {pageNumber}
+                            </PaginationLink>
+                          )}
+                        </PaginationItem>
+                      ))}
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
