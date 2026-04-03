@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import {
@@ -303,81 +303,66 @@ export default function NuevaVentaPage() {
     }
   );
 
-  // Filtrar productos con filtro súper combinado
-  const filteredProducts = products?.reduce((unique: TProduct[], product) => {
-    const typedProduct = product as unknown as TProduct;
-    const exists = unique.find((p) => p.name === typedProduct.name);
-    if (exists) return unique;
+  // Filtrar productos con filtro súper combinado (memoizado)
+  const sortedProducts = useMemo(() => {
+    const filtered = products?.reduce((unique: TProduct[], product) => {
+      const typedProduct = product as unknown as TProduct;
+      const exists = unique.find((p) => p.name === typedProduct.name);
+      if (exists) return unique;
 
-    // Filtro de búsqueda combinada
-    if (searchTerm.trim()) {
-      // Separar términos por comas o espacios
-      const terminos = searchTerm
-        .toLowerCase()
-        .split(/[,\s]+/)
-        .filter((term) => term.trim().length > 0);
+      // Filtro de búsqueda combinada
+      if (searchTerm.trim()) {
+        const terminos = searchTerm
+          .toLowerCase()
+          .split(/[,\s]+/)
+          .filter((term) => term.trim().length > 0);
 
-      // Crear texto combinado de TODOS los campos
-      const textoCompleto = [
-        // Datos del producto
-        typedProduct.name,
-        typedProduct.sku,
-
-        // Datos de variantes
-        ...(typedProduct.variants
-          ?.map((v) => [
-            v.size,
-            v.sku,
-            v.price?.toString(),
-            v.stock?.toString(),
-          ])
-          .flat() || []),
-
-        // Nombres de categorías
-        typedProduct.categories
-          ?.map((id) => {
-            const category = categories?.find(
-              (c) => (c as unknown as TProductCategory).id === id
-            );
-            return category
-              ? (category as unknown as TProductCategory).name
-              : "";
-          })
+        const textoCompleto = [
+          typedProduct.name,
+          typedProduct.sku,
+          ...(typedProduct.variants
+            ?.map((v) => [v.size, v.sku, v.price?.toString(), v.stock?.toString()])
+            .flat() || []),
+          typedProduct.categories
+            ?.map((id) => {
+              const category = categories?.find(
+                (c) => (c as unknown as TProductCategory).id === id
+              );
+              return category ? (category as unknown as TProductCategory).name : "";
+            })
+            .filter(Boolean)
+            .join(", ") || "",
+        ]
           .filter(Boolean)
-          .join(", ") || "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+          .join(" ")
+          .toLowerCase();
 
-      // Verificar que TODOS los términos estén presentes
-      const matchesSearch = terminos.every((termino) =>
-        textoCompleto.includes(termino)
-      );
-      if (!matchesSearch) return unique;
-    }
+        const matchesSearch = terminos.every((termino) =>
+          textoCompleto.includes(termino)
+        );
+        if (!matchesSearch) return unique;
+      }
 
-    // Filtro por categoría
-    const matchesCategory =
-      selectedCategory === "" ||
-      selectedCategory === "all" ||
-      (typedProduct.categories &&
-        typedProduct.categories.includes(selectedCategory));
+      const matchesCategory =
+        selectedCategory === "" ||
+        selectedCategory === "all" ||
+        (typedProduct.categories &&
+          typedProduct.categories.includes(selectedCategory));
 
+      if (matchesCategory) {
+        unique.push(typedProduct);
+      }
 
-    if (matchesCategory) {
-      unique.push(typedProduct);
-    }
+      return unique;
+    }, []);
 
-    return unique;
-  }, []);
-
-  // Ordenar productos por popularidad (más vendidos primero)
-  const sortedProducts = filteredProducts?.sort((a, b) => {
-    const salesA = (a as any).totalSales || 0;
-    const salesB = (b as any).totalSales || 0;
-    return salesB - salesA; // Descendente (más vendidos primero)
-  });
+    // Ordenar por popularidad (más vendidos primero)
+    return filtered?.sort((a, b) => {
+      const salesA = (a as any).totalSales || 0;
+      const salesB = (b as any).totalSales || 0;
+      return salesB - salesA;
+    });
+  }, [products, searchTerm, selectedCategory, categories]);
 
   // Calcular productos paginados
   const startIndex = (currentPage - 1) * itemsPerPage;

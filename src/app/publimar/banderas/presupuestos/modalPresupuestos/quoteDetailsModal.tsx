@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   useFirestore,
   useFirestoreDocData,
@@ -247,26 +247,30 @@ export default function QuoteDetailsModal({
     );
   }
 
-  // Filter clients based on search
-  const filteredClients = clients?.filter((client: DocumentData) => {
-    if (!client) return false;
-    return (
-      client.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.phone?.includes(searchTerm)
-    );
-  });
+  // Filter clients based on search (memoizado)
+  const filteredClients = useMemo(() => {
+    return clients?.filter((client: DocumentData) => {
+      if (!client) return false;
+      return (
+        client.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.phone?.includes(searchTerm)
+      );
+    });
+  }, [clients, searchTerm]);
 
-  // Filter products based on search
-  const filteredProducts = products?.filter((product: DocumentData) => {
-    if (!product) return false;
-    return (
-      product.name?.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-      product.description
-        ?.toLowerCase()
-        .includes(productSearchTerm.toLowerCase())
-    );
-  });
+  // Filter products based on search (memoizado)
+  const filteredProducts = useMemo(() => {
+    return products?.filter((product: DocumentData) => {
+      if (!product) return false;
+      return (
+        product.name?.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
+        product.description
+          ?.toLowerCase()
+          .includes(productSearchTerm.toLowerCase())
+      );
+    });
+  }, [products, productSearchTerm]);
 
   const handleChange = (
     e: React.ChangeEvent<
