@@ -195,8 +195,13 @@ export function SaleDetailsModal({
 
   useEffect(() => {
     if (open) {
-      loadProducts();
-      loadCategories();
+      // Solo cargar productos/categorías si no se cargaron antes (cache en memoria)
+      if (Object.keys(products).length === 0) {
+        loadProducts();
+      }
+      if (Object.keys(categories).length === 0) {
+        loadCategories();
+      }
 
       // Validar que los datos corresponden al saleId actual (evita race condition)
       if (!typedSale?.id || typedSale.id !== saleId) {

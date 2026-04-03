@@ -139,12 +139,12 @@ export default function TiendaDashboardPage() {
       setRecentAbandoned(abandonedData.slice(0, 5));
 
       // ==========================================
-      // CONTADORES DE NO VISTOS (para badges)
+      // CONTADORES DE NO VISTOS (usando getCountFromServer en vez de traer TODOS los docs)
       // ==========================================
-      const allOrdersSnap = await getDocs(collection(firestore, "ecommerceOrders"));
-      const allOrders = allOrdersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder));
-      const unviewedOrders = allOrders.filter(order => !order.viewed);
-      setUnviewedOrdersCount(unviewedOrders.length);
+      const unviewedOrdersSnap = await getCountFromServer(
+        query(collection(firestore, "ecommerceOrders"), where("viewed", "==", false))
+      );
+      setUnviewedOrdersCount(unviewedOrdersSnap.data().count);
 
       const unviewedCarts = abandonedData.filter(cart => !cart.viewed);
       setUnviewedCartsCount(unviewedCarts.length);
