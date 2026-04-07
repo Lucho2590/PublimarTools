@@ -10,10 +10,10 @@ import {
   getDocs,
   where,
   Timestamp,
-  deleteDoc,
   doc,
   updateDoc,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,18 +68,49 @@ export default function PedidosPage() {
 
   useEffect(() => {
     loadOrders();
-  }, [firestore]);
+  }, [firestore, dateFilter, statusFilter]);
 
   useEffect(() => {
     filterOrders();
-  }, [orders, searchTerm, statusFilter, dateFilter]);
+  }, [orders, searchTerm]);
 
   const loadOrders = async () => {
     try {
       setLoading(true);
+
+      // Construir query con filtros de Firestore (en vez de traer TODO)
+      const constraints: any[] = [];
+
+      // Filtro de fecha en Firestore
+      if (dateFilter !== "all") {
+        const now = new Date();
+        let startDate: Date;
+        switch (dateFilter) {
+          case "today":
+            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            break;
+          case "week":
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case "month":
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            break;
+          default:
+            startDate = new Date(0);
+        }
+        constraints.push(where("createdAt", ">=", Timestamp.fromDate(startDate)));
+      }
+
+      // Filtro de estado en Firestore
+      if (statusFilter !== "all") {
+        constraints.push(where("status", "==", statusFilter));
+      }
+
+      constraints.push(orderBy("createdAt", "desc"));
+
       const ordersQuery = query(
         collection(firestore, "ecommerceOrders"),
-        orderBy("createdAt", "desc")
+        ...constraints
       );
       const ordersSnap = await getDocs(ordersQuery);
       const ordersData = ordersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder));
@@ -105,49 +136,18 @@ export default function PedidosPage() {
     }
   };
 
+  // Solo búsqueda de texto client-side (estado y fecha ya filtrados en Firestore)
   const filterOrders = () => {
-    let filtered = [...orders];
-
-    // Filtro por búsqueda (número de orden o productos)
-    if (searchTerm.trim()) {
-      const search = searchTerm.toLowerCase();
-      filtered = filtered.filter(order =>
-        order.orderNumber.toLowerCase().includes(search) ||
-        order.items.some(item => item.productName.toLowerCase().includes(search))
-      );
+    if (!searchTerm.trim()) {
+      setFilteredOrders(orders);
+      return;
     }
 
-    // Filtro por estado
-    if (statusFilter !== "all") {
-      filtered = filtered.filter(order => order.status === statusFilter);
-    }
-
-    // Filtro por fecha
-    if (dateFilter !== "all") {
-      const now = new Date();
-      let startDate: Date;
-
-      switch (dateFilter) {
-        case "today":
-          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          break;
-        case "week":
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          break;
-        case "month":
-          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          break;
-        default:
-          startDate = new Date(0);
-      }
-
-      filtered = filtered.filter(order => {
-        if (!order.createdAt) return false;
-        const orderDate = timestampToDate(order.createdAt);
-        return orderDate && orderDate >= startDate;
-      });
-    }
-
+    const search = searchTerm.toLowerCase();
+    const filtered = orders.filter(order =>
+      order.orderNumber.toLowerCase().includes(search) ||
+      order.items.some(item => item.productName.toLowerCase().includes(search))
+    );
     setFilteredOrders(filtered);
   };
 
@@ -181,7 +181,7 @@ export default function PedidosPage() {
     }
 
     try {
-      await deleteDoc(doc(firestore, "ecommerceOrders", order.id));
+      await softDelete(firestore, "ecommerceOrders", order.id);
       console.log("✅ Pedido eliminado:", order.orderNumber);
 
       // Recargar pedidos

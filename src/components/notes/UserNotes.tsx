@@ -8,11 +8,11 @@ import {
   where,
   addDoc,
   updateDoc,
-  deleteDoc,
   doc,
   Timestamp,
   orderBy,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import {
   Dialog,
   DialogContent,
@@ -99,7 +99,7 @@ export default function UserNotes({ userId, userName, section }: UserNotesProps)
 
   const deleteNote = async (noteId: string) => {
     try {
-      await deleteDoc(doc(firestore, collections.NOTES, noteId));
+      await softDelete(firestore, collections.NOTES, noteId);
       toast.success("Nota eliminada");
     } catch (error) {
       console.error("Error deleting note:", error);

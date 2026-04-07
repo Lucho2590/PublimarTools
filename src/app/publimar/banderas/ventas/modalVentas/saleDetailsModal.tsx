@@ -5,11 +5,11 @@ import {
   updateDoc,
   collection,
   getDocs,
-  deleteDoc,
   serverTimestamp,
   Timestamp,
   getDoc,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import {
   Dialog,
   DialogContent,
@@ -195,8 +195,13 @@ export function SaleDetailsModal({
 
   useEffect(() => {
     if (open) {
-      loadProducts();
-      loadCategories();
+      // Solo cargar productos/categorías si no se cargaron antes (cache en memoria)
+      if (Object.keys(products).length === 0) {
+        loadProducts();
+      }
+      if (Object.keys(categories).length === 0) {
+        loadCategories();
+      }
 
       // Validar que los datos corresponden al saleId actual (evita race condition)
       if (!typedSale?.id || typedSale.id !== saleId) {
@@ -1060,7 +1065,7 @@ export function SaleDetailsModal({
 
     setIsLoading(true);
     try {
-      await deleteDoc(saleRef);
+      await softDelete(firestore, collections.SALES, saleId);
       toast.success("Venta eliminada correctamente");
       onSuccess();
       onOpenChange(false);

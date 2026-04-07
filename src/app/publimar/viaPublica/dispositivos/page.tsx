@@ -6,11 +6,11 @@ import { useFirestore, useFirestoreCollectionData } from 'reactfire';
 import {
   collection,
   addDoc,
-  deleteDoc,
   doc,
   updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
+import { softDelete } from '@/lib/softDelete';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -101,8 +101,7 @@ export default function DispositivosPage() {
     }
 
     try {
-      const deviceRef = doc(firestore, collections.DEVICES, deviceId);
-      await deleteDoc(deviceRef);
+      await softDelete(firestore, collections.DEVICES, deviceId);
       toast.success('Tipo de dispositivo eliminado con exito');
     } catch (error) {
       console.error('Error al eliminar el dispositivo:', error);

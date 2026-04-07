@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,7 +37,7 @@ import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductGroup } from "@/types/product";
 import { Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import * as XLSX from 'xlsx';
+// XLSX se importa dinámicamente en handleDownloadExcel para no cargar ~700KB al inicio
 import { formatearPrecio, redondearADecena } from "@/lib/utils";
 import ProductEditModal from "./modalProductos/productEditModal";
 
@@ -88,22 +89,24 @@ export default function ProductosPage() {
     idField: "id",
   });
 
-  // Filtrar productos según la búsqueda, categoría y grupo
-  const filteredProducts = products?.filter((product) => {
-    const typedProduct = product as unknown as TProduct;
-    const matchesSearch = typedProduct.name
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesCategory =
-      selectedCategory === "all" ||
-      (typedProduct.categories &&
-        typedProduct.categories.includes(selectedCategory));
-    const matchesGroup =
-      selectedGroup === "all" ||
-      typedProduct.group === selectedGroup ||
-      (selectedGroup === "sin-grupo" && !typedProduct.group);
-    return matchesSearch && matchesCategory && matchesGroup;
-  });
+  // Filtrar productos según la búsqueda, categoría y grupo (memoizado)
+  const filteredProducts = useMemo(() => {
+    return products?.filter((product) => {
+      const typedProduct = product as unknown as TProduct;
+      const matchesSearch = typedProduct.name
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesCategory =
+        selectedCategory === "all" ||
+        (typedProduct.categories &&
+          typedProduct.categories.includes(selectedCategory));
+      const matchesGroup =
+        selectedGroup === "all" ||
+        typedProduct.group === selectedGroup ||
+        (selectedGroup === "sin-grupo" && !typedProduct.group);
+      return matchesSearch && matchesCategory && matchesGroup;
+    });
+  }, [products, searchTerm, selectedCategory, selectedGroup]);
 
   // Calcular índices para la paginación
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -231,7 +234,7 @@ export default function ProductosPage() {
     if (!confirmDelete) return;
 
     try {
-      await deleteDoc(doc(firestore, collections.PRODUCTS, productId));
+      await softDelete(firestore, collections.PRODUCTS, productId);
       toast.success("Producto eliminado correctamente");
       // Limpiar selección si el producto eliminado estaba seleccionado
       setSelectedProducts(prev => prev.filter(id => id !== productId));
@@ -286,9 +289,10 @@ export default function ProductosPage() {
     }
   };
 
-  const handleDownloadExcel = () => {
+  const handleDownloadExcel = async () => {
     if (!filteredProducts) return;
 
+    const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
 
     // Crear un mapa de grupos: groupId -> groupName

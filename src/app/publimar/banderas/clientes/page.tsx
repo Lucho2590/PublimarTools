@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
@@ -78,20 +78,21 @@ export default function ClientesPage() {
       .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
   };
 
-  // Filtrar clientes según la búsqueda y status
-  const filteredClients = clients?.filter((client) => {
-    const searchNormalized = normalizeText(searchTerm);
-    const matchesSearch =
-      normalizeText(client.name || '').includes(searchNormalized) ||
-      normalizeText(client.email || '').includes(searchNormalized) ||
-      client.phone?.includes(searchTerm) ||
-      client.cuit?.includes(searchTerm);
+  // Filtrar clientes según la búsqueda y status (memoizado)
+  const filteredClients = useMemo(() => {
+    return clients?.filter((client) => {
+      const searchNormalized = normalizeText(searchTerm);
+      const matchesSearch =
+        normalizeText(client.name || '').includes(searchNormalized) ||
+        normalizeText(client.email || '').includes(searchNormalized) ||
+        client.phone?.includes(searchTerm) ||
+        client.cuit?.includes(searchTerm);
 
-    // Filtrar por status en el cliente
-    const isActive = client.status === EClientStatus.ACTIVE;
+      const isActive = client.status === EClientStatus.ACTIVE;
 
-    return matchesSearch && isActive;
-  });
+      return matchesSearch && isActive;
+    });
+  }, [clients, searchTerm]);
 
   // Calcular índices para la paginación
   const indexOfLastItem = currentPage * itemsPerPage;

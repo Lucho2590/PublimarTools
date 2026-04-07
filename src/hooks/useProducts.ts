@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore'
 import { TProduct } from '@/types/product'
 import collections from '@/lib/collections'
+import { softDelete } from '@/lib/softDelete'
 
 const COLLECTION_NAME = collections.PRODUCTS
 
@@ -58,8 +59,7 @@ export function useProducts() {
 
   const deleteProduct = async (id: string) => {
     try {
-      const docRef = doc(firestore, COLLECTION_NAME, id)
-      await deleteDoc(docRef)
+      await softDelete(firestore, COLLECTION_NAME, id)
     } catch (error) {
       console.error('Error al eliminar producto:', error)
       throw new Error('Error al eliminar producto')
@@ -120,7 +120,7 @@ export function useProducts() {
   }
 
   return {
-    products: (products as TProduct[]) || [],
+    products: ((products as TProduct[]) || []).filter(p => !(p as any).deleted),
     loading: status === 'loading',
     error: status === 'error',
     createProduct,

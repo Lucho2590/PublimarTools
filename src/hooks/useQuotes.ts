@@ -20,6 +20,7 @@ import {
 import { useCallback, useMemo } from 'react'
 import { EQuoteStatus, TQuote, TQuoteItem } from '@/types/quote'
 import collections from '@/lib/collections'
+import { softDelete } from '@/lib/softDelete'
 
 const COLLECTION_NAME = collections.QUOTES
 
@@ -99,8 +100,7 @@ export function useQuotes(options?: UseQuotesOptions) {
 
   const deleteQuote = useCallback(async (id: string) => {
     try {
-      const docRef = doc(firestore, COLLECTION_NAME, id)
-      await deleteDoc(docRef)
+      await softDelete(firestore, COLLECTION_NAME, id)
       return true
     } catch (error) {
       console.error('Error al eliminar presupuesto:', error)
@@ -161,7 +161,7 @@ export function useQuotes(options?: UseQuotesOptions) {
   }, [firestore])
 
   return {
-    quotes: (quotes as TQuote[]) || [],
+    quotes: ((quotes as TQuote[]) || []).filter(q => !(q as any).deleted),
     loading: status === 'loading',
     error: status === 'error',
     createQuote,

@@ -20,6 +20,7 @@ import {
   import { useCallback, useMemo } from 'react'
   import { EOrderStatus, TOrder, TOrderItem } from '@/types/order'
   import collections from '@/lib/collections'
+  import { softDelete } from '@/lib/softDelete'
   
   const COLLECTION_NAME = collections.ORDERS
 
@@ -44,15 +45,15 @@ import {
     // Memoizar la query con paginación opcional
     const ordenesQuery = useMemo(() => {
       const baseQuery = query(
-        ordenesCollection, 
+        ordenesCollection,
         orderBy(orderByField, orderDirection)
       )
-      
+
       // Si se especifica pageSize, limitar los resultados
       if (pageSize) {
         return query(baseQuery, limit(pageSize))
       }
-      
+
       return baseQuery
     }, [ordenesCollection, orderByField, orderDirection, pageSize])
     
@@ -111,8 +112,7 @@ import {
   
     const deleteOrder = useCallback(async (id: string) => {
       try {
-        const docRef = doc(firestore, COLLECTION_NAME, id)
-        await deleteDoc(docRef)
+        await softDelete(firestore, COLLECTION_NAME, id)
         return true
       } catch (error) {
         console.error('Error al eliminar orden de trabajo:', error)
@@ -226,7 +226,7 @@ import {
     }, [firestore])
   
     return {
-      ordenes: (ordenes as TOrder[]) || [],
+      ordenes: ((ordenes as TOrder[]) || []).filter(o => !(o as any).deleted),
       loading: status === 'loading',
       error: status === 'error',
       createOrder,

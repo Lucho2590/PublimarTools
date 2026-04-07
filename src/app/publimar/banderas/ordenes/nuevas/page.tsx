@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -282,14 +282,16 @@ export default function NuevasOrdenesPage() {
       .replace(/[\u0300-\u036f]/g, ""); // Remover acentos
   };
 
-  // Filtrar productos (case-insensitive y sin acentos)
-  const filteredProducts = products?.filter((product: any) => {
-    const searchNormalized = normalizeText(productSearchTerm);
-    return (
-      normalizeText(product.name || "").includes(searchNormalized) ||
-      normalizeText(product.description || "").includes(searchNormalized)
-    );
-  });
+  // Filtrar productos (case-insensitive y sin acentos, memoizado)
+  const filteredProducts = useMemo(() => {
+    return products?.filter((product: any) => {
+      const searchNormalized = normalizeText(productSearchTerm);
+      return (
+        normalizeText(product.name || "").includes(searchNormalized) ||
+        normalizeText(product.description || "").includes(searchNormalized)
+      );
+    });
+  }, [products, productSearchTerm]);
 
   // Calcular totales
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);

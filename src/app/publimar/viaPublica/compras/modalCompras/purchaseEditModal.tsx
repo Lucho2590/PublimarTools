@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useFirestore, useFirestoreDocData, useFirestoreCollectionData } from 'reactfire';
-import { doc, updateDoc, deleteDoc, collection } from 'firebase/firestore';
+import { doc, updateDoc, collection } from 'firebase/firestore';
+import { softDelete } from '@/lib/softDelete';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
@@ -168,8 +169,7 @@ export default function PurchaseEditModal({
 
     setDeleting(true);
     try {
-      const purchaseRef = doc(firestore, 'purchases', purchaseId);
-      await deleteDoc(purchaseRef);
+      await softDelete(firestore, 'purchases', purchaseId);
 
       toast.success('Compra eliminada correctamente');
       onPurchaseUpdated?.();
