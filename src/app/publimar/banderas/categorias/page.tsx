@@ -6,11 +6,11 @@ import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import {
   collection,
   addDoc,
-  deleteDoc,
   doc,
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -103,12 +103,7 @@ export default function CategoriasPage() {
     }
 
     try {
-      const categoryRef = doc(
-        firestore,
-        collections.products.CATEGORIES,
-        categoryId
-      );
-      await deleteDoc(categoryRef);
+      await softDelete(firestore, collections.products.CATEGORIES, categoryId);
       toast.success("Categoría eliminada con éxito");
     } catch (error) {
       console.error("Error al eliminar la categoría:", error);

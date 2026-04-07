@@ -5,11 +5,11 @@ import {
   updateDoc,
   collection,
   getDocs,
-  deleteDoc,
   serverTimestamp,
   Timestamp,
   getDoc,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import {
   Dialog,
   DialogContent,
@@ -1065,7 +1065,7 @@ export function SaleDetailsModal({
 
     setIsLoading(true);
     try {
-      await deleteDoc(saleRef);
+      await softDelete(firestore, collections.SALES, saleId);
       toast.success("Venta eliminada correctamente");
       onSuccess();
       onOpenChange(false);

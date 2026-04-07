@@ -19,6 +19,7 @@ import {
 import { useCallback, useMemo } from 'react'
 import { TClient, EClientSection } from '@/types/client'
 import collections from '@/lib/collections'
+import { softDelete } from '@/lib/softDelete'
 
 const COLLECTION_NAME = collections.CLIENTS
 
@@ -96,8 +97,7 @@ export function useClients(options?: UseClientsOptions) {
 
   const deleteClient = useCallback(async (id: string) => {
     try {
-      const docRef = doc(firestore, COLLECTION_NAME, id)
-      await deleteDoc(docRef)
+      await softDelete(firestore, COLLECTION_NAME, id)
     } catch (error) {
       console.error('Error al eliminar cliente:', error)
       throw new Error(`Error al eliminar cliente: ${error instanceof Error ? error.message : 'Error desconocido'}`)
@@ -105,7 +105,7 @@ export function useClients(options?: UseClientsOptions) {
   }, [firestore])
 
   return {
-    clients: (clients as TClient[]) || [],
+    clients: ((clients as TClient[]) || []).filter(c => !(c as any).deleted),
     loading: status === 'loading',
     error: status === 'error',
     createClient,

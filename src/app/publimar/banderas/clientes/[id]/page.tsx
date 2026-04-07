@@ -14,8 +14,8 @@ import {
   query,
   where,
   orderBy,
-  deleteDoc,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -141,7 +141,7 @@ export default function ClienteDetallePage({
   const handleDeleteClient = async () => {
     setIsDeleting(true);
     try {
-      await deleteDoc(doc(firestore, collections.CLIENTS, clientId));
+      await softDelete(firestore, collections.CLIENTS, clientId);
       toast.success("Cliente eliminado correctamente");
       router.push("/publimar/banderas/clientes");
     } catch (error) {

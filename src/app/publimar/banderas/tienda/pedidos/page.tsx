@@ -10,10 +10,10 @@ import {
   getDocs,
   where,
   Timestamp,
-  deleteDoc,
   doc,
   updateDoc,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -181,7 +181,7 @@ export default function PedidosPage() {
     }
 
     try {
-      await deleteDoc(doc(firestore, "ecommerceOrders", order.id));
+      await softDelete(firestore, "ecommerceOrders", order.id);
       console.log("✅ Pedido eliminado:", order.orderNumber);
 
       // Recargar pedidos

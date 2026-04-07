@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useFirestore, useFirestoreDocData } from "reactfire";
-import { doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +64,7 @@ export default function EditarProveedorPage({ params }: { params: { id: string }
     if (!confirm("¿Estás seguro de que deseas eliminar este proveedor?")) return;
     setDeleting(true);
     try {
-      await deleteDoc(doc(firestore, "providers", params.id));
+      await softDelete(firestore, "providers", params.id);
       router.push("/publimar/proveedores");
     } catch (error) {
       console.error("Error al eliminar proveedor:", error);

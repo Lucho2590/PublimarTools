@@ -43,7 +43,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { TAbandonedCart } from "@/types/abandonedCart";
-import { updateDoc, doc, serverTimestamp, deleteDoc } from "firebase/firestore";
+import { updateDoc, doc, serverTimestamp } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { toast } from "sonner";
 
 // Helper para convertir Timestamp a Date
@@ -238,7 +239,7 @@ export default function CarritosAbandonadosPage() {
     }
 
     try {
-      await deleteDoc(doc(firestore, "abandonedCarts", cart.id));
+      await softDelete(firestore, "abandonedCarts", cart.id);
       console.log("✅ Carrito abandonado eliminado:", cart.id);
 
       toast.success("Carrito eliminado correctamente");

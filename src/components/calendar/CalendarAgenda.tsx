@@ -17,7 +17,8 @@ import {
 import { Plus, Clock, Trash2, Edit2, Calendar as CalendarIcon, User } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { TEvent, EEventSection } from "@/types/event";
-import { addDoc, collection, deleteDoc, doc, updateDoc, getDoc, Timestamp } from "firebase/firestore";
+import { addDoc, collection, doc, updateDoc, getDoc, Timestamp } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { useFirestore } from "reactfire";
 import collections from "@/lib/collections";
 import { toast } from "sonner";
@@ -150,8 +151,8 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
       if (eventDoc.exists()) {
         const eventData = eventDoc.data();
 
-        // Eliminar de Firestore
-        await deleteDoc(eventRef);
+        // Eliminar de Firestore (soft delete)
+        await softDelete(firestore, collections.EVENTS, eventId);
 
         // Enviar a n8n para eliminar de Google Calendar
         await sendEventToN8n("delete", {

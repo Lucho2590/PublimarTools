@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useUser, useFirestoreCollectionData } from "reactfire";
-import { doc, getDoc, updateDoc, deleteDoc, collection, query, where, serverTimestamp, Timestamp, Query, CollectionReference, orderBy, addDoc, getDocs } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, query, where, serverTimestamp, Timestamp, Query, CollectionReference, orderBy, addDoc, getDocs } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -454,8 +455,7 @@ export default function PresupuestoDetailPage({
     }
 
     try {
-      const quoteRef = doc(firestore, collections.QUOTES, quoteId);
-      await deleteDoc(quoteRef);
+      await softDelete(firestore, collections.QUOTES, quoteId);
       toast.success("Presupuesto eliminado");
       router.push("/publimar/viaPublica/presupuestos");
     } catch (error) {

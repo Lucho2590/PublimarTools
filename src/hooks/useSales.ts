@@ -19,6 +19,7 @@ import {
 import { useCallback, useMemo } from 'react'
 import { TSale, TSaleItem, EPaymentMethod } from '@/types/sale'
 import collections from '@/lib/collections'
+import { softDelete } from '@/lib/softDelete'
 
 const COLLECTION_NAME = collections.SALES
 
@@ -176,8 +177,7 @@ export function useSales(options?: UseSalesOptions) {
 
   const deleteSale = useCallback(async (id: string) => {
     try {
-      const docRef = doc(firestore, COLLECTION_NAME, id)
-      await deleteDoc(docRef)
+      await softDelete(firestore, COLLECTION_NAME, id)
       return true
     } catch (error) {
       console.error('Error al eliminar venta:', error)
@@ -238,7 +238,7 @@ export function useSales(options?: UseSalesOptions) {
   }, [firestore])
 
   return {
-    sales: (sales as TSale[]) || [],
+    sales: ((sales as TSale[]) || []).filter(s => !(s as any).deleted),
     loading: status === 'loading',
     error: status === 'error',
     createSale,

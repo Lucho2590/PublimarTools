@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useFirestore, useFirestoreDocData } from 'reactfire';
-import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, updateDoc } from 'firebase/firestore';
+import { softDelete } from '@/lib/softDelete';
 import {
   Dialog,
   DialogContent,
@@ -129,8 +130,7 @@ export default function ProviderEditModal({
 
     setDeleting(true);
     try {
-      const providerRef = doc(firestore, 'providers', providerId);
-      await deleteDoc(providerRef);
+      await softDelete(firestore, 'providers', providerId);
 
       toast.success('Proveedor eliminado correctamente');
       onProviderUpdated?.();

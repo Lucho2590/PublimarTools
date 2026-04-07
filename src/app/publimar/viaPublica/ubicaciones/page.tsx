@@ -6,10 +6,10 @@ import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import {
   collection,
   addDoc,
-  deleteDoc,
   doc,
   updateDoc,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { storage } from "@/lib/firebase";
 import {
   ref,
@@ -358,9 +358,7 @@ export default function UbicacionesPage() {
     if (!confirm("Estas seguro de eliminar esta ubicacion?")) return;
 
     try {
-      await deleteDoc(
-        doc(firestore, collections.LOCATIONS || "locations", locationId)
-      );
+      await softDelete(firestore, collections.LOCATIONS || "locations", locationId);
       toast.success("Ubicacion eliminada correctamente");
     } catch (error) {
       console.error("Error al eliminar ubicacion:", error);

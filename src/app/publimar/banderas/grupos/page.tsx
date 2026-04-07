@@ -6,11 +6,11 @@ import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import {
   collection,
   addDoc,
-  deleteDoc,
   doc,
   updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -107,12 +107,7 @@ export default function GruposPage() {
     }
 
     try {
-      const groupRef = doc(
-        firestore,
-        collections.products.GROUPS,
-        groupId
-      );
-      await deleteDoc(groupRef);
+      await softDelete(firestore, collections.products.GROUPS, groupId);
       toast.success("Grupo eliminado con éxito");
     } catch (error) {
       console.error("Error al eliminar el grupo:", error);

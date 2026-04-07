@@ -3,7 +3,8 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { softDelete } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -233,7 +234,7 @@ export default function ProductosPage() {
     if (!confirmDelete) return;
 
     try {
-      await deleteDoc(doc(firestore, collections.PRODUCTS, productId));
+      await softDelete(firestore, collections.PRODUCTS, productId);
       toast.success("Producto eliminado correctamente");
       // Limpiar selección si el producto eliminado estaba seleccionado
       setSelectedProducts(prev => prev.filter(id => id !== productId));
