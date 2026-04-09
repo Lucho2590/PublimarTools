@@ -415,6 +415,7 @@ export default function VentasPage() {
                     setCurrentPage(1);
                   }}
                   onFocus={() => setShowProductDropdown(true)}
+                  onBlur={() => setShowProductDropdown(false)}
                 />
                 {showProductDropdown && searchProductTerm.trim() === "" && selectedProduct === "all" && (
                   <div className="absolute z-50 mt-1 w-full max-h-[250px] overflow-y-auto bg-white border rounded-md shadow-lg">
