@@ -153,7 +153,7 @@ export default function ProductEditModal({
             ? product.variants.map(variant => ({
                 ...variant,
                 price: variant.price.toString(),
-                stock: variant.stock.toString(),
+                stock: variant.stock != null ? variant.stock.toString() : "",
               }))
             : [{
                 id: crypto.randomUUID(),
