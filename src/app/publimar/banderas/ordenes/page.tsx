@@ -136,22 +136,25 @@ export default function PedidosPage() {
 
               // Si tiene variante, actualizar stock de la variante específica
               if (item.variantId && currentProduct.variants) {
+                const variant = currentProduct.variants.find((v: any) => v.id === item.variantId);
+                const shouldUpdateStock = variant && variant.stock != null;
                 await updateDoc(productRef, {
-                  variants: currentProduct.variants.map((v: any) =>
-                    v.id === item.variantId
-                      ? { ...v, stock: Number(v.stock) - item.quantity }
-                      : v
-                  ),
-                  // Actualizar contadores de ventas
+                  variants: shouldUpdateStock
+                    ? currentProduct.variants.map((v: any) =>
+                        v.id === item.variantId
+                          ? { ...v, stock: Number(v.stock) - item.quantity }
+                          : v
+                      )
+                    : currentProduct.variants,
                   totalSales: currentTotalSales + item.quantity,
                   salesCount: currentSalesCount + 1,
                   lastSaleDate: new Date(),
                 });
               } else {
-                // Si no tiene variante, actualizar stock general del producto
+                // Si stock es null (ej: bandera personalizada), no descontar
+                const shouldUpdateStock = currentProduct.stock != null;
                 await updateDoc(productRef, {
-                  stock: Number(currentProduct.stock || 0) - item.quantity,
-                  // Actualizar contadores de ventas
+                  ...(shouldUpdateStock && { stock: Number(currentProduct.stock) - item.quantity }),
                   totalSales: currentTotalSales + item.quantity,
                   salesCount: currentSalesCount + 1,
                   lastSaleDate: new Date(),

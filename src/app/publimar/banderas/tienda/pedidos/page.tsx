@@ -32,15 +32,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDate, formatearPrecio } from "@/lib/utils";
+import { formatDate, formatearPrecio, cn } from "@/lib/utils";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Eye,
   Search,
   Download,
-  ArrowLeft,
-  Filter,
   Trash2,
+  Loader2,
+  LayoutDashboard,
+  ShoppingCart,
+  Package,
+  BarChart3,
 } from "lucide-react";
 import { TEcommerceOrder } from "@/types/ecommerceOrder";
 
@@ -56,8 +60,16 @@ const timestampToDate = (timestamp: any): Date | null => {
   return null;
 };
 
+const tiendaNav = [
+  { name: "Dashboard", href: "/publimar/banderas/tienda", icon: LayoutDashboard },
+  { name: "Pedidos", href: "/publimar/banderas/tienda/pedidos", icon: Package, badge: true },
+  { name: "Carritos", href: "/publimar/banderas/tienda/carritos-abandonados", icon: ShoppingCart, badge: true },
+  { name: "Analytics", href: "/publimar/banderas/tienda/analytics", icon: BarChart3 },
+];
+
 export default function PedidosPage() {
   const firestore = useFirestore();
+  const pathname = usePathname();
 
   const [orders, setOrders] = useState<TEcommerceOrder[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<TEcommerceOrder[]>([]);
@@ -222,102 +234,92 @@ export default function PedidosPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/publimar/banderas/tienda">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <h1 className="text-3xl font-bold">Cargando pedidos...</h1>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {/* Navegacion interna */}
+      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+        {tiendaNav.map((nav) => {
+          const Icon = nav.icon;
+          const isActive = pathname === nav.href;
+          return (
+            <Link
+              key={nav.href}
+              href={nav.href}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                isActive
+                  ? "bg-white text-blue-950 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {nav.name}
+            </Link>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/publimar/banderas/tienda">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Pedidos de Tienda Online</h1>
-            <p className="text-muted-foreground">
-              {filteredOrders.length} de {orders.length} pedidos
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Pedidos de Tienda Online</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {filteredOrders.length} de {orders.length} pedidos
+          </p>
         </div>
-        <Button onClick={exportToCSV} variant="outline">
+        <Button onClick={exportToCSV} variant="outline" size="sm">
           <Download className="mr-2 h-4 w-4" />
           Exportar CSV
         </Button>
       </div>
 
       {/* Filtros */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtros
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
-            {/* Búsqueda */}
-            <div className="md:col-span-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por número o producto..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            {/* Filtro por estado */}
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todos los estados" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los estados</SelectItem>
-                <SelectItem value="pending">Pendiente</SelectItem>
-                <SelectItem value="confirmed">Confirmado</SelectItem>
-                <SelectItem value="preparing">En preparación</SelectItem>
-                <SelectItem value="shipped">Enviado</SelectItem>
-                <SelectItem value="delivered">Entregado</SelectItem>
-                <SelectItem value="cancelled">Cancelado</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Filtro por fecha */}
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todas las fechas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las fechas</SelectItem>
-                <SelectItem value="today">Hoy</SelectItem>
-                <SelectItem value="week">Última semana</SelectItem>
-                <SelectItem value="month">Este mes</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por número o producto..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Todos los estados" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los estados</SelectItem>
+            <SelectItem value="pending">Pendiente</SelectItem>
+            <SelectItem value="confirmed">Confirmado</SelectItem>
+            <SelectItem value="preparing">En preparación</SelectItem>
+            <SelectItem value="shipped">Enviado</SelectItem>
+            <SelectItem value="delivered">Entregado</SelectItem>
+            <SelectItem value="cancelled">Cancelado</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={dateFilter} onValueChange={setDateFilter}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Todas las fechas" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las fechas</SelectItem>
+            <SelectItem value="today">Hoy</SelectItem>
+            <SelectItem value="week">Última semana</SelectItem>
+            <SelectItem value="month">Este mes</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Tabla de Pedidos */}
-      <Card>
-        <CardContent className="pt-6">
+      <Card className="border-0 shadow-sm">
+        <CardContent className="pt-4">
           {filteredOrders.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               No se encontraron pedidos con los filtros seleccionados
@@ -414,6 +416,8 @@ export default function PedidosPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }

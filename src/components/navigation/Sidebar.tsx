@@ -52,8 +52,8 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "bg-blue-950 text-white flex flex-col transition-all duration-300",
-        isSidebarOpen ? "w-64" : "w-21",
+        "bg-blue-950 text-white flex flex-col transition-all duration-300 ease-in-out",
+        isSidebarOpen ? "w-64" : "w-[72px]",
       )}
     >
       <SidebarContent
