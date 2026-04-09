@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDate } from "@/lib/utils";
-import { Trash2, RotateCcw, RefreshCw } from "lucide-react";
+import { Trash2, RotateCcw, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import collections from "@/lib/collections";
 
 interface DeletedItem {
@@ -68,6 +68,7 @@ export default function SudoPage() {
   const [deletedItems, setDeletedItems] = useState<DeletedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   const loadDeletedItems = async () => {
     setLoading(true);
@@ -141,6 +142,31 @@ export default function SudoPage() {
     }
   };
 
+  const toggleExpanded = (key: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const formatValue = (value: any): string => {
+    if (value === null || value === undefined) return "null";
+    if (typeof value === "boolean") return value ? "true" : "false";
+    if (typeof value === "number") return String(value);
+    if (typeof value === "string") return value;
+    if (value?.seconds) {
+      const d = timestampToDate(value);
+      return d ? d.toLocaleString("es-AR") : "fecha invalida";
+    }
+    if (Array.isArray(value)) return `[${value.length} items]`;
+    if (typeof value === "object") return JSON.stringify(value, null, 2);
+    return String(value);
+  };
+
+  const HIDDEN_FIELDS = ["deleted", "deletedAt", "id"];
+
   const collectionTabs = [...new Set(deletedItems.map((i) => i.collectionLabel))];
 
   const filteredItems =
@@ -203,47 +229,104 @@ export default function SudoPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredItems.map((item) => (
-                      <TableRow key={`${item.collection}-${item.id}`}>
-                        <TableCell>
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                            {item.collectionLabel}
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {item.name}
-                        </TableCell>
-                        <TableCell>
-                          {item.deletedAt
-                            ? formatDate(item.deletedAt)
-                            : "Sin fecha"}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {item.id}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleRestore(item)}
-                              title="Restaurar"
-                            >
-                              <RotateCcw className="h-4 w-4 mr-1" />
-                              Restaurar
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={() => handlePermanentDelete(item)}
-                              title="Eliminar permanentemente"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredItems.map((item) => {
+                      const key = `${item.collection}-${item.id}`;
+                      const isExpanded = expandedItems.has(key);
+                      return (
+                        <>
+                          <TableRow
+                            key={key}
+                            className="cursor-pointer hover:bg-muted/50"
+                            onClick={() => toggleExpanded(key)}
+                          >
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                {isExpanded ? (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                )}
+                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                  {item.collectionLabel}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {item.name}
+                            </TableCell>
+                            <TableCell>
+                              {item.deletedAt
+                                ? formatDate(item.deletedAt)
+                                : "Sin fecha"}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">
+                              {item.id}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRestore(item)}
+                                  title="Restaurar"
+                                >
+                                  <RotateCcw className="h-4 w-4 mr-1" />
+                                  Restaurar
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handlePermanentDelete(item)}
+                                  title="Eliminar permanentemente"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {isExpanded && (
+                            <TableRow key={`${key}-detail`}>
+                              <TableCell colSpan={5} className="bg-muted/30 p-4">
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                                  {Object.entries(item.data)
+                                    .filter(([k]) => !HIDDEN_FIELDS.includes(k))
+                                    .map(([k, v]) => (
+                                      <div key={k} className="space-y-0.5">
+                                        <p className="text-xs font-medium text-muted-foreground uppercase">
+                                          {k}
+                                        </p>
+                                        {Array.isArray(v) && v.length > 0 ? (
+                                          <div className="space-y-1">
+                                            {v.slice(0, 5).map((arrItem, i) => (
+                                              <pre
+                                                key={i}
+                                                className="text-xs bg-white p-1 rounded border overflow-x-auto max-w-xs"
+                                              >
+                                                {typeof arrItem === "object"
+                                                  ? JSON.stringify(arrItem, null, 2)
+                                                  : String(arrItem)}
+                                              </pre>
+                                            ))}
+                                            {v.length > 5 && (
+                                              <p className="text-xs text-muted-foreground">
+                                                ...y {v.length - 5} mas
+                                              </p>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          <p className="text-foreground break-all">
+                                            {formatValue(v)}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>

@@ -55,6 +55,8 @@ export default function VentasPage() {
   });
   const [selectedBank, setSelectedBank] = useState<string>("all");
   const [searchProductTerm, setSearchProductTerm] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<string>("all");
+  const [selectedVariant, setSelectedVariant] = useState<string>("all");
   // const [showNewSaleModal, setShowNewSaleModal] = useState(false);
   const [showSaleDetailsModal, setShowSaleDetailsModal] = useState(false);
   const [selectedVentaId, setSelectedVentaId] = useState<string | null>(null);
@@ -103,6 +105,39 @@ export default function VentasPage() {
     idField: "id",
   });
 
+  // Extraer productos y variantes únicos de las ventas cargadas
+  const uniqueProducts = useMemo(() => {
+    if (!sales) return [];
+    const map = new Map<string, string>();
+    sales.forEach((sale) => {
+      const typedSale = sale as unknown as TSale;
+      typedSale.items?.forEach((item) => {
+        if (item.productId && item.productName) {
+          map.set(item.productId, item.productName);
+        }
+      });
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [sales]);
+
+  const uniqueVariants = useMemo(() => {
+    if (!sales || selectedProduct === "all") return [];
+    const map = new Map<string, string>();
+    sales.forEach((sale) => {
+      const typedSale = sale as unknown as TSale;
+      typedSale.items?.forEach((item) => {
+        if (item.productId === selectedProduct && item.variantId && item.variantName) {
+          map.set(item.variantId, item.variantName);
+        }
+      });
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [sales, selectedProduct]);
+
   // Filtrar ventas según los filtros restantes (fecha ya filtrada en Firestore)
   const filteredSales = useMemo(() => {
     return sales?.filter((sale) => {
@@ -121,14 +156,26 @@ export default function VentasPage() {
         || selectedBank === "all"
         || (typedSale.bank && typedSale.bank === selectedBank);
 
-      // Filtrar por producto (case-insensitive y sin acentos)
-      let matchesProduct = true;
+      // Filtrar por texto libre de producto
+      let matchesProductSearch = true;
       if (searchProductTerm.trim() !== "") {
         const searchNormalized = normalizeText(searchProductTerm);
-        matchesProduct = typedSale.items?.some((item) =>
+        matchesProductSearch = typedSale.items?.some((item) =>
           normalizeText(item.productName || '').includes(searchNormalized)
         ) || false;
       }
+
+      // Filtrar por producto seleccionado (select)
+      const matchesProductSelect =
+        selectedProduct === "all" ||
+        typedSale.items?.some((item) => item.productId === selectedProduct);
+
+      // Filtrar por variante seleccionada
+      const matchesVariantSelect =
+        selectedVariant === "all" ||
+        typedSale.items?.some(
+          (item) => item.productId === selectedProduct && item.variantId === selectedVariant
+        );
 
       // Filtrar por devoluciones y cambios
       const hasReturns = typedSale.returns && typedSale.returns.length > 0;
@@ -142,9 +189,9 @@ export default function VentasPage() {
         (selectedReturns === "exchanges-only" && hasExchanges) ||
         (selectedReturns === "without" && !hasReturns);
 
-      return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesProduct && matchesReturns;
+      return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesProductSearch && matchesProductSelect && matchesVariantSelect && matchesReturns;
     });
-  }, [sales, selectedPaymentMethod, selectedInvoiced, selectedBank, searchProductTerm, selectedReturns]);
+  }, [sales, selectedPaymentMethod, selectedInvoiced, selectedBank, searchProductTerm, selectedProduct, selectedVariant, selectedReturns]);
 
   // Calcular total de ventas filtradas (memoizado)
   const totalVentas = useMemo(() => {
@@ -188,6 +235,8 @@ export default function VentasPage() {
     setDateRange({ from: hoy, to: hoy });
     setSelectedBank("all");
     setSearchProductTerm("");
+    setSelectedProduct("all");
+    setSelectedVariant("all");
     setCurrentPage(1);
   };
 
@@ -360,6 +409,45 @@ export default function VentasPage() {
                 onChange={(e) => setSearchProductTerm(e.target.value)}
                 className="w-[200px]"
               />
+              <Select
+                value={selectedProduct}
+                onValueChange={(value) => {
+                  setSelectedProduct(value);
+                  setSelectedVariant("all");
+                  setCurrentPage(1);
+                }}
+              >
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Producto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los productos</SelectItem>
+                  {uniqueProducts.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {selectedProduct !== "all" && uniqueVariants.length > 0 && (
+                <Select
+                  value={selectedVariant}
+                  onValueChange={(value) => {
+                    setSelectedVariant(value);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Variante" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las variantes</SelectItem>
+                    {uniqueVariants.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
               <Select
                 value={selectedPaymentMethod}
                 onValueChange={(value) => {
