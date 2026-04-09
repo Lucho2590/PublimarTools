@@ -57,6 +57,7 @@ export default function VentasPage() {
   const [searchProductTerm, setSearchProductTerm] = useState("");
   const [selectedProduct, setSelectedProduct] = useState<string>("all");
   const [selectedVariant, setSelectedVariant] = useState<string>("all");
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
   // const [showNewSaleModal, setShowNewSaleModal] = useState(false);
   const [showSaleDetailsModal, setShowSaleDetailsModal] = useState(false);
   const [selectedVentaId, setSelectedVentaId] = useState<string | null>(null);
@@ -403,30 +404,74 @@ export default function VentasPage() {
           <div className="space-y-4">
             {/* Fila 1: Filtros principales */}
             <div className="flex flex-wrap gap-3">
-              <Input
-                placeholder="Buscar producto..."
-                value={searchProductTerm}
-                onChange={(e) => setSearchProductTerm(e.target.value)}
-                className="w-[200px]"
-              />
-              <Select
-                value={selectedProduct}
-                onValueChange={(value) => {
-                  setSelectedProduct(value);
-                  setSelectedVariant("all");
-                  setCurrentPage(1);
-                }}
-              >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Producto" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los productos</SelectItem>
-                  {uniqueProducts.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="relative w-[250px]">
+                <Input
+                  placeholder="Filtrar por producto..."
+                  value={searchProductTerm}
+                  onChange={(e) => {
+                    setSearchProductTerm(e.target.value);
+                    setSelectedProduct("all");
+                    setSelectedVariant("all");
+                    setCurrentPage(1);
+                  }}
+                  onFocus={() => setShowProductDropdown(true)}
+                />
+                {showProductDropdown && searchProductTerm.trim() === "" && selectedProduct === "all" && (
+                  <div className="absolute z-50 mt-1 w-full max-h-[250px] overflow-y-auto bg-white border rounded-md shadow-lg">
+                    {uniqueProducts.map((p) => (
+                      <button
+                        key={p.id}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 truncate"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSelectedProduct(p.id);
+                          setSearchProductTerm(p.name);
+                          setSelectedVariant("all");
+                          setShowProductDropdown(false);
+                          setCurrentPage(1);
+                        }}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {searchProductTerm.trim() !== "" && selectedProduct === "all" && showProductDropdown && (
+                  <div className="absolute z-50 mt-1 w-full max-h-[250px] overflow-y-auto bg-white border rounded-md shadow-lg">
+                    {uniqueProducts
+                      .filter((p) => normalizeText(p.name).includes(normalizeText(searchProductTerm)))
+                      .map((p) => (
+                        <button
+                          key={p.id}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 truncate"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setSelectedProduct(p.id);
+                            setSearchProductTerm(p.name);
+                            setSelectedVariant("all");
+                            setShowProductDropdown(false);
+                            setCurrentPage(1);
+                          }}
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                  </div>
+                )}
+                {selectedProduct !== "all" && (
+                  <button
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      setSelectedProduct("all");
+                      setSelectedVariant("all");
+                      setSearchProductTerm("");
+                      setCurrentPage(1);
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                  </button>
+                )}
+              </div>
 
               {selectedProduct !== "all" && uniqueVariants.length > 0 && (
                 <Select
@@ -436,7 +481,7 @@ export default function VentasPage() {
                     setCurrentPage(1);
                   }}
                 >
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[200px]">
                     <SelectValue placeholder="Variante" />
                   </SelectTrigger>
                   <SelectContent>
