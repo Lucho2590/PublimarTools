@@ -167,6 +167,70 @@ export default function SudoPage() {
 
   const HIDDEN_FIELDS = ["deleted", "deletedAt", "id"];
 
+  // Campos prioritarios que se muestran primero según la colección
+  const PRIORITY_FIELDS: Record<string, string[]> = {
+    [collections.PRODUCTS]: ["name", "description", "price", "stock", "categories", "variants"],
+    [collections.CLIENTS]: ["name", "email", "phone", "address"],
+    [collections.QUOTES]: ["number", "clientName", "total", "status", "items"],
+    [collections.ORDERS]: ["number", "clientName", "total", "status", "items"],
+    [collections.SALES]: ["number", "clientName", "total", "paymentMethod", "items"],
+    [collections.PURCHASES]: ["number", "providerName", "total", "items"],
+    [collections.NOTES]: ["content", "userName", "section"],
+    [collections.EVENTS]: ["title", "description", "date"],
+    [collections.LOCATIONS]: ["name", "address", "description"],
+    [collections.DEVICES]: ["name", "type", "location"],
+    "providers": ["name", "email", "phone", "address"],
+    "ecommerceOrders": ["orderNumber", "customerName", "total", "status", "items"],
+    "abandonedCarts": ["total", "itemsCount", "items"],
+  };
+
+  const sortFields = (entries: [string, any][], collectionName: string) => {
+    const priority = PRIORITY_FIELDS[collectionName] || [];
+    return entries.sort((a, b) => {
+      const aIdx = priority.indexOf(a[0]);
+      const bIdx = priority.indexOf(b[0]);
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      if (aIdx !== -1) return -1;
+      if (bIdx !== -1) return 1;
+      return a[0].localeCompare(b[0]);
+    });
+  };
+
+  const formatFieldName = (key: string): string => {
+    const labels: Record<string, string> = {
+      name: "Nombre",
+      description: "Descripcion",
+      content: "Contenido",
+      userName: "Usuario",
+      section: "Seccion",
+      email: "Email",
+      phone: "Telefono",
+      address: "Direccion",
+      number: "Numero",
+      clientName: "Cliente",
+      customerName: "Cliente",
+      providerName: "Proveedor",
+      total: "Total",
+      subtotal: "Subtotal",
+      status: "Estado",
+      paymentMethod: "Metodo de Pago",
+      items: "Items",
+      variants: "Variantes",
+      categories: "Categorias",
+      price: "Precio",
+      stock: "Stock",
+      createdAt: "Creado",
+      updatedAt: "Actualizado",
+      date: "Fecha",
+      title: "Titulo",
+      type: "Tipo",
+      location: "Ubicacion",
+      orderNumber: "N° Pedido",
+      itemsCount: "Cant. Items",
+    };
+    return labels[key] || key;
+  };
+
   const collectionTabs = [...new Set(deletedItems.map((i) => i.collectionLabel))];
 
   const filteredItems =
@@ -287,39 +351,58 @@ export default function SudoPage() {
                           {isExpanded && (
                             <TableRow key={`${key}-detail`}>
                               <TableCell colSpan={5} className="bg-muted/30 p-4">
-                                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                                  {Object.entries(item.data)
-                                    .filter(([k]) => !HIDDEN_FIELDS.includes(k))
-                                    .map(([k, v]) => (
-                                      <div key={k} className="space-y-0.5">
-                                        <p className="text-xs font-medium text-muted-foreground uppercase">
-                                          {k}
-                                        </p>
-                                        {Array.isArray(v) && v.length > 0 ? (
-                                          <div className="space-y-1">
-                                            {v.slice(0, 5).map((arrItem, i) => (
-                                              <pre
-                                                key={i}
-                                                className="text-xs bg-white p-1 rounded border overflow-x-auto max-w-xs"
-                                              >
-                                                {typeof arrItem === "object"
-                                                  ? JSON.stringify(arrItem, null, 2)
-                                                  : String(arrItem)}
-                                              </pre>
-                                            ))}
-                                            {v.length > 5 && (
-                                              <p className="text-xs text-muted-foreground">
-                                                ...y {v.length - 5} mas
-                                              </p>
-                                            )}
-                                          </div>
-                                        ) : (
-                                          <p className="text-foreground break-all">
+                                <div className="space-y-3 text-sm">
+                                  {/* Campos simples en tabla */}
+                                  <table className="w-full">
+                                    <tbody>
+                                      {sortFields(
+                                        Object.entries(item.data).filter(
+                                          ([k, v]) => !HIDDEN_FIELDS.includes(k) && !Array.isArray(v)
+                                        ),
+                                        item.collection
+                                      ).map(([k, v]) => (
+                                        <tr key={k} className="border-b border-muted/50">
+                                          <td className="py-1.5 pr-4 text-xs font-medium text-muted-foreground w-[150px]">
+                                            {formatFieldName(k)}
+                                          </td>
+                                          <td className="py-1.5 text-foreground break-all">
                                             {formatValue(v)}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+
+                                  {/* Arrays (items, variants, etc.) */}
+                                  {sortFields(
+                                    Object.entries(item.data).filter(
+                                      ([k, v]) => !HIDDEN_FIELDS.includes(k) && Array.isArray(v) && v.length > 0
+                                    ),
+                                    item.collection
+                                  ).map(([k, v]) => (
+                                    <div key={k}>
+                                      <p className="text-xs font-medium text-muted-foreground mb-1">
+                                        {formatFieldName(k)} ({v.length})
+                                      </p>
+                                      <div className="space-y-1">
+                                        {v.slice(0, 5).map((arrItem: any, i: number) => (
+                                          <pre
+                                            key={i}
+                                            className="text-xs bg-white p-2 rounded border overflow-x-auto"
+                                          >
+                                            {typeof arrItem === "object"
+                                              ? JSON.stringify(arrItem, null, 2)
+                                              : String(arrItem)}
+                                          </pre>
+                                        ))}
+                                        {v.length > 5 && (
+                                          <p className="text-xs text-muted-foreground">
+                                            ...y {v.length - 5} mas
                                           </p>
                                         )}
                                       </div>
-                                    ))}
+                                    </div>
+                                  ))}
                                 </div>
                               </TableCell>
                             </TableRow>
