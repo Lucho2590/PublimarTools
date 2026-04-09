@@ -289,12 +289,12 @@ export default function ProductEditModal({
         return;
       }
 
-      // Validar que todas las variantes tengan los campos requeridos
+      // Validar que todas las variantes tengan medida y precio (stock vacío = infinito)
       const invalidVariants = formData.variants.filter(
-        (variant) => !variant.size || !variant.price || !variant.stock
+        (variant) => !variant.size || !variant.price
       );
       if (invalidVariants.length > 0) {
-        toast.error("Todas las variantes deben tener medida, precio y stock");
+        toast.error("Todas las variantes deben tener medida y precio");
         setLoading(false);
         return;
       }
@@ -316,7 +316,7 @@ export default function ProductEditModal({
           id: variant.id,
           size: variant.size,
           price: parseFloat(String(variant.price)) || 0,
-          stock: parseInt(String(variant.stock)) || 0,
+          stock: variant.stock !== "" ? (parseInt(String(variant.stock)) || 0) : null,
           sku: variant.sku || ""
         })),
         updatedAt: serverTimestamp(),
