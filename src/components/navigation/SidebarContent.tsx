@@ -36,40 +36,46 @@ export function SidebarContent({
     <TooltipProvider>
       <div className="flex flex-col h-full bg-blue-950 text-white">
         {/* Header */}
-        <div className="p-4 flex items-center justify-between">
+        <div className={cn("p-4", isOpen ? "flex items-center justify-between" : "flex flex-col items-center gap-2")}>
           {isOpen ? (
-            <div className="flex items-center gap-3">
+            <>
+              <div className="flex items-center gap-3">
+                <Image
+                  src="/imagenes/favicon-publimar-tools.png"
+                  alt="PublimarTools"
+                  width={32}
+                  height={32}
+                  className="rounded-lg"
+                />
+                <span className="text-lg font-bold tracking-tight">PublimarTools</span>
+              </div>
+              {!isMobile && onToggleSidebar && (
+                <button
+                  onClick={onToggleSidebar}
+                  className="p-1.5 rounded-lg text-blue-400 hover:text-white hover:bg-blue-800/50 transition-all duration-200"
+                >
+                  <ChevronsLeft className="h-5 w-5" />
+                </button>
+              )}
+            </>
+          ) : (
+            <>
               <Image
                 src="/imagenes/favicon-publimar-tools.png"
                 alt="PublimarTools"
-                width={32}
-                height={32}
+                width={36}
+                height={36}
                 className="rounded-lg"
               />
-              <div className="flex flex-col">
-                <span className="text-lg font-bold tracking-tight">PublimarTools</span>
-              </div>
-            </div>
-          ) : (
-            <Image
-              src="/imagenes/favicon-publimar-tools.png"
-              alt="PublimarTools"
-              width={36}
-              height={36}
-              className="rounded-lg mx-auto"
-            />
-          )}
-          {!isMobile && onToggleSidebar && (
-            <button
-              onClick={onToggleSidebar}
-              className="p-1.5 rounded-lg text-blue-400 hover:text-white hover:bg-blue-800/50 transition-all duration-200"
-            >
-              {isSidebarOpen ? (
-                <ChevronsLeft className="h-5 w-5" />
-              ) : (
-                <ChevronsRight className="h-5 w-5" />
+              {!isMobile && onToggleSidebar && (
+                <button
+                  onClick={onToggleSidebar}
+                  className="p-1.5 rounded-lg text-blue-400 hover:text-white hover:bg-blue-800/50 transition-all duration-200"
+                >
+                  <ChevronsRight className="h-5 w-5" />
+                </button>
               )}
-            </button>
+            </>
           )}
         </div>
 
