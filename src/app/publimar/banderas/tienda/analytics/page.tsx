@@ -33,6 +33,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import {
   BarChart3,
   TrendingUp,
@@ -52,6 +55,8 @@ import {
   XCircle,
   Clock,
   Target,
+  LayoutDashboard,
+  Loader2,
 } from "lucide-react";
 
 // Formatear moneda
@@ -69,11 +74,19 @@ const formatPercent = (value: number) => {
   return `${(value * 100).toFixed(1)}%`;
 };
 
+// Navegación interna de la tienda
+const tiendaNav = [
+  { name: "Dashboard", href: "/publimar/banderas/tienda", icon: LayoutDashboard },
+  { name: "Pedidos", href: "/publimar/banderas/tienda/pedidos", icon: Package, badge: true },
+  { name: "Carritos", href: "/publimar/banderas/tienda/carritos-abandonados", icon: ShoppingCart, badge: true },
+  { name: "Analytics", href: "/publimar/banderas/tienda/analytics", icon: BarChart3 },
+];
+
 // Componente de barra de progreso
 const ProgressBar = ({ value, max, color = "bg-blue-600" }: { value: number; max: number; color?: string }) => {
   const percent = max > 0 ? (value / max) * 100 : 0;
   return (
-    <div className="w-full bg-gray-200 rounded-full h-2.5">
+    <div className="w-full bg-blue-100 rounded-full h-2.5">
       <div className={`h-2.5 rounded-full ${color}`} style={{ width: `${Math.min(percent, 100)}%` }}></div>
     </div>
   );
@@ -87,7 +100,8 @@ const KPICard = ({
   icon: Icon,
   trend,
   trendValue,
-  color = "text-primary"
+  color = "text-primary",
+  bgColor = "bg-blue-50",
 }: {
   title: string;
   value: string | number;
@@ -96,14 +110,17 @@ const KPICard = ({
   trend?: "up" | "down" | "neutral";
   trendValue?: string;
   color?: string;
+  bgColor?: string;
 }) => (
-  <Card>
-    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-      <Icon className={`h-4 w-4 ${color}`} />
-    </CardHeader>
-    <CardContent>
-      <div className={`text-2xl font-bold ${color}`}>{value}</div>
+  <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
+    <CardContent className="p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-medium text-muted-foreground">{title}</span>
+        <div className={`h-9 w-9 rounded-lg ${bgColor} flex items-center justify-center`}>
+          <Icon className={`h-4.5 w-4.5 ${color}`} />
+        </div>
+      </div>
+      <div className={`text-2xl font-bold tracking-tight ${color}`}>{value}</div>
       {subtitle && (
         <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
           {trend === "up" && <TrendingUp className="h-3 w-3 text-green-600" />}
@@ -118,6 +135,7 @@ const KPICard = ({
 
 export default function AnalyticsPage() {
   const firestore = useFirestore();
+  const pathname = usePathname();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -316,26 +334,42 @@ export default function AnalyticsPage() {
       .slice(0, 10);
   }, [topProducts]);
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-primary border-t-transparent mb-4"></div>
-            <p className="text-muted-foreground">Cargando analytics...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="p-6 space-y-8">
+    <div className="space-y-6">
+      {/* Navegacion interna */}
+      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+        {tiendaNav.map((nav) => {
+          const NavIcon = nav.icon;
+          const isActive = pathname === nav.href;
+          return (
+            <Link
+              key={nav.href}
+              href={nav.href}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                isActive
+                  ? "bg-white text-blue-950 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
+              )}
+            >
+              <NavIcon className="h-4 w-4" />
+              {nav.name}
+            </Link>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Analytics Dashboard</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">Analytics</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
             Métricas y análisis de la tienda BanderasMDP
           </p>
         </div>
@@ -368,12 +402,14 @@ export default function AnalyticsPage() {
           value={formatCurrency(kpis.totalRevenue)}
           icon={DollarSign}
           color="text-green-600"
+          bgColor="bg-emerald-50"
           subtitle="de productos vendidos"
         />
         <KPICard
           title="Sesiones"
           value={kpis.totalSessions}
           icon={Users}
+          bgColor="bg-blue-50"
           subtitle="visitantes únicos"
         />
         <KPICard
@@ -381,6 +417,7 @@ export default function AnalyticsPage() {
           value={formatPercent(kpis.conversionRate)}
           icon={Target}
           color={kpis.conversionRate >= 0.02 ? "text-green-600" : "text-orange-600"}
+          bgColor={kpis.conversionRate >= 0.02 ? "bg-emerald-50" : "bg-amber-50"}
           subtitle="de visita a compra"
         />
         <KPICard
@@ -388,18 +425,20 @@ export default function AnalyticsPage() {
           value={kpis.abandonedCartsCount}
           icon={ShoppingCart}
           color="text-red-600"
+          bgColor="bg-red-50"
           subtitle={`${formatCurrency(kpis.abandonedValue)} perdidos`}
         />
         <KPICard
           title="Ticket Promedio"
           value={formatCurrency(kpis.avgCartValue)}
           icon={ShoppingBag}
+          bgColor="bg-violet-50"
           subtitle="valor por compra"
         />
       </div>
 
       {/* Embudo de Conversión */}
-      <Card>
+      <Card className="border-0 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5" />
@@ -463,7 +502,7 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Top Productos por Vistas */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Eye className="h-5 w-5" />
@@ -504,7 +543,7 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Top Productos por Revenue */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-green-600" />
@@ -548,7 +587,7 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Búsquedas Exitosas */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Search className="h-5 w-5" />
@@ -564,7 +603,7 @@ export default function AnalyticsPage() {
                 {searchStats.topSuccessful.slice(0, 8).map((search, idx) => (
                   <div key={search.term} className="flex items-center gap-3">
                     <span className="text-muted-foreground text-sm w-5">{idx + 1}.</span>
-                    <span className="font-mono bg-gray-100 px-2 py-1 rounded text-sm flex-1 truncate">
+                    <span className="font-mono bg-blue-50 px-2 py-1 rounded text-sm flex-1 truncate">
                       {search.term}
                     </span>
                     <span className="text-sm font-medium">{search.count}</span>
@@ -581,7 +620,7 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Búsquedas Sin Resultados */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-orange-600" />
@@ -618,7 +657,7 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Dispositivos */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Smartphone className="h-5 w-5" />
@@ -662,7 +701,7 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Carritos Abandonados Resumen */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShoppingCart className="h-5 w-5 text-red-600" />
@@ -697,7 +736,7 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Mejores Conversores */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Target className="h-5 w-5 text-green-600" />
@@ -729,6 +768,8 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }

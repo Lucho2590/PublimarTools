@@ -39,6 +39,7 @@ import {
   LayoutDashboard,
   ArrowUpRight,
   ArrowDownRight,
+  Loader2,
 } from "lucide-react";
 import { TEcommerceOrder } from "@/types/ecommerceOrder";
 import { TAbandonedCart } from "@/types/abandonedCart";
@@ -166,28 +167,6 @@ export default function TiendaDashboardPage() {
     }
   };
 
-  // Skeleton loading
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        {/* Nav skeleton */}
-        <div className="flex gap-2">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-10 w-28 bg-gray-200 animate-pulse rounded-lg" />
-          ))}
-        </div>
-        {/* KPI skeleton */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-28 bg-gray-200 animate-pulse rounded-xl" />
-          ))}
-        </div>
-        {/* Table skeleton */}
-        <div className="h-64 bg-gray-200 animate-pulse rounded-xl" />
-      </div>
-    );
-  }
-
   const getBadgeCount = (href: string) => {
     if (href.includes("pedidos")) return unviewedOrdersCount;
     if (href.includes("carritos")) return unviewedCartsCount;
@@ -225,6 +204,12 @@ export default function TiendaDashboardPage() {
         })}
       </div>
 
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
@@ -410,6 +395,8 @@ export default function TiendaDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }

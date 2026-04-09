@@ -28,19 +28,23 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatDate, formatearPrecio } from "@/lib/utils";
+import { formatDate, formatearPrecio, cn } from "@/lib/utils";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Search,
   Download,
-  ArrowLeft,
-  Filter,
   AlertTriangle,
   TrendingDown,
   Smartphone,
   Monitor,
   MessageCircle,
   Trash2,
+  Loader2,
+  LayoutDashboard,
+  Package,
+  BarChart3,
+  ShoppingCart,
 } from "lucide-react";
 import { TAbandonedCart } from "@/types/abandonedCart";
 import { updateDoc, doc, serverTimestamp } from "firebase/firestore";
@@ -88,8 +92,16 @@ Si tenés alguna duda, estamos para ayudarte! 😊`;
   return encodeURIComponent(message);
 };
 
+const tiendaNav = [
+  { name: "Dashboard", href: "/publimar/banderas/tienda", icon: LayoutDashboard },
+  { name: "Pedidos", href: "/publimar/banderas/tienda/pedidos", icon: Package, badge: true },
+  { name: "Carritos", href: "/publimar/banderas/tienda/carritos-abandonados", icon: ShoppingCart, badge: true },
+  { name: "Analytics", href: "/publimar/banderas/tienda/analytics", icon: BarChart3 },
+];
+
 export default function CarritosAbandonadosPage() {
   const firestore = useFirestore();
+  const pathname = usePathname();
 
   const [carts, setCarts] = useState<TAbandonedCart[]>([]);
   const [filteredCarts, setFilteredCarts] = useState<TAbandonedCart[]>([]);
@@ -286,39 +298,46 @@ export default function CarritosAbandonadosPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/publimar/banderas/tienda">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <h1 className="text-3xl font-bold">Cargando carritos...</h1>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {/* Navegacion interna */}
+      <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+        {tiendaNav.map((nav) => {
+          const Icon = nav.icon;
+          const isActive = pathname === nav.href;
+          return (
+            <Link
+              key={nav.href}
+              href={nav.href}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                isActive
+                  ? "bg-white text-blue-950 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {nav.name}
+            </Link>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/publimar/banderas/tienda">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold">Carritos Abandonados</h1>
-            <p className="text-muted-foreground">
-              {filteredCarts.length} de {carts.length} carritos abandonados
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Carritos Abandonados</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {filteredCarts.length} de {carts.length} carritos abandonados
+          </p>
         </div>
-        <Button onClick={exportToCSV} variant="outline">
+        <Button onClick={exportToCSV} variant="outline" size="sm">
           <Download className="mr-2 h-4 w-4" />
           Exportar CSV
         </Button>
@@ -326,47 +345,53 @@ export default function CarritosAbandonadosPage() {
 
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Valor Total Perdido</CardTitle>
-            <TrendingDown className="h-4 w-4 text-orange-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-orange-600">
+        <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-muted-foreground">Valor Total Perdido</span>
+              <div className="h-9 w-9 rounded-lg bg-orange-50 flex items-center justify-center">
+                <TrendingDown className="h-4.5 w-4.5 text-orange-500" />
+              </div>
+            </div>
+            <div className="text-2xl font-bold tracking-tight text-orange-600">
               {formatearPrecio(totalValue)}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mt-1">
               En {filteredCarts.length} carritos abandonados
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">% Mobile</CardTitle>
-            <Smartphone className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{mobilePercent.toFixed(1)}%</div>
-            <p className="text-xs text-muted-foreground">
+        <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-muted-foreground">% Mobile</span>
+              <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Smartphone className="h-4.5 w-4.5 text-blue-600" />
+              </div>
+            </div>
+            <div className="text-2xl font-bold tracking-tight">{mobilePercent.toFixed(1)}%</div>
+            <p className="text-xs text-muted-foreground mt-1">
               Abandonan más desde móvil
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Promedio por Carrito</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+        <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-muted-foreground">Promedio por Carrito</span>
+              <div className="h-9 w-9 rounded-lg bg-violet-50 flex items-center justify-center">
+                <AlertTriangle className="h-4.5 w-4.5 text-violet-600" />
+              </div>
+            </div>
+            <div className="text-2xl font-bold tracking-tight">
               {filteredCarts.length > 0
                 ? formatearPrecio(totalValue / filteredCarts.length)
                 : formatearPrecio(0)
               }
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground mt-1">
               Valor promedio abandonado
             </p>
           </CardContent>
@@ -374,60 +399,43 @@ export default function CarritosAbandonadosPage() {
       </div>
 
       {/* Filtros */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtros
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            {/* Búsqueda */}
-            <div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por producto..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-
-            {/* Filtro por dispositivo */}
-            <Select value={deviceFilter} onValueChange={setDeviceFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todos los dispositivos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los dispositivos</SelectItem>
-                <SelectItem value="mobile">Mobile</SelectItem>
-                <SelectItem value="desktop">Desktop</SelectItem>
-                <SelectItem value="tablet">Tablet</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Filtro por fecha */}
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todas las fechas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las fechas</SelectItem>
-                <SelectItem value="today">Hoy</SelectItem>
-                <SelectItem value="week">Última semana</SelectItem>
-                <SelectItem value="month">Este mes</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por producto..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={deviceFilter} onValueChange={setDeviceFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Todos los dispositivos" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los dispositivos</SelectItem>
+            <SelectItem value="mobile">Mobile</SelectItem>
+            <SelectItem value="desktop">Desktop</SelectItem>
+            <SelectItem value="tablet">Tablet</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={dateFilter} onValueChange={setDateFilter}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Todas las fechas" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las fechas</SelectItem>
+            <SelectItem value="today">Hoy</SelectItem>
+            <SelectItem value="week">Última semana</SelectItem>
+            <SelectItem value="month">Este mes</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Tabla de Carritos */}
-      <Card>
-        <CardContent className="pt-6">
+      <Card className="border-0 shadow-sm">
+        <CardContent className="pt-4">
           {filteredCarts.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               {carts.length === 0
@@ -552,6 +560,8 @@ export default function CarritosAbandonadosPage() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
     </div>
   );
 }
