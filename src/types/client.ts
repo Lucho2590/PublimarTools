@@ -30,6 +30,7 @@ export enum EClientType {
     status: EClientStatus;
     section: EClientSection; // Sección del cliente (banderas o vía pública)
     businessName?: string; // Razón social para empresas
+    fantasyName?: string; // Nombre de fantasía para empresas
     email?: string;
     phone?: string;
     address?: string;

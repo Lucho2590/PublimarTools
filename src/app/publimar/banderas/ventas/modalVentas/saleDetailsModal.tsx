@@ -8,6 +8,7 @@ import {
   serverTimestamp,
   Timestamp,
   getDoc,
+  increment,
 } from "firebase/firestore";
 import { softDelete } from '@/lib/softDelete';
 import {
@@ -27,7 +28,7 @@ import {
   TExchangeItem,
 } from "@/types/sale";
 import collections from "@/lib/collections";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Select,
   SelectContent,
@@ -37,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import { TProduct, TProductCategory } from "@/types/product";
 import { Input } from "@/components/ui/input";
+import { ProductAutocomplete, AutocompleteOption } from "@/components/ui/product-autocomplete";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
@@ -89,6 +91,7 @@ export function SaleDetailsModal({
   const firestore = useFirestore();
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const originalItemsRef = useRef<TSaleItem[]>([]);
   const [products, setProducts] = useState<Record<string, TProduct>>({});
   const [selectedProduct, setSelectedProduct] = useState<string>("");
   const [selectedVariant, setSelectedVariant] = useState<string>("");
@@ -160,6 +163,13 @@ export function SaleDetailsModal({
   const [exchangeVariantId, setExchangeVariantId] = useState("");
   const [exchangeQuantity, setExchangeQuantity] = useState(1);
   const [exchangeUnitPrice, setExchangeUnitPrice] = useState(0);
+  const [showExchangeManualDialog, setShowExchangeManualDialog] = useState(false);
+  const [exchangeManualItem, setExchangeManualItem] = useState({
+    productName: "",
+    variantName: "",
+    quantity: 1,
+    unitPrice: 0,
+  });
 
   // Estados para el dialog de cliente
   const [showClientDialog, setShowClientDialog] = useState(false);
@@ -753,6 +763,28 @@ export function SaleDetailsModal({
     setExchangeItems(exchangeItems.filter((_, i) => i !== index));
   };
 
+  const handleAddExchangeManualItem = () => {
+    if (!exchangeManualItem.productName || exchangeManualItem.unitPrice <= 0) {
+      toast.error("Nombre y precio son requeridos");
+      return;
+    }
+
+    const newItem: TExchangeItem = {
+      productId: `manual-${Date.now()}`,
+      variantId: `manual-variant-${Date.now()}`,
+      productName: exchangeManualItem.productName,
+      variantName: exchangeManualItem.variantName || "N/A",
+      quantity: exchangeManualItem.quantity,
+      unitPrice: exchangeManualItem.unitPrice,
+      total: exchangeManualItem.quantity * exchangeManualItem.unitPrice,
+    };
+
+    setExchangeItems([...exchangeItems, newItem]);
+    setExchangeManualItem({ productName: "", variantName: "", quantity: 1, unitPrice: 0 });
+    setShowExchangeManualDialog(false);
+    toast.success("Item manual agregado");
+  };
+
   const handleExchangeVariantChange = (variantId: string) => {
     setExchangeVariantId(variantId);
     if (exchangeProductId && variantId) {
@@ -795,12 +827,19 @@ export function SaleDetailsModal({
       const returnItemsArray: TReturnItem[] = [];
       let totalRefund = 0;
 
+      // Ratio de descuento: si la venta tiene descuento, aplicarlo proporcionalmente
+      // Ej: subtotal $70000 con descuento $10000 = total $60000 → ratio = 60000/70000
+      const saleSubtotal = typedSale.subtotal || 0;
+      const saleTotal = typedSale.total || 0;
+      const discountRatio = saleSubtotal > 0 ? saleTotal / saleSubtotal : 1;
+
       for (const [indexStr, quantity] of selectedItems) {
         const index = parseInt(indexStr);
         const item = typedSale.items[index];
 
-        // Calcular monto proporcional a devolver
-        const refundAmount = (item.total / item.quantity) * quantity;
+        // Calcular monto proporcional a devolver (con descuento aplicado)
+        const grossRefund = (item.total / item.quantity) * quantity;
+        const refundAmount = redondearTotal(grossRefund * discountRatio);
         totalRefund += refundAmount;
 
         returnItemsArray.push({
@@ -831,6 +870,9 @@ export function SaleDetailsModal({
             if (productDoc.exists()) {
               const currentProduct = productDoc.data();
 
+              // Decrementar salesCount solo si se devuelve la cantidad completa
+              const isFullReturn = quantity === item.quantity;
+
               if (item.variantId && currentProduct.variants) {
                 await updateDoc(productRef, {
                   variants: currentProduct.variants.map((v: any) =>
@@ -838,10 +880,12 @@ export function SaleDetailsModal({
                       ? { ...v, stock: Number(v.stock) + quantity }
                       : v,
                   ),
+                  ...(isFullReturn ? { salesCount: increment(-1) } : {}),
                 });
               } else {
                 await updateDoc(productRef, {
                   stock: Number(currentProduct.stock || 0) + quantity,
+                  ...(isFullReturn ? { salesCount: increment(-1) } : {}),
                 });
               }
             }
@@ -895,6 +939,7 @@ export function SaleDetailsModal({
                           }
                         : v,
                     ),
+                    salesCount: increment(1),
                   });
                 } else {
                   await updateDoc(productRef, {
@@ -902,6 +947,7 @@ export function SaleDetailsModal({
                       0,
                       Number(currentProduct.stock || 0) - exchangeItem.quantity,
                     ),
+                    salesCount: increment(1),
                   });
                 }
               }
@@ -979,10 +1025,84 @@ export function SaleDetailsModal({
   };
 
   const handleSave = async () => {
-    if (!saleRef || !saleId) return;
+    if (!saleRef || !saleId || !typedSale) return;
 
     setIsLoading(true);
     try {
+      // Calcular deltas de stock entre items originales y editados
+      const originalItems = originalItemsRef.current;
+      const SEP = "|||";
+
+      // Mapa: {productId, variantId} → quantity original
+      const originalQty = new Map<string, { productId: string; variantId: string; qty: number }>();
+      for (const item of originalItems) {
+        if (item.isManual || !item.productId || item.productId.includes("manual")) continue;
+        const key = `${item.productId}${SEP}${item.variantId || ""}`;
+        const prev = originalQty.get(key);
+        originalQty.set(key, {
+          productId: item.productId,
+          variantId: item.variantId || "",
+          qty: (prev?.qty || 0) + item.quantity,
+        });
+      }
+
+      // Mapa: {productId, variantId} → quantity nuevo
+      const newQty = new Map<string, { productId: string; variantId: string; qty: number }>();
+      for (const item of items) {
+        if (item.isManual || !item.productId || item.productId.includes("manual")) continue;
+        const key = `${item.productId}${SEP}${item.variantId || ""}`;
+        const prev = newQty.get(key);
+        newQty.set(key, {
+          productId: item.productId,
+          variantId: item.variantId || "",
+          qty: (prev?.qty || 0) + item.quantity,
+        });
+      }
+
+      // Calcular deltas y actualizar stock
+      const allKeys = new Set([...originalQty.keys(), ...newQty.keys()]);
+      for (const key of allKeys) {
+        const oldEntry = originalQty.get(key);
+        const newEntry = newQty.get(key);
+        const oldQ = oldEntry?.qty || 0;
+        const newQ = newEntry?.qty || 0;
+        const delta = newQ - oldQ; // >0: descontar más, <0: devolver
+
+        if (delta === 0) continue;
+
+        const productId = (newEntry || oldEntry)!.productId;
+        const variantId = (newEntry || oldEntry)!.variantId;
+
+        try {
+          const productRef = doc(firestore, collections.PRODUCTS, productId);
+          const productDoc = await getDoc(productRef);
+
+          if (productDoc.exists()) {
+            const currentProduct = productDoc.data();
+
+            if (variantId && currentProduct.variants) {
+              await updateDoc(productRef, {
+                variants: currentProduct.variants.map((v: any) =>
+                  v.id === variantId
+                    ? { ...v, stock: Number(v.stock) - delta }
+                    : v,
+                ),
+                ...(oldQ === 0 && newQ > 0 ? { salesCount: increment(1) } : {}),
+                ...(oldQ > 0 && newQ === 0 ? { salesCount: increment(-1) } : {}),
+              });
+            } else {
+              await updateDoc(productRef, {
+                stock: Number(currentProduct.stock || 0) - delta,
+                ...(oldQ === 0 && newQ > 0 ? { salesCount: increment(1) } : {}),
+                ...(oldQ > 0 && newQ === 0 ? { salesCount: increment(-1) } : {}),
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error al actualizar stock del producto ${productId}:`, error);
+        }
+      }
+
       const updateData: Partial<TSale> = {
         items,
         subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal),
@@ -1055,16 +1175,74 @@ export function SaleDetailsModal({
   };
 
   const handleDeleteSale = async () => {
-    if (!saleRef || !saleId) return;
+    if (!saleRef || !saleId || !typedSale) return;
 
     const confirmDelete = window.confirm(
-      "¿Está seguro que desea eliminar esta venta? Esta acción no se puede deshacer.",
+      "¿Está seguro que desea eliminar esta venta?",
     );
-
     if (!confirmDelete) return;
+
+    const shouldRestoreStock = window.confirm(
+      "¿Desea devolver los productos al stock?",
+    );
 
     setIsLoading(true);
     try {
+      if (shouldRestoreStock) {
+        // Calcular cantidades ya devueltas por devoluciones previas (con stock devuelto)
+        const alreadyReturned = new Map<string, number>();
+        if (typedSale.returns) {
+          for (const ret of typedSale.returns) {
+            if (!ret.stockReturned) continue;
+            for (const retItem of ret.items) {
+              const key = `${retItem.productId || ""}|||${retItem.variantId || ""}`;
+              alreadyReturned.set(key, (alreadyReturned.get(key) || 0) + retItem.quantityReturned);
+            }
+          }
+        }
+
+        // Restaurar stock de cada item no-manual (solo la cantidad pendiente)
+        for (const item of typedSale.items) {
+          if (item.isManual || !item.productId || item.productId.includes("manual")) continue;
+
+          const key = `${item.productId}|||${item.variantId || ""}`;
+          const returned = alreadyReturned.get(key) || 0;
+          const pendingQty = item.quantity - returned;
+
+          if (pendingQty <= 0) continue;
+
+          try {
+            const productRef = doc(firestore, collections.PRODUCTS, item.productId);
+            const productDoc = await getDoc(productRef);
+
+            if (productDoc.exists()) {
+              const currentProduct = productDoc.data();
+
+              if (item.variantId && currentProduct.variants) {
+                await updateDoc(productRef, {
+                  variants: currentProduct.variants.map((v: any) =>
+                    v.id === item.variantId
+                      ? { ...v, stock: Number(v.stock) + pendingQty }
+                      : v,
+                  ),
+                  salesCount: increment(-1),
+                });
+              } else {
+                await updateDoc(productRef, {
+                  stock: Number(currentProduct.stock || 0) + pendingQty,
+                  salesCount: increment(-1),
+                });
+              }
+            }
+          } catch (error) {
+            console.error(`Error al devolver stock del producto ${item.productId}:`, error);
+          }
+        }
+
+        // Marcar que se devolvió stock antes del soft delete
+        await updateDoc(saleRef, { stockRestored: true });
+      }
+
       await softDelete(firestore, collections.SALES, saleId);
       toast.success("Venta eliminada correctamente");
       onSuccess();
@@ -1177,7 +1355,10 @@ export function SaleDetailsModal({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => {
+                    originalItemsRef.current = [...items];
+                    setIsEditing(true);
+                  }}
                   className="flex items-center gap-2 bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
                 >
                   <Edit className="h-4 w-4" />
@@ -1593,141 +1774,119 @@ export function SaleDetailsModal({
               <div>
                 <h3 className="font-semibold mb-4">Productos</h3>
                 {isEditing && (
-                  <div className="mb-4 p-4 border rounded-lg">
-                    <h4 className="font-medium mb-2">Agregar Producto</h4>
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">
-                          Filtrar por categoría
-                        </label>
-                        <Select
-                          value={selectedCategory}
-                          onValueChange={setSelectedCategory}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Todas las categorías" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-48 overflow-y-auto">
-                            <SelectItem value="all">
-                              Todas las categorías
-                            </SelectItem>
-                            {Object.entries(categories).map(
-                              ([id, category]) => (
-                                <SelectItem key={id} value={id}>
-                                  {category.name}
-                                </SelectItem>
-                              ),
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="relative">
-                        <label className="text-sm font-medium mb-2 block">
-                          Buscar productos
-                        </label>
-                        <Search className="absolute left-2 top-8 h-4 w-4 text-muted-foreground" />
+                  <div className="mb-4 p-4 border rounded-lg bg-slate-50 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-sm text-slate-700">Agregar producto</h4>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowManualItemDialog(true)}
+                      >
+                        <FileText className="h-3.5 w-3.5 mr-1.5" />
+                        Item manual
+                      </Button>
+                    </div>
+
+                    {/* Busqueda y filtro */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="col-span-2 relative">
+                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
-                          placeholder="Buscar por nombre..."
+                          placeholder="Buscar producto..."
                           value={searchTerm}
                           onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-8"
+                          className="pl-8 bg-white"
                         />
                       </div>
+                      <Select
+                        value={selectedCategory}
+                        onValueChange={setSelectedCategory}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Categoría" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-48 overflow-y-auto">
+                          <SelectItem value="all">Todas</SelectItem>
+                          {Object.entries(categories).map(([id, category]) => (
+                            <SelectItem key={id} value={id}>
+                              {category.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div className="grid grid-cols-4 gap-4">
-                      <div>
-                        <label className="text-sm font-medium">Producto</label>
-                        <Select
-                          value={selectedProduct}
-                          onValueChange={setSelectedProduct}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar producto" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-48 overflow-y-auto">
-                            {filteredProducts.map(([id, product]) => {
-                              const hasStock =
-                                product?.variants?.some(
-                                  (variant) => Number(variant.stock) > 0,
-                                ) ?? false;
+
+                    {/* Producto y variante */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <ProductAutocomplete
+                        options={filteredProducts.map(([id, product]) => {
+                          const totalStock = product?.variants?.reduce((sum, v) => sum + Number(v.stock), 0) ?? 0;
+                          return {
+                            id,
+                            label: product?.name || "Producto sin nombre",
+                            disabled: totalStock <= 0,
+                            sublabel: totalStock <= 0 ? "Sin stock" : `${totalStock} disp.`,
+                            sublabelClassName: totalStock <= 0 ? "text-red-500" : totalStock < 5 ? "text-red-500" : "text-green-600",
+                          };
+                        })}
+                        value={selectedProduct}
+                        onChange={setSelectedProduct}
+                        placeholder="Buscar producto..."
+                        className="bg-white"
+                      />
+                      <Select
+                        value={selectedVariant}
+                        onValueChange={handleVariantChange}
+                        disabled={!selectedProduct}
+                      >
+                        <SelectTrigger className="bg-white">
+                          <SelectValue placeholder="Variante" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-48 overflow-y-auto">
+                          {selectedProduct &&
+                            products[selectedProduct]?.variants.map((variant) => {
+                              const stock = Number(variant.stock);
                               return (
                                 <SelectItem
-                                  key={id}
-                                  value={id}
-                                  disabled={!hasStock}
-                                  className={
-                                    !hasStock
-                                      ? "opacity-50 cursor-not-allowed"
-                                      : ""
-                                  }
+                                  key={variant.id}
+                                  value={variant.id}
+                                  disabled={stock <= 0}
+                                  className={stock <= 0 ? "opacity-50" : ""}
                                 >
-                                  <div className="flex flex-col">
-                                    <span>
-                                      {product?.name || "Producto sin nombre"}
-                                    </span>
-                                  </div>
+                                  {variant.size}{" "}
+                                  <span className={stock <= 0 ? "text-red-500" : stock < 5 ? "text-red-500" : "text-green-600"}>
+                                    {stock > 0 ? `(${stock} disp.)` : "(Sin stock)"}
+                                  </span>
                                 </SelectItem>
                               );
                             })}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium">Variante</label>
-                        <Select
-                          value={selectedVariant}
-                          onValueChange={handleVariantChange}
-                          disabled={!selectedProduct}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar variante" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {selectedProduct &&
-                              products[selectedProduct]?.variants.map(
-                                (variant) => (
-                                  <SelectItem
-                                    key={variant.id}
-                                    value={variant.id}
-                                    disabled={Number(variant.stock) <= 0}
-                                    className={
-                                      Number(variant.stock) <= 0
-                                        ? "opacity-50 cursor-not-allowed"
-                                        : ""
-                                    }
-                                  >
-                                    {variant.size}{" "}
-                                    {Number(variant.stock) <= 0 &&
-                                      "(Sin stock)"}
-                                  </SelectItem>
-                                ),
-                              )}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium">Cantidad</label>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Cantidad, precio y boton */}
+                    <div className="flex items-end gap-3">
+                      <div className="w-24">
+                        <label className="text-xs font-medium text-slate-500 mb-1 block">Cantidad</label>
                         <Input
                           type="number"
                           min="1"
                           value={quantity}
                           onChange={(e) => setQuantity(Number(e.target.value))}
+                          className="bg-white"
                         />
                       </div>
-                      <div>
-                        <label className="text-sm font-medium">
-                          Precio Unitario
-                        </label>
+                      <div className="w-32">
+                        <label className="text-xs font-medium text-slate-500 mb-1 block">Precio unit.</label>
                         <Input
                           type="number"
                           min="0"
                           step="0.01"
                           value={unitPrice}
                           onChange={(e) => setUnitPrice(Number(e.target.value))}
+                          className="bg-white"
                         />
                       </div>
-                    </div>
-                    <div className="flex gap-2 mt-4">
                       <Button
                         onClick={handleAddItem}
                         disabled={
@@ -1736,18 +1895,10 @@ export function SaleDetailsModal({
                           quantity <= 0 ||
                           unitPrice <= 0
                         }
-                        className="bg-blue-600 hover:bg-blue-700"
+                        className="bg-blue-600 hover:bg-blue-700 flex-1"
                       >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Agregar Producto
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowManualItemDialog(true)}
-                        className="bg-gray-600 hover:bg-gray-700 text-white"
-                      >
-                        <FileText className="h-4 w-4 mr-2" />
-                        Item Manual
+                        <Plus className="h-4 w-4 mr-1.5" />
+                        Agregar
                       </Button>
                     </div>
                   </div>
@@ -2176,6 +2327,86 @@ export function SaleDetailsModal({
         </DialogContent>
       </Dialog>
 
+      {/* Dialog para Item Manual en Cambio */}
+      <Dialog open={showExchangeManualDialog} onOpenChange={setShowExchangeManualDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Agregar item manual al cambio</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nombre del producto *</Label>
+              <Input
+                placeholder="Ej: Servicio de bordado"
+                value={exchangeManualItem.productName}
+                onChange={(e) =>
+                  setExchangeManualItem((prev) => ({ ...prev, productName: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <Label>Variante / Medida</Label>
+              <Input
+                placeholder="Ej: Grande"
+                value={exchangeManualItem.variantName}
+                onChange={(e) =>
+                  setExchangeManualItem((prev) => ({ ...prev, variantName: e.target.value }))
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Cantidad</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={exchangeManualItem.quantity}
+                  onChange={(e) =>
+                    setExchangeManualItem((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>Precio unitario *</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={exchangeManualItem.unitPrice || ""}
+                  onChange={(e) =>
+                    setExchangeManualItem((prev) => ({ ...prev, unitPrice: parseFloat(e.target.value) || 0 }))
+                  }
+                />
+              </div>
+            </div>
+
+            {exchangeManualItem.unitPrice > 0 && (
+              <div className="bg-gray-50 p-3 rounded">
+                <div className="text-sm">
+                  <div>Cantidad: {exchangeManualItem.quantity}</div>
+                  <div>Precio unitario: {formatearPrecio(exchangeManualItem.unitPrice)}</div>
+                  <div className="font-bold">
+                    Subtotal: {formatearPrecio(exchangeManualItem.unitPrice * exchangeManualItem.quantity)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowExchangeManualDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleAddExchangeManualItem}
+              disabled={!exchangeManualItem.productName || exchangeManualItem.unitPrice <= 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              Agregar Item
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog para Devolución/Cambio */}
       <Dialog
         open={showReturnDialog}
@@ -2187,6 +2418,8 @@ export function SaleDetailsModal({
             setReturnToStock(true);
             setIsExchangeMode(false);
             setExchangeItems([]);
+            setShowExchangeManualDialog(false);
+            setExchangeManualItem({ productName: "", variantName: "", quantity: 1, unitPrice: 0 });
           }
         }}
       >
@@ -2321,75 +2554,82 @@ export function SaleDetailsModal({
             {/* Sección de productos nuevos (solo en modo cambio) */}
             {isExchangeMode && (
               <div className="border rounded-lg">
-                <div className="bg-green-50 p-3 border-b">
-                  <h4 className="font-medium text-green-900">
-                    Productos nuevos (lo que se lleva)
-                  </h4>
-                  <p className="text-sm text-green-700">
-                    Agregue los productos que el cliente se lleva a cambio
-                  </p>
+                <div className="bg-green-50 p-3 border-b flex items-start justify-between">
+                  <div>
+                    <h4 className="font-medium text-green-900">
+                      Productos nuevos (lo que se lleva)
+                    </h4>
+                    <p className="text-sm text-green-700">
+                      Agregue los productos que el cliente se lleva a cambio
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowExchangeManualDialog(true)}
+                    className="shrink-0"
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-1.5" />
+                    Item manual
+                  </Button>
                 </div>
 
                 {/* Formulario para agregar producto nuevo */}
-                <div className="p-4 border-b bg-gray-50">
-                  <div className="grid grid-cols-5 gap-3">
-                    <div>
-                      <Label className="text-xs">Producto</Label>
-                      <Select
-                        value={exchangeProductId}
-                        onValueChange={setExchangeProductId}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Seleccionar..." />
-                        </SelectTrigger>
-                        <SelectContent className="max-h-48 overflow-y-auto">
-                          {Object.entries(products).map(([id, product]) => {
-                            const hasStock =
-                              product?.variants?.some(
-                                (v) => Number(v.stock) > 0,
-                              ) ?? false;
-                            return (
-                              <SelectItem
-                                key={id}
-                                value={id}
-                                disabled={!hasStock}
-                              >
-                                {product?.name}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Variante</Label>
-                      <Select
-                        value={exchangeVariantId}
-                        onValueChange={handleExchangeVariantChange}
-                        disabled={!exchangeProductId}
-                      >
-                        <SelectTrigger className="h-9">
-                          <SelectValue placeholder="Seleccionar..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {exchangeProductId &&
-                            products[exchangeProductId]?.variants?.map(
-                              (variant) => (
+                <div className="p-4 border-b bg-gray-50 space-y-3">
+                  {/* Producto y variante */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <ProductAutocomplete
+                      options={Object.entries(products).map(([id, product]) => {
+                        const totalStock = product?.variants?.reduce((sum, v) => sum + Number(v.stock), 0) ?? 0;
+                        return {
+                          id,
+                          label: product?.name || "Producto sin nombre",
+                          disabled: totalStock <= 0,
+                          sublabel: totalStock <= 0 ? "Sin stock" : `${totalStock} disp.`,
+                          sublabelClassName: totalStock <= 0 ? "text-red-500" : totalStock < 5 ? "text-red-500" : "text-green-600",
+                        };
+                      })}
+                      value={exchangeProductId}
+                      onChange={setExchangeProductId}
+                      placeholder="Buscar producto..."
+                      className="h-9 bg-white"
+                    />
+                    <Select
+                      value={exchangeVariantId}
+                      onValueChange={handleExchangeVariantChange}
+                      disabled={!exchangeProductId}
+                    >
+                      <SelectTrigger className="h-9 bg-white">
+                        <SelectValue placeholder="Variante" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-48 overflow-y-auto">
+                        {exchangeProductId &&
+                          products[exchangeProductId]?.variants?.map(
+                            (variant) => {
+                              const stock = Number(variant.stock);
+                              return (
                                 <SelectItem
                                   key={variant.id}
                                   value={variant.id}
-                                  disabled={Number(variant.stock) <= 0}
+                                  disabled={stock <= 0}
+                                  className={stock <= 0 ? "opacity-50" : ""}
                                 >
                                   {variant.size}{" "}
-                                  {Number(variant.stock) <= 0 && "(Sin stock)"}
+                                  <span className={stock <= 0 ? "text-red-500" : stock < 5 ? "text-red-500" : "text-green-600"}>
+                                    {stock > 0 ? `(${stock} disp.)` : "(Sin stock)"}
+                                  </span>
                                 </SelectItem>
-                              ),
-                            )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Cantidad</Label>
+                              );
+                            },
+                          )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Cantidad, precio y boton */}
+                  <div className="flex items-end gap-3">
+                    <div className="w-24">
+                      <label className="text-xs font-medium text-slate-500 mb-1 block">Cantidad</label>
                       <Input
                         type="number"
                         min="1"
@@ -2397,11 +2637,11 @@ export function SaleDetailsModal({
                         onChange={(e) =>
                           setExchangeQuantity(Number(e.target.value))
                         }
-                        className="h-9"
+                        className="h-9 bg-white"
                       />
                     </div>
-                    <div>
-                      <Label className="text-xs">Precio Unit.</Label>
+                    <div className="w-32">
+                      <label className="text-xs font-medium text-slate-500 mb-1 block">Precio unit.</label>
                       <Input
                         type="number"
                         min="0"
@@ -2409,26 +2649,24 @@ export function SaleDetailsModal({
                         onChange={(e) =>
                           setExchangeUnitPrice(Number(e.target.value))
                         }
-                        className="h-9"
+                        className="h-9 bg-white"
                       />
                     </div>
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        onClick={handleAddExchangeItem}
-                        disabled={
-                          !exchangeProductId ||
-                          !exchangeVariantId ||
-                          exchangeQuantity <= 0 ||
-                          exchangeUnitPrice <= 0
-                        }
-                        className="bg-green-600 hover:bg-green-700 h-9"
-                        size="sm"
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Agregar
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      onClick={handleAddExchangeItem}
+                      disabled={
+                        !exchangeProductId ||
+                        !exchangeVariantId ||
+                        exchangeQuantity <= 0 ||
+                        exchangeUnitPrice <= 0
+                      }
+                      className="bg-green-600 hover:bg-green-700 h-9 flex-1"
+                      size="sm"
+                    >
+                      <Plus className="h-4 w-4 mr-1.5" />
+                      Agregar
+                    </Button>
                   </div>
                 </div>
 
@@ -2490,7 +2728,8 @@ export function SaleDetailsModal({
               className={`p-4 rounded-lg ${isExchangeMode ? "bg-purple-50" : "bg-blue-50"}`}
             >
               {(() => {
-                const totalReturn = Object.entries(returnItems).reduce(
+                // Valor bruto de los items devueltos (sin descuento)
+                const grossReturn = Object.entries(returnItems).reduce(
                   (total, [indexStr, qty]) => {
                     if (qty === 0) return total;
                     const index = parseInt(indexStr);
@@ -2501,11 +2740,21 @@ export function SaleDetailsModal({
                   0,
                 );
 
+                // Aplicar descuento proporcional de la venta original
+                // Ej: subtotal $70000, descuentos $10000, total $60000 → ratio = 60000/70000
+                const saleSubtotal = typedSale?.subtotal || 0;
+                const saleTotal = typedSale?.total || 0;
+                const discountRatio = saleSubtotal > 0 ? saleTotal / saleSubtotal : 1;
+                const totalReturn = redondearTotal(grossReturn * discountRatio);
+
                 const totalExchange = exchangeItems.reduce(
                   (sum, item) => sum + item.total,
                   0,
                 );
                 const difference = totalExchange - totalReturn;
+
+                const totalDiscount = redondearTotal(grossReturn - totalReturn);
+                const hasDiscount = discountRatio < 1;
 
                 return (
                   <div className="space-y-2">
@@ -2515,6 +2764,13 @@ export function SaleDetailsModal({
                         -{formatearPrecio(totalReturn)}
                       </span>
                     </div>
+
+                    {hasDiscount && (
+                      <div className="flex justify-between items-center text-sm text-gray-500">
+                        <span>Descuento aplicado en la compra:</span>
+                        <span>-{formatearPrecio(totalDiscount)}</span>
+                      </div>
+                    )}
 
                     {isExchangeMode && (
                       <>

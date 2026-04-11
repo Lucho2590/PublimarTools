@@ -38,7 +38,9 @@ export default function NuevoClientePage() {
     name: "",
     type: EClientType.COMPANY,
     status: EClientStatus.ACTIVE,
-    section: EClientSection.BANDERAS, // Clientes de banderas
+    section: EClientSection.BANDERAS,
+    businessName: "",
+    fantasyName: "",
     email: "",
     phone: "",
     address: "",
@@ -86,9 +88,17 @@ export default function NuevoClientePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
-    if (!formData.name) {
-      toast.error("El nombre del cliente es requerido");
-      return;
+    // Validación según tipo
+    if (formData.type === EClientType.COMPANY) {
+      if (!formData.businessName) {
+        toast.error("La razón social es requerida");
+        return;
+      }
+    } else {
+      if (!formData.name) {
+        toast.error("El nombre del cliente es requerido");
+        return;
+      }
     }
     if (!user) {
       toast.error("Debes estar logueado para crear un cliente");
@@ -105,9 +115,15 @@ export default function NuevoClientePage() {
           contact.phone.trim() !== ""
       );
 
+      // Si es empresa, name = fantasyName || businessName
+      const finalFormData = { ...formData };
+      if (finalFormData.type === EClientType.COMPANY) {
+        finalFormData.name = finalFormData.fantasyName || finalFormData.businessName;
+      }
+
       // Crear un nuevo cliente en Firestore
       const clientData: Record<string, any> = {
-        ...formData,
+        ...finalFormData,
         contacts: filteredContacts,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -156,30 +172,7 @@ export default function NuevoClientePage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nombre o Razón Social</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-              <Label htmlFor="address">Dirección</Label>
-              <Input
-                id="address"
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-              />
-            </div>
-       
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="type">Tipo</Label>
+                <Label htmlFor="type">Tipo de cliente</Label>
                 <Select
                   value={formData.type}
                   onValueChange={(value) => handleChange({ target: { name: "type", value } } as any)}
@@ -188,13 +181,13 @@ export default function NuevoClientePage() {
                     <SelectValue placeholder="Seleccionar tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={EClientType.INDIVIDUAL}>Individual</SelectItem>
+                    <SelectItem value={EClientType.INDIVIDUAL}>Particular</SelectItem>
                     <SelectItem value={EClientType.COMPANY}>Empresa</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-                     <div className="space-y-2">
-                <Label htmlFor="cuit">CUIT/CUIL</Label>
+              <div className="space-y-2">
+                <Label htmlFor="cuit">{formData.type === EClientType.COMPANY ? "CUIT" : "CUIL"}</Label>
                 <Input
                   id="cuit"
                   name="cuit"
@@ -203,6 +196,62 @@ export default function NuevoClientePage() {
                 />
               </div>
             </div>
+
+            {formData.type === EClientType.INDIVIDUAL ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nombre completo *</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="address">Dirección</Label>
+                  <Input
+                    id="address"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="businessName">Razón Social *</Label>
+                  <Input
+                    id="businessName"
+                    name="businessName"
+                    value={formData.businessName}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="fantasyName">Nombre de Fantasía</Label>
+                  <Input
+                    id="fantasyName"
+                    name="fantasyName"
+                    value={formData.fantasyName}
+                    onChange={handleChange}
+                    placeholder="Si difiere de la razón social"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="address">Dirección</Label>
+                  <Input
+                    id="address"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleChange}
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">

@@ -264,7 +264,7 @@ export function useSalesByClient(clientId: string) {
   })
 
   return {
-    sales: (sales as TSale[]) || [],
+    sales: ((sales as TSale[]) || []).filter(s => !(s as any).deleted),
     loading: status === 'loading',
     error: status === 'error'
   }
@@ -284,7 +284,7 @@ export function useSalesByOrder(orderId: string) {
   })
 
   return {
-    sales: (sales as TSale[]) || [],
+    sales: ((sales as TSale[]) || []).filter(s => !(s as any).deleted),
     loading: status === 'loading',
     error: status === 'error'
   }

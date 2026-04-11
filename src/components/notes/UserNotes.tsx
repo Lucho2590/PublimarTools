@@ -48,9 +48,11 @@ export default function UserNotes({ userId, userName, section }: UserNotesProps)
     orderBy("createdAt", "desc") // Más nuevas primero
   );
 
-  const { data: notes, status } = useFirestoreCollectionData(notesQuery, {
+  const { data: allNotes, status } = useFirestoreCollectionData(notesQuery, {
     idField: "id",
   });
+
+  const notes = allNotes?.filter((note: any) => !note.deleted);
 
   const addNote = async () => {
     if (newNoteContent.trim() === "") {
