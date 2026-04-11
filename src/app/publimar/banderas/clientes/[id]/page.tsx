@@ -92,6 +92,10 @@ export default function ClienteDetallePage({
     { idField: "id" },
   );
 
+  // Filtrar ventas eliminadas
+  const activeSales = sales?.filter((s: any) => !s.deleted);
+  const activeSales2 = sales2?.filter((s: any) => !s.deleted);
+
   // Estados para el modal de ventas
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -465,10 +469,10 @@ export default function ClienteDetallePage({
                 <div className="flex justify-center py-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
                 </div>
-              ) : (sales && sales.length > 0) ||
-                (sales2 && sales2.length > 0) ? (
+              ) : (activeSales && activeSales.length > 0) ||
+                (activeSales2 && activeSales2.length > 0) ? (
                 <div className="space-y-4">
-                  {(sales && sales.length > 0 ? sales : sales2).map(
+                  {(activeSales && activeSales.length > 0 ? activeSales : activeSales2).map(
                     (sale: any) => (
                       <div
                         key={sale.id}

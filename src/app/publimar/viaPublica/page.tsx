@@ -214,20 +214,24 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (monthlySalesData) {
-      const total = monthlySalesData.reduce(
-        (sum, sale) => sum + (sale.total || 0),
-        0
-      );
+      const total = monthlySalesData
+        .filter((sale) => !(sale as any).deleted)
+        .reduce(
+          (sum, sale) => sum + (sale.total || 0),
+          0
+        );
       setMonthlySales(total);
     }
   }, [monthlySalesData]);
 
   useEffect(() => {
     if (yearlySalesData) {
-      const total = yearlySalesData.reduce(
-        (sum, sale) => sum + (sale.total || 0),
-        0
-      );
+      const total = yearlySalesData
+        .filter((sale) => !(sale as any).deleted)
+        .reduce(
+          (sum, sale) => sum + (sale.total || 0),
+          0
+        );
       setYearlySales(total);
     }
   }, [yearlySalesData]);

@@ -9,6 +9,7 @@ import {
   serverTimestamp,
   doc,
   updateDoc,
+  increment,
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -358,8 +359,8 @@ export default function NuevaVentaPage() {
 
     // Ordenar por popularidad (más vendidos primero)
     return filtered?.sort((a, b) => {
-      const salesA = (a as any).totalSales || 0;
-      const salesB = (b as any).totalSales || 0;
+      const salesA = (a as any).salesCount || 0;
+      const salesB = (b as any).salesCount || 0;
       return salesB - salesA;
     });
   }, [products, searchTerm, selectedCategory, categories]);
@@ -720,20 +721,14 @@ export default function NuevaVentaPage() {
             item.product.id
           );
           
-          // Actualizar stock Y contadores de ventas
-          const currentProduct = item.product;
-          const currentTotalSales = currentProduct.totalSales || 0;
-          const currentSalesCount = currentProduct.salesCount || 0;
-          
+          // Actualizar stock Y contadores de ventas (increment es atómico)
           await updateDoc(productRef, {
             variants: item.product.variants.map((v) =>
               v.id === item.variant.id
                 ? { ...v, stock: Number(v.stock) - item.quantity }
                 : v
             ),
-            // Actualizar contadores de ventas
-            totalSales: currentTotalSales + item.quantity,
-            salesCount: currentSalesCount + 1,
+            salesCount: increment(1),
             lastSaleDate: new Date(),
           });
         }
@@ -1129,9 +1124,9 @@ export default function NuevaVentaPage() {
                               </span>
                             )}
                           {/* Indicador de popularidad */}
-                          {(typedProduct as any).totalSales > 0 && (
+                          {(typedProduct as any).salesCount > 0 && (
                             <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded whitespace-nowrap">
-                              🔥 {(typedProduct as any).totalSales} vendidos
+                              🔥 {(typedProduct as any).salesCount} vendidos
                             </span>
                           )}
                         </div>

@@ -42,6 +42,7 @@ export default function EditarClientePage({ params }: { params: { id: string } }
     status: EClientStatus.ACTIVE,
     section: EClientSection.BANDERAS,
     businessName: "",
+    fantasyName: "",
     email: "",
     phone: "",
     address: "",
@@ -99,8 +100,13 @@ export default function EditarClientePage({ params }: { params: { id: string } }
           contact.phone.trim() !== ""
       );
 
+      const finalFormData = { ...formData };
+      if (finalFormData.type === EClientType.COMPANY) {
+        finalFormData.name = finalFormData.fantasyName || finalFormData.businessName || finalFormData.name;
+      }
+
       await updateDoc(clientRef, {
-        ...formData,
+        ...finalFormData,
         contacts: filteredContacts,
         updatedAt: new Date(),
       });
@@ -160,19 +166,7 @@ export default function EditarClientePage({ params }: { params: { id: string } }
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Nombre</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="type">Tipo</Label>
+                <Label htmlFor="type">Tipo de cliente</Label>
                 <Select
                   value={formData.type}
                   onValueChange={(value: EClientType) =>
@@ -184,24 +178,61 @@ export default function EditarClientePage({ params }: { params: { id: string } }
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={EClientType.INDIVIDUAL}>
-                      Individual
+                      Particular
                     </SelectItem>
                     <SelectItem value={EClientType.COMPANY}>Empresa</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              {formData.type === EClientType.COMPANY && (
-                <div className="space-y-2">
-                  <Label htmlFor="businessName">Razón Social</Label>
+              <div className="space-y-2">
+                <Label htmlFor="cuit">{formData.type === EClientType.COMPANY ? "CUIT" : "CUIL"}</Label>
+                <Input
+                  id="cuit"
+                  value={formData.cuit}
+                  onChange={(e) =>
+                    setFormData({ ...formData, cuit: e.target.value })
+                  }
+                />
+              </div>
+
+              {formData.type === EClientType.INDIVIDUAL ? (
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="name">Nombre completo *</Label>
                   <Input
-                    id="businessName"
-                    value={formData.businessName}
+                    id="name"
+                    value={formData.name}
                     onChange={(e) =>
-                      setFormData({ ...formData, businessName: e.target.value })
+                      setFormData({ ...formData, name: e.target.value })
                     }
+                    required
                   />
                 </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="businessName">Razón Social *</Label>
+                    <Input
+                      id="businessName"
+                      value={formData.businessName}
+                      onChange={(e) =>
+                        setFormData({ ...formData, businessName: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="fantasyName">Nombre de Fantasía</Label>
+                    <Input
+                      id="fantasyName"
+                      value={formData.fantasyName}
+                      onChange={(e) =>
+                        setFormData({ ...formData, fantasyName: e.target.value })
+                      }
+                      placeholder="Si difiere de la razón social"
+                    />
+                  </div>
+                </>
               )}
 
               <div className="space-y-2">
@@ -234,17 +265,6 @@ export default function EditarClientePage({ params }: { params: { id: string } }
                   value={formData.address}
                   onChange={(e) =>
                     setFormData({ ...formData, address: e.target.value })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="cuit">CUIT</Label>
-                <Input
-                  id="cuit"
-                  value={formData.cuit}
-                  onChange={(e) =>
-                    setFormData({ ...formData, cuit: e.target.value })
                   }
                 />
               </div>

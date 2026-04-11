@@ -11,6 +11,8 @@ import {
   updateDoc,
   doc,
   deleteDoc,
+  getDoc,
+  increment,
   Timestamp,
 } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -121,9 +123,69 @@ export default function SudoPage() {
   const handleRestore = async (item: DeletedItem) => {
     try {
       const docRef = doc(firestore, item.collection, item.id);
+
+      // Si es una venta con stock devuelto, re-descontar stock
+      if (item.collection === collections.SALES) {
+        const saleDoc = await getDoc(docRef);
+        if (saleDoc.exists()) {
+          const saleData = saleDoc.data();
+          if (saleData.stockRestored && saleData.items) {
+            // Calcular cantidades ya devueltas por devoluciones previas
+            const alreadyReturned = new Map<string, number>();
+            if (saleData.returns) {
+              for (const ret of saleData.returns) {
+                if (!ret.stockReturned) continue;
+                for (const retItem of ret.items) {
+                  const key = `${retItem.productId || ""}|||${retItem.variantId || ""}`;
+                  alreadyReturned.set(key, (alreadyReturned.get(key) || 0) + retItem.quantityReturned);
+                }
+              }
+            }
+
+            for (const saleItem of saleData.items) {
+              if (saleItem.isManual || !saleItem.productId || saleItem.productId.includes("manual")) continue;
+
+              const key = `${saleItem.productId}|||${saleItem.variantId || ""}`;
+              const returned = alreadyReturned.get(key) || 0;
+              const pendingQty = saleItem.quantity - returned;
+
+              if (pendingQty <= 0) continue;
+
+              try {
+                const productRef = doc(firestore, collections.PRODUCTS, saleItem.productId);
+                const productDoc = await getDoc(productRef);
+
+                if (productDoc.exists()) {
+                  const currentProduct = productDoc.data();
+
+                  if (saleItem.variantId && currentProduct.variants) {
+                    await updateDoc(productRef, {
+                      variants: currentProduct.variants.map((v: any) =>
+                        v.id === saleItem.variantId
+                          ? { ...v, stock: Number(v.stock) - pendingQty }
+                          : v,
+                      ),
+                      salesCount: increment(1),
+                    });
+                  } else {
+                    await updateDoc(productRef, {
+                      stock: Number(currentProduct.stock || 0) - pendingQty,
+                      salesCount: increment(1),
+                    });
+                  }
+                }
+              } catch (error) {
+                console.error(`Error al descontar stock del producto ${saleItem.productId}:`, error);
+              }
+            }
+          }
+        }
+      }
+
       await updateDoc(docRef, {
         deleted: false,
         deletedAt: null,
+        stockRestored: false,
       });
       setDeletedItems((prev) => prev.filter((i) => i.id !== item.id));
     } catch (error) {

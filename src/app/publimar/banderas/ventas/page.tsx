@@ -142,6 +142,7 @@ export default function VentasPage() {
   // Filtrar ventas según los filtros restantes (fecha ya filtrada en Firestore)
   const filteredSales = useMemo(() => {
     return sales?.filter((sale) => {
+      if ((sale as any).deleted) return false;
       const typedSale = sale as unknown as TSale;
       const matchesPaymentMethod =
         selectedPaymentMethod === "all" ||
@@ -309,12 +310,13 @@ export default function VentasPage() {
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     }
 
-    // Filtrar ventas del período
+    // Filtrar ventas del período (excluyendo eliminadas)
     const filteredSales = sales.filter((sale) => {
+      if ((sale as any).deleted) return false;
       if (!sale.createdAt) return false;
-      
-      const saleDate = sale.createdAt instanceof Date 
-        ? sale.createdAt 
+
+      const saleDate = sale.createdAt instanceof Date
+        ? sale.createdAt
         : new Date(sale.createdAt.seconds * 1000);
       return saleDate >= startDate;
     });
@@ -356,7 +358,7 @@ export default function VentasPage() {
 
     const paymentMethodSales = new Map<string, number>();
 
-    sales.forEach((sale) => {
+    sales.filter((sale) => !(sale as any).deleted).forEach((sale) => {
       const typedSale = sale as unknown as TSale;
       const method = formatPaymentMethod(typedSale.paymentMethod);
       const currentTotal = paymentMethodSales.get(method) || 0;

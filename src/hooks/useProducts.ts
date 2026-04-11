@@ -104,11 +104,9 @@ export function useProducts() {
       }
 
       const product = { id: productDoc.id, ...productDoc.data() } as TProduct
-      const currentTotalSales = product.totalSales || 0
       const currentSalesCount = product.salesCount || 0
 
       await updateDoc(productRef, {
-        totalSales: currentTotalSales + quantity,
         salesCount: currentSalesCount + 1,
         lastSaleDate: new Date(),
         updatedAt: serverTimestamp()

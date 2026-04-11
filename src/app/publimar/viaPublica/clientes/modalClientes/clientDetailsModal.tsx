@@ -62,6 +62,7 @@ export default function ClientDetailsModal({
     type: EClientType.INDIVIDUAL,
     status: EClientStatus.ACTIVE,
     businessName: "",
+    fantasyName: "",
     email: "",
     phone: "",
     address: "",
@@ -73,13 +74,11 @@ export default function ClientDetailsModal({
 
   const [contacts, setContacts] = useState<TClientContact[]>([]);
 
-  // Función para manejar la vista de presupuesto en modal
   const handleViewQuote = (quoteId: string) => {
     setSelectedQuoteId(quoteId);
     setShowQuoteModal(true);
   };
 
-  // Reset function (stable reference)
   const resetModalState = useCallback(() => {
     setIsEditing(false);
     setFormData({
@@ -87,6 +86,7 @@ export default function ClientDetailsModal({
       type: EClientType.INDIVIDUAL,
       status: EClientStatus.ACTIVE,
       businessName: "",
+      fantasyName: "",
       email: "",
       phone: "",
       address: "",
@@ -189,8 +189,13 @@ export default function ClientDetailsModal({
           contact.phone.trim() !== ""
       );
 
+      const finalFormData = { ...formData };
+      if (finalFormData.type === EClientType.COMPANY) {
+        finalFormData.name = finalFormData.fantasyName || finalFormData.businessName || finalFormData.name;
+      }
+
       await updateDoc(clientRef, {
-        ...formData,
+        ...finalFormData,
         contacts: filteredContacts,
         updatedAt: new Date(),
       });
@@ -298,28 +303,40 @@ export default function ClientDetailsModal({
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <h3 className="font-semibold text-slate-700">Nombre</h3>
-                      <p className="text-slate-900">{typedClient.name}</p>
-                    </div>
-                    <div>
                       <h3 className="font-semibold text-slate-700">Tipo</h3>
                       <p className="text-slate-900">
                         {typedClient.type === EClientType.COMPANY
                           ? "Empresa"
-                          : "Individual"}
+                          : "Particular"}
                       </p>
                     </div>
-                    {typedClient.type === EClientType.COMPANY &&
-                      typedClient.businessName && (
-                        <div>
-                          <h3 className="font-semibold text-slate-700">
-                            Razón Social
-                          </h3>
-                          <p className="text-slate-900">
-                            {typedClient.businessName}
-                          </p>
-                        </div>
-                      )}
+                    {typedClient.type === EClientType.INDIVIDUAL ? (
+                      <div>
+                        <h3 className="font-semibold text-slate-700">Nombre</h3>
+                        <p className="text-slate-900">{typedClient.name}</p>
+                      </div>
+                    ) : (
+                      <>
+                        {typedClient.businessName && (
+                          <div>
+                            <h3 className="font-semibold text-slate-700">Razón Social</h3>
+                            <p className="text-slate-900">{typedClient.businessName}</p>
+                          </div>
+                        )}
+                        {typedClient.fantasyName && (
+                          <div>
+                            <h3 className="font-semibold text-slate-700">Nombre de Fantasía</h3>
+                            <p className="text-slate-900">{typedClient.fantasyName}</p>
+                          </div>
+                        )}
+                        {!typedClient.businessName && !typedClient.fantasyName && (
+                          <div>
+                            <h3 className="font-semibold text-slate-700">Nombre</h3>
+                            <p className="text-slate-900">{typedClient.name}</p>
+                          </div>
+                        )}
+                      </>
+                    )}
                     <div>
                       <h3 className="font-semibold text-slate-700">Email</h3>
                       <p className="text-slate-900">
@@ -493,19 +510,7 @@ export default function ClientDetailsModal({
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Nombre</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, name: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="type">Tipo</Label>
+                    <Label htmlFor="type">Tipo de cliente</Label>
                     <Select
                       value={formData.type}
                       onValueChange={(value: EClientType) =>
@@ -517,7 +522,7 @@ export default function ClientDetailsModal({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value={EClientType.INDIVIDUAL}>
-                          Individual
+                          Particular
                         </SelectItem>
                         <SelectItem value={EClientType.COMPANY}>
                           Empresa
@@ -526,20 +531,49 @@ export default function ClientDetailsModal({
                     </Select>
                   </div>
 
-                  {formData.type === EClientType.COMPANY && (
+                  {formData.type === EClientType.INDIVIDUAL ? (
                     <div className="space-y-2">
-                      <Label htmlFor="businessName">Razón Social</Label>
+                      <Label htmlFor="name">Nombre completo *</Label>
                       <Input
-                        id="businessName"
-                        value={formData.businessName}
+                        id="name"
+                        value={formData.name}
                         onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            businessName: e.target.value,
-                          })
+                          setFormData({ ...formData, name: e.target.value })
                         }
+                        required
                       />
                     </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label htmlFor="businessName">Razón Social *</Label>
+                        <Input
+                          id="businessName"
+                          value={formData.businessName}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              businessName: e.target.value,
+                            })
+                          }
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="fantasyName">Nombre de Fantasía</Label>
+                        <Input
+                          id="fantasyName"
+                          value={formData.fantasyName}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              fantasyName: e.target.value,
+                            })
+                          }
+                          placeholder="Si difiere de la razón social"
+                        />
+                      </div>
+                    </>
                   )}
 
                   <div className="space-y-2">

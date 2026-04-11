@@ -131,7 +131,6 @@ export default function PedidosPage() {
 
             if (productDoc.exists()) {
               const currentProduct = productDoc.data();
-              const currentTotalSales = currentProduct.totalSales || 0;
               const currentSalesCount = currentProduct.salesCount || 0;
 
               // Si tiene variante, actualizar stock de la variante específica
@@ -146,7 +145,6 @@ export default function PedidosPage() {
                           : v
                       )
                     : currentProduct.variants,
-                  totalSales: currentTotalSales + item.quantity,
                   salesCount: currentSalesCount + 1,
                   lastSaleDate: new Date(),
                 });
@@ -155,7 +153,6 @@ export default function PedidosPage() {
                 const shouldUpdateStock = currentProduct.stock != null;
                 await updateDoc(productRef, {
                   ...(shouldUpdateStock && { stock: Number(currentProduct.stock) - item.quantity }),
-                  totalSales: currentTotalSales + item.quantity,
                   salesCount: currentSalesCount + 1,
                   lastSaleDate: new Date(),
                 });
