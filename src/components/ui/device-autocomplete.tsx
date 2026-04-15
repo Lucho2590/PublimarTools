@@ -42,8 +42,8 @@ export function DeviceAutocomplete({
     if (showDropdown && inputRef.current) {
       const rect = inputRef.current.getBoundingClientRect();
       setDropdownPosition({
-        top: rect.bottom + window.scrollY + 2,
-        left: rect.left + window.scrollX,
+        top: rect.bottom + 2,
+        left: rect.left,
         width: rect.width,
       });
     }
@@ -97,7 +97,7 @@ export function DeviceAutocomplete({
     <ul
       ref={dropdownRef}
       style={{
-        position: "absolute",
+        position: "fixed",
         top: dropdownPosition.top,
         left: dropdownPosition.left,
         width: dropdownPosition.width,

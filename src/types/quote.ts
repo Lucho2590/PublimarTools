@@ -35,6 +35,8 @@ export type TQuoteItem = {
   costo?: number;            // Costo del dispositivo
   precioVenta?: number;      // Precio de venta al cliente
   afiches?: number;          // Costo de afiches/impresión
+  fechaSalida?: any;         // Fecha de salida del dispositivo
+  dias?: number;             // Duración en días
 };
 
 export type TQuoteComment = {

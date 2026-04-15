@@ -1,6 +1,6 @@
 'use client';
 
-import { redirect, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreDocData } from "reactfire";
 import { doc, updateDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import collections from "@/lib/collections";
+import { extractIdFromSlug } from "@/lib/utils";
 import {
   EClientType,
   EClientStatus,
@@ -26,12 +27,13 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 
 export default function EditarClientePage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const firestore = useFirestore();
-  const clientRef = doc(firestore, collections.CLIENTS, params.id);
+  const clientId = extractIdFromSlug(params.id);
+  const clientRef = doc(firestore, collections.CLIENTS, clientId);
   const { status, data: client } = useFirestoreDocData(clientRef, {
     idField: "id",
   });
@@ -53,6 +55,7 @@ export default function EditarClientePage({ params }: { params: { id: string } }
   });
 
   const [contacts, setContacts] = useState<TClientContact[]>([]);
+  const [razonesSociales, setRazonesSociales] = useState<{ razonSocial: string; fantasyName: string; cuit: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   // Actualizar el formulario cuando se cargan los datos del cliente
@@ -60,6 +63,13 @@ export default function EditarClientePage({ params }: { params: { id: string } }
     if (status === "success" && client && !formData.name) {
       setFormData(client as unknown as TClient);
       setContacts(client.contacts || [{ name: "", email: "", phone: "" }]);
+      setRazonesSociales(
+        (client.razonesSociales || []).map((rs: any) => ({
+          razonSocial: rs.razonSocial || "",
+          fantasyName: rs.fantasyName || "",
+          cuit: rs.cuit || "",
+        }))
+      );
     }
   }, [status, client, formData.name]);
 
@@ -87,6 +97,20 @@ export default function EditarClientePage({ params }: { params: { id: string } }
     }
   };
 
+  const addRazonSocial = () => {
+    setRazonesSociales([...razonesSociales, { razonSocial: "", fantasyName: "", cuit: "" }]);
+  };
+
+  const removeRazonSocial = (index: number) => {
+    setRazonesSociales(razonesSociales.filter((_, i) => i !== index));
+  };
+
+  const handleRazonSocialChange = (index: number, field: "razonSocial" | "fantasyName" | "cuit", value: string) => {
+    const updated = [...razonesSociales];
+    updated[index] = { ...updated[index], [field]: value };
+    setRazonesSociales(updated);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -105,14 +129,25 @@ export default function EditarClientePage({ params }: { params: { id: string } }
         finalFormData.name = finalFormData.fantasyName || finalFormData.businessName || finalFormData.name;
       }
 
+      const filteredRazonesSociales = razonesSociales
+        .filter((rs) => rs.razonSocial.trim() !== "")
+        .map((rs) => ({
+          razonSocial: rs.razonSocial,
+          ...(rs.fantasyName.trim() && { fantasyName: rs.fantasyName }),
+          ...(rs.cuit.trim() && { cuit: rs.cuit }),
+        }));
+
       await updateDoc(clientRef, {
         ...finalFormData,
         contacts: filteredContacts,
+        ...(filteredRazonesSociales.length > 0
+          ? { razonesSociales: filteredRazonesSociales }
+          : { razonesSociales: [] }),
         updatedAt: new Date(),
       });
 
       toast.success("Cliente actualizado correctamente");
-      redirect(`/publimar/viaPublica/clientes/${params.id}`);
+      router.push(`/publimar/viaPublica/clientes/${params.id}`);
     } catch (error) {
       console.error("Error al actualizar el cliente:", error);
       toast.error("Error al actualizar el cliente");
@@ -231,6 +266,66 @@ export default function EditarClientePage({ params }: { params: { id: string } }
                       }
                       placeholder="Si difiere de la razón social"
                     />
+                  </div>
+
+                  {razonesSociales.length > 0 && (
+                    <div className="space-y-3 md:col-span-2">
+                      {razonesSociales.map((rs, index) => (
+                        <div key={index} className="border border-slate-200 rounded-lg p-4 space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium text-slate-600">Razón Social {index + 2}</span>
+                            <Button
+                              type="button"
+                              onClick={() => removeRazonSocial(index)}
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="space-y-2">
+                              <Label>Razón Social *</Label>
+                              <Input
+                                value={rs.razonSocial}
+                                onChange={(e) => handleRazonSocialChange(index, "razonSocial", e.target.value)}
+                                placeholder="Razón social..."
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Nombre de Fantasía</Label>
+                              <Input
+                                value={rs.fantasyName}
+                                onChange={(e) => handleRazonSocialChange(index, "fantasyName", e.target.value)}
+                                placeholder="Nombre de fantasía..."
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>CUIT</Label>
+                              <Input
+                                value={rs.cuit}
+                                onChange={(e) => handleRazonSocialChange(index, "cuit", e.target.value)}
+                                placeholder="CUIT..."
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="md:col-span-2">
+                    <Button
+                      type="button"
+                      onClick={addRazonSocial}
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-900 border-blue-900 hover:bg-blue-50"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar otra Razón Social
+                    </Button>
                   </div>
                 </>
               )}
