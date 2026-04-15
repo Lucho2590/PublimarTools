@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { EClientType, EClientStatus, EClientSection, TClientContact } from "@/types/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Trash2 } from "lucide-react";
+import { Save, Trash2, Plus } from "lucide-react";
 
 export default function NuevoClientePage() {
   const [loading, setLoading] = useState(false);
@@ -33,6 +33,9 @@ export default function NuevoClientePage() {
   const [contacts, setContacts] = useState<TClientContact[]>([
     { name: "", email: "", phone: "" },
   ]);
+
+  // Estado para razones sociales adicionales
+  const [razonesSociales, setRazonesSociales] = useState<{ razonSocial: string; fantasyName: string; cuit: string }[]>([]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -85,6 +88,21 @@ export default function NuevoClientePage() {
     }
   };
 
+  // Handlers para razones sociales adicionales
+  const addRazonSocial = () => {
+    setRazonesSociales([...razonesSociales, { razonSocial: "", fantasyName: "", cuit: "" }]);
+  };
+
+  const removeRazonSocial = (index: number) => {
+    setRazonesSociales(razonesSociales.filter((_, i) => i !== index));
+  };
+
+  const handleRazonSocialChange = (index: number, field: "razonSocial" | "fantasyName" | "cuit", value: string) => {
+    const updated = [...razonesSociales];
+    updated[index] = { ...updated[index], [field]: value };
+    setRazonesSociales(updated);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -119,9 +137,19 @@ export default function NuevoClientePage() {
         finalFormData.name = finalFormData.fantasyName || finalFormData.businessName;
       }
 
+      // Filtrar razones sociales vacías
+      const filteredRazonesSociales = razonesSociales
+        .filter((rs) => rs.razonSocial.trim() !== "")
+        .map((rs) => ({
+          razonSocial: rs.razonSocial,
+          ...(rs.fantasyName.trim() && { fantasyName: rs.fantasyName }),
+          ...(rs.cuit.trim() && { cuit: rs.cuit }),
+        }));
+
       const clientData: Record<string, any> = {
         ...finalFormData,
         contacts: filteredContacts,
+        ...(filteredRazonesSociales.length > 0 && { razonesSociales: filteredRazonesSociales }),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: doc(firestore, `users/${user.uid}`),
@@ -217,37 +245,100 @@ export default function NuevoClientePage() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="businessName">Razón Social *</Label>
-                  <Input
-                    id="businessName"
-                    name="businessName"
-                    value={formData.businessName}
-                    onChange={handleChange}
-                    required
-                  />
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="businessName">Razón Social *</Label>
+                    <Input
+                      id="businessName"
+                      name="businessName"
+                      value={formData.businessName}
+                      onChange={handleChange}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="fantasyName">Nombre de Fantasía</Label>
+                    <Input
+                      id="fantasyName"
+                      name="fantasyName"
+                      value={formData.fantasyName}
+                      onChange={handleChange}
+                      placeholder="Si difiere de la razón social"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="fantasyName">Nombre de Fantasía</Label>
-                  <Input
-                    id="fantasyName"
-                    name="fantasyName"
-                    value={formData.fantasyName}
-                    onChange={handleChange}
-                    placeholder="Si difiere de la razón social"
-                  />
+
+                {razonesSociales.length > 0 && (
+                  <div className="space-y-3">
+                    {razonesSociales.map((rs, index) => (
+                      <div key={index} className="border border-slate-200 rounded-lg p-4 space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-slate-600">Razón Social {index + 2}</span>
+                          <Button
+                            type="button"
+                            onClick={() => removeRazonSocial(index)}
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="space-y-2">
+                            <Label>Razón Social *</Label>
+                            <Input
+                              value={rs.razonSocial}
+                              onChange={(e) => handleRazonSocialChange(index, "razonSocial", e.target.value)}
+                              placeholder="Razón social..."
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Nombre de Fantasía</Label>
+                            <Input
+                              value={rs.fantasyName}
+                              onChange={(e) => handleRazonSocialChange(index, "fantasyName", e.target.value)}
+                              placeholder="Nombre de fantasía..."
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>CUIT</Label>
+                            <Input
+                              value={rs.cuit}
+                              onChange={(e) => handleRazonSocialChange(index, "cuit", e.target.value)}
+                              placeholder="CUIT..."
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  onClick={addRazonSocial}
+                  variant="outline"
+                  size="sm"
+                  className="text-blue-900 border-blue-900 hover:bg-blue-50"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Agregar otra Razón Social
+                </Button>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="address">Dirección</Label>
+                    <Input
+                      id="address"
+                      name="address"
+                      value={formData.address}
+                      onChange={handleChange}
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="address">Dirección</Label>
-                  <Input
-                    id="address"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                  />
-                </div>
-              </div>
+              </>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -21,7 +21,13 @@ export enum EClientType {
     phone: string;
     position?: string;
   };
-  
+
+  export type TRazonSocial = {
+    razonSocial: string;
+    fantasyName?: string;
+    cuit?: string;
+  };
+
   export type TClient = {
     ref: DocumentReference;
     id: string;
@@ -29,8 +35,9 @@ export enum EClientType {
     type: EClientType;
     status: EClientStatus;
     section: EClientSection; // Sección del cliente (banderas o vía pública)
-    businessName?: string; // Razón social para empresas
+    businessName?: string; // Razón social principal para empresas
     fantasyName?: string; // Nombre de fantasía para empresas
+    razonesSociales?: TRazonSocial[]; // Razones sociales adicionales
     email?: string;
     phone?: string;
     address?: string;

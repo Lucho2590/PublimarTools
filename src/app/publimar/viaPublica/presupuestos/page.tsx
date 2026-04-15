@@ -34,15 +34,19 @@ import {
 import collections from "@/lib/collections";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { EClientSection } from "@/types/client";
-import { Eye, Download } from "lucide-react";
+import { Eye, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { EBillingStatus } from "@/types/billing";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { formatearPrecio } from "@/lib/utils";
 
 export default function PresupuestosViaPublicaPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const firestore = useFirestore();
 
   // Consulta a Firestore - Filtra solo presupuestos de la sección "viaPublica"
@@ -275,10 +279,343 @@ export default function PresupuestosViaPublicaPage() {
     }
   };
 
-  // Placeholder para descarga de PDF
-  const handleDownloadPDF = (quote: TQuote) => {
-    toast.info("Función de PDF pendiente de implementar");
-    // TODO: Implementar generación de PDF
+  // Descarga de PDF para presupuestos de Vía Pública
+  const handleDownloadPDF = async (quote: TQuote) => {
+    try {
+      setDownloading(quote.id);
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margins = { top: 10, right: 10, bottom: 20, left: 10 };
+
+      // Cargar y agregar la imagen del header
+      const headerImg = new Image();
+      headerImg.src = "/imagenes/encabezadoVP-pr.png";
+
+      await new Promise((resolve, reject) => {
+        headerImg.onload = resolve;
+        headerImg.onerror = reject;
+      });
+
+      const imgAspectRatio = headerImg.width / headerImg.height;
+      const imgWidth = pageWidth;
+      const imgHeight = imgWidth / imgAspectRatio;
+
+      pdf.addImage(headerImg, "PNG", 0, 0, imgWidth, imgHeight);
+
+      let yPosition = margins.top + imgHeight + 10;
+
+      // Columna izquierda - Info del cliente
+      const leftColumnX = margins.left;
+      const rightAlignX = pageWidth - margins.right;
+
+      pdf.setFontSize(14);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("Información del Cliente", leftColumnX, yPosition);
+
+      yPosition += 7;
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "normal");
+
+      const clientInfo = [
+        { label: "Cliente:", value: quote.client?.name || "-" },
+        quote.client?.email ? { label: "Email:", value: quote.client.email } : null,
+        quote.client?.phone ? { label: "Teléfono:", value: quote.client.phone } : null,
+        quote.client?.address ? { label: "Dirección:", value: quote.client.address } : null,
+        quote.client?.cuit ? { label: "CUIT/CUIL:", value: quote.client.cuit } : null,
+      ].filter(Boolean);
+
+      clientInfo.forEach((info) => {
+        if (info) {
+          pdf.setFont("helvetica", "bold");
+          pdf.text(info.label, leftColumnX, yPosition);
+          pdf.setFont("helvetica", "normal");
+          pdf.text(info.value, leftColumnX + 20, yPosition);
+          yPosition += 5;
+        }
+      });
+
+      // Columna derecha - Info del presupuesto
+      let rightYPosition = margins.top + imgHeight + 10;
+
+      pdf.setFontSize(20);
+      pdf.setFont("helvetica", "bold");
+      pdf.text("PRESUPUESTO", rightAlignX, rightYPosition, { align: "right" });
+
+      rightYPosition += 7;
+      pdf.setFontSize(14);
+      pdf.text(`#${quote.number}`, rightAlignX, rightYPosition, { align: "right" });
+
+      rightYPosition += 7;
+      pdf.setFontSize(9);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(`Fecha: ${formatDate(quote.createdAt)}`, rightAlignX, rightYPosition, { align: "right" });
+      rightYPosition += 4;
+      pdf.text(`Válido hasta: ${formatDate(quote.validUntil)}`, rightAlignX, rightYPosition, { align: "right" });
+
+      yPosition = Math.max(yPosition, rightYPosition) + 10;
+
+      const quoteAny = quote as any;
+      let finalY = yPosition;
+
+      // Detectar nueva estructura (periodos con items anidados) vs vieja (items flat)
+      const hasNewStructure = quoteAny.periodos?.length > 0 && quoteAny.periodos[0]?.items?.length > 0;
+
+      if (hasNewStructure) {
+        // Nueva estructura: una tabla por periodo
+        quoteAny.periodos.forEach((periodo: any, periodoIdx: number) => {
+          if (finalY > pageHeight - 80) {
+            pdf.addPage();
+            finalY = margins.top + 10;
+          }
+
+          // Header del periodo
+          pdf.setFontSize(11);
+          pdf.setFont("helvetica", "bold");
+          const fechaInicioStr = formatDate(periodo.fechaInicio);
+          const fechaFinStr = formatDate(periodo.fechaFin);
+          const periodoLabel = fechaInicioStr !== "-"
+            ? `${fechaInicioStr} a ${fechaFinStr}` + (periodo.dias ? ` — ${periodo.dias} días` : "")
+            : periodo.dias ? `${periodo.dias} días` : `Periodo ${periodoIdx + 1}`;
+          pdf.text(periodoLabel, margins.left, finalY);
+          finalY += 2;
+
+          const tableHeaders = ["Dispositivo", "Cant.", "Precio", "Subtotal"];
+          const productNames = periodo.items.map((i: any) => i.productName || "");
+          const tableData = periodo.items.map((item: any) => [
+            item.productName || "",
+            (item.quantity || 0).toString(),
+            formatearPrecio(item.unitPrice || 0),
+            formatearPrecio((item.quantity || 0) * (item.unitPrice || 0)),
+          ]);
+
+          autoTable(pdf, {
+            head: [tableHeaders],
+            body: tableData,
+            startY: finalY,
+            margin: margins,
+            styles: { fontSize: 9, cellPadding: 4, lineWidth: 0, lineColor: [220, 220, 220] },
+            headStyles: { fillColor: [255, 255, 255], textColor: [80, 80, 80], fontStyle: "bold", halign: "left", lineWidth: { bottom: 0.3 }, lineColor: [200, 200, 200] },
+            bodyStyles: { lineWidth: { bottom: 0.15 }, lineColor: [230, 230, 230] },
+            alternateRowStyles: { fillColor: false as any },
+            columnStyles: {
+              0: { cellWidth: 105 },
+              1: { halign: "center", cellWidth: 20 },
+              2: { halign: "right", cellWidth: 30 },
+              3: { halign: "right", cellWidth: 35 },
+            },
+            tableWidth: "auto",
+            didParseCell: (data) => {
+              if (data.section === "head") {
+                if (data.column.index === 1) data.cell.styles.halign = "center";
+                else if (data.column.index === 2) data.cell.styles.halign = "right";
+                else if (data.column.index === 3) data.cell.styles.halign = "right";
+              }
+            },
+            rowPageBreak: "avoid",
+            didDrawCell: (data) => {
+              if (data.section === "body" && data.column.index === 0) {
+                const productName = productNames[data.row.index];
+                if (!productName) return;
+                const cell = data.cell;
+                const x = cell.x + cell.padding("left");
+                const y = cell.y + cell.padding("top") + 2.5;
+                const textWidth = pdf.getTextWidth(productName);
+                pdf.setFillColor(255, 255, 255);
+                pdf.rect(x, y - 2.5, textWidth + 1, 3.5, "F");
+                pdf.setFont("helvetica", "bold");
+                pdf.setFontSize(9);
+                pdf.setTextColor(0, 0, 0);
+                pdf.text(productName, x, y);
+                pdf.setFont("helvetica", "normal");
+              }
+            },
+          });
+
+          finalY = (pdf as any).lastAutoTable.finalY + 10;
+        });
+      } else {
+        // Fallback: estructura vieja con items flat
+        const tableHeaders = ["Dispositivo", "Cant.", "Precio", "Subtotal"];
+        const productNames = quote.items.map(item => item.productName || "");
+        const tableData = quote.items.map((item) => [
+          item.productName || "",
+          item.quantity.toString(),
+          formatearPrecio(item.unitPrice),
+          formatearPrecio(item.subtotal),
+        ]);
+
+        autoTable(pdf, {
+          head: [tableHeaders],
+          body: tableData,
+          startY: yPosition,
+          margin: margins,
+          styles: { fontSize: 9, cellPadding: 4 },
+          headStyles: { fillColor: [255, 255, 255], textColor: [80, 80, 80], fontStyle: "bold", halign: "left", lineWidth: { bottom: 0.3 }, lineColor: [200, 200, 200] },
+          columnStyles: {
+            0: { cellWidth: 105 },
+            1: { halign: "center", cellWidth: 20 },
+            2: { halign: "right", cellWidth: 30 },
+            3: { halign: "right", cellWidth: 35 },
+          },
+          tableWidth: "auto",
+          didParseCell: (data) => {
+            if (data.section === "head") {
+              if (data.column.index === 1) data.cell.styles.halign = "center";
+              else if (data.column.index === 2) data.cell.styles.halign = "right";
+              else if (data.column.index === 3) data.cell.styles.halign = "right";
+            }
+          },
+          rowPageBreak: "avoid",
+          didDrawCell: (data) => {
+            if (data.section === "body" && data.column.index === 0) {
+              const productName = productNames[data.row.index];
+              if (!productName) return;
+              const cell = data.cell;
+              const x = cell.x + cell.padding("left");
+              const y = cell.y + cell.padding("top") + 2.5;
+              const textWidth = pdf.getTextWidth(productName);
+              pdf.setFillColor(255, 255, 255);
+              if (data.row.index % 2 === 0 && cell.styles.fillColor) {
+                const fillColor = cell.styles.fillColor;
+                if (Array.isArray(fillColor)) pdf.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
+              }
+              pdf.rect(x, y - 2.5, textWidth + 1, 3.5, "F");
+              pdf.setFont("helvetica", "bold");
+              pdf.setFontSize(9);
+              pdf.setTextColor(0, 0, 0);
+              pdf.text(productName, x, y);
+              pdf.setFont("helvetica", "normal");
+            }
+          },
+        });
+
+        finalY = (pdf as any).lastAutoTable.finalY + 10;
+      }
+
+      const totalsX = pageWidth - margins.right - 60;
+
+      // Impresiones (si aplica)
+      if (quoteAny.conImpresiones && quoteAny.impresiones) {
+        if (finalY > pageHeight - 60) {
+          pdf.addPage();
+          finalY = margins.top + 10;
+        }
+
+        pdf.setFontSize(12);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Impresiones / Afiches", margins.left, finalY);
+        finalY += 7;
+
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "normal");
+
+        if (quoteAny.impresiones.venta) {
+          pdf.text("Impresiones:", margins.left, finalY);
+          pdf.text(formatearPrecio(quoteAny.impresiones.venta), margins.left + 40, finalY);
+          finalY += 5;
+        }
+        if (quoteAny.impresiones.flete) {
+          pdf.text("Flete:", margins.left, finalY);
+          pdf.text(formatearPrecio(quoteAny.impresiones.flete), margins.left + 40, finalY);
+          finalY += 5;
+        }
+
+        finalY += 5;
+      }
+
+      // Formas de pago (si existen)
+      if (quoteAny.formasPago && quoteAny.formasPago.length > 0) {
+        if (finalY > pageHeight - 60) {
+          pdf.addPage();
+          finalY = margins.top + 10;
+        }
+
+        pdf.setFontSize(12);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Formas de Pago", margins.left, finalY);
+        finalY += 2;
+
+        const payHeaders = ["Tipo", "Monto", "Cuenta", "Factura"];
+        const payData = quoteAny.formasPago.map((fp: any) => [
+          fp.tipo || "-",
+          formatearPrecio(fp.monto || 0),
+          fp.cuenta || "-",
+          fp.factura ? (fp.tipoFactura ? `Sí (${fp.tipoFactura})` : "Sí") : "No",
+        ]);
+
+        autoTable(pdf, {
+          head: [payHeaders],
+          body: payData,
+          startY: finalY,
+          margin: margins,
+          styles: { fontSize: 9, cellPadding: 3, lineWidth: 0, lineColor: [220, 220, 220] },
+          headStyles: { fillColor: [255, 255, 255], textColor: [80, 80, 80], fontStyle: "bold", lineWidth: { bottom: 0.3 }, lineColor: [200, 200, 200] },
+          bodyStyles: { lineWidth: { bottom: 0.15 }, lineColor: [230, 230, 230] },
+          alternateRowStyles: { fillColor: false as any },
+          columnStyles: {
+            0: { cellWidth: 55, halign: "left" },
+            1: { cellWidth: 45, halign: "right" },
+            2: { cellWidth: 50, halign: "left" },
+            3: { cellWidth: 40, halign: "center" },
+          },
+          tableWidth: "auto",
+        });
+
+        finalY = (pdf as any).lastAutoTable.finalY + 10;
+      }
+
+      // Totales
+      if (finalY > pageHeight - 40) {
+        pdf.addPage();
+        finalY = margins.top + 10;
+      }
+
+      pdf.setFontSize(10);
+      pdf.setFont("helvetica", "normal");
+
+      const subtotalDispositivos = quoteAny.subtotalDispositivos || quote.subtotal || 0;
+      pdf.text("Subtotal Dispositivos:", totalsX, finalY, { align: "left" });
+      pdf.text(formatearPrecio(subtotalDispositivos), rightAlignX, finalY, { align: "right" });
+
+      if (quoteAny.conImpresiones && quoteAny.ventaImpresiones) {
+        finalY += 6;
+        pdf.text("Impresiones:", totalsX, finalY, { align: "left" });
+        pdf.text(formatearPrecio(quoteAny.ventaImpresiones), rightAlignX, finalY, { align: "right" });
+      }
+
+      finalY += 6;
+      pdf.setFont("helvetica", "bold");
+      pdf.line(totalsX, finalY - 2, rightAlignX, finalY - 2);
+      const totalAmount = quoteAny.totalVenta || quote.total || 0;
+      pdf.text("Total:", totalsX, finalY + 3, { align: "left" });
+      pdf.text(formatearPrecio(totalAmount), rightAlignX, finalY + 3, { align: "right" });
+
+      // Notas
+      if (quote.notes) {
+        finalY += 15;
+        if (finalY > pageHeight - 30) {
+          pdf.addPage();
+          finalY = margins.top + 10;
+        }
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "bold");
+        pdf.text("Notas:", margins.left, finalY);
+        finalY += 5;
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9);
+        const splitNotes = pdf.splitTextToSize(quote.notes, pageWidth - margins.left - margins.right);
+        pdf.text(splitNotes, margins.left, finalY);
+      }
+
+      pdf.save(`Pr-${quote.client?.name || quote.number}.pdf`);
+    } catch (error) {
+      console.error("Error al generar el PDF:", error);
+      toast.error("Error al generar el PDF");
+    } finally {
+      setDownloading(null);
+    }
   };
 
   const formatDate = (date: any) => {
@@ -441,9 +778,14 @@ export default function PresupuestosViaPublicaPage() {
                               size="icon"
                               title="Descargar PDF"
                               onClick={() => handleDownloadPDF(quote)}
+                              disabled={downloading === quote.id}
                               className="bg-green-600 hover:bg-green-700 hover:text-white text-white h-8 w-8"
                             >
-                              <Download className="h-4 w-4" />
+                              {downloading === quote.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Download className="h-4 w-4" />
+                              )}
                             </Button>
                           </div>
                         </TableCell>
