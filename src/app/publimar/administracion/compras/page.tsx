@@ -30,7 +30,7 @@ import { TPurchase, EPurchaseDepartment, EPurchasePaymentMethod } from "@/types/
 import { EUserRole } from "@/types/user";
 import { formatearPrecio } from "@/lib/utils";
 import { EProviderAccountStatus } from "@/types/providerAccount";
-import { Edit, DollarSign, Paperclip, X, AlertCircle, Plus, CheckCircle, Camera, Upload } from "lucide-react";
+import { Edit, DollarSign, Paperclip, Upload, X, AlertCircle, Plus, CheckCircle, Camera } from "lucide-react";
 
 const paymentMethodLabels: Record<string, string> = {
   [EPurchasePaymentMethod.EFECTIVO]: "Efectivo",
@@ -60,7 +60,7 @@ const formatDate = (timestamp: any) => {
   return new Date(timestamp).toLocaleDateString("es-AR");
 };
 
-export default function ComprasPage() {
+export default function ComprasAdminPage() {
   const firestore = useFirestore();
   const { userRole } = useAuth();
   const [form, setForm] = useState<Partial<TPurchase>>({
@@ -85,7 +85,7 @@ export default function ComprasPage() {
         setForm(prev => ({ ...prev, department: EPurchaseDepartment.BANDERAS }));
       } else if (userRole === EUserRole.VIA_PUBLICA) {
         setForm(prev => ({ ...prev, department: EPurchaseDepartment.VIA_PUBLICA }));
-      } else if (userRole === EUserRole.ADMINISTRACION) {
+      } else if (userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN) {
         setForm(prev => ({ ...prev, department: EPurchaseDepartment.ADMINISTRACION }));
       }
     }
@@ -98,7 +98,7 @@ export default function ComprasPage() {
   // Estados para filtros
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [selectedProvider, setSelectedProvider] = useState<string>("all");
-  const [selectedDepartment, setSelectedDepartment] = useState<string>(EPurchaseDepartment.VIA_PUBLICA);
+  const [selectedDepartment, setSelectedDepartment] = useState<string>("all");
 
   // Estados para autocomplete de proveedor (nueva compra)
   const [providerInput, setProviderInput] = useState("");
@@ -132,7 +132,7 @@ export default function ComprasPage() {
       .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
   };
 
-  // Filtrar compras según búsqueda, fechas y proveedor
+  // Filtrar compras según búsqueda, fechas, proveedor y departamento
   const filteredPurchases = useMemo(() => {
     return purchases?.filter((purchase: any) => {
       const searchNormalized = normalizeText(searchTerm);
@@ -147,7 +147,6 @@ export default function ComprasPage() {
         let purchaseDate: Date | null = null;
 
         if (typeof purchase.date === 'string') {
-          // Si la fecha es un string YYYY-MM-DD, convertirlo a Date
           const [year, month, day] = purchase.date.split('-').map(Number);
           purchaseDate = new Date(year, month - 1, day);
         } else if (purchase.date instanceof Date) {
@@ -233,10 +232,6 @@ export default function ComprasPage() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleProviderChange = (value: string) => {
-    setForm({ ...form, providerId: value });
-  };
-
   const handleDepartmentChange = (value: string) => {
     setForm({ ...form, department: value as EPurchaseDepartment });
   };
@@ -281,7 +276,6 @@ export default function ComprasPage() {
     setFilterProviderInput(value);
     setShowFilterProviderDropdown(true);
     setHighlightedFilterProviderIndex(-1);
-    // Si el input está vacío, seleccionar "all"
     if (!value.trim()) {
       setSelectedProvider("all");
     }
@@ -433,7 +427,7 @@ export default function ComprasPage() {
         resetForm.department = EPurchaseDepartment.BANDERAS;
       } else if (userRole === EUserRole.VIA_PUBLICA) {
         resetForm.department = EPurchaseDepartment.VIA_PUBLICA;
-      } else if (userRole === EUserRole.ADMINISTRACION) {
+      } else if (userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN) {
         resetForm.department = EPurchaseDepartment.ADMINISTRACION;
       }
       setForm(resetForm);
@@ -466,7 +460,7 @@ export default function ComprasPage() {
     setDateRange(undefined);
     setSelectedProvider("all");
     setFilterProviderInput("");
-    setSelectedDepartment(EPurchaseDepartment.VIA_PUBLICA);
+    setSelectedDepartment("all");
     setCurrentPage(1);
   };
 
@@ -481,6 +475,13 @@ export default function ComprasPage() {
             className="bg-slate-600 hover:bg-slate-700 text-white"
           >
             <Link href="/publimar/proveedores">Gestionar Proveedores</Link>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Link href="/publimar/administracion/cuentasCorrientes">Cuentas Corrientes</Link>
           </Button>
           <Button
             onClick={() => setShowForm(!showForm)}
@@ -583,7 +584,7 @@ export default function ComprasPage() {
                   </div>
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Descripción / Nota *</Label>
+                  <Label htmlFor="description">Descripcion / Nota *</Label>
                   <Textarea
                     id="description"
                     name="description"
@@ -591,7 +592,7 @@ export default function ComprasPage() {
                     onChange={handleChange}
                     rows={3}
                     required
-                    placeholder="Descripción de la compra..."
+                    placeholder="Descripcion de la compra..."
                   />
                 </div>
                 <div className="space-y-2">
@@ -621,18 +622,15 @@ export default function ComprasPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN ? (
-                        // Administración puede ver y seleccionar todos los departamentos
                         <>
                           <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
-                          <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
-                          <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administración</SelectItem>
+                          <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Via Publica</SelectItem>
+                          <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administracion</SelectItem>
                         </>
                       ) : userRole === EUserRole.BANDERAS ? (
-                        // Banderas solo ve su departamento
                         <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
                       ) : userRole === EUserRole.VIA_PUBLICA ? (
-                        // Vía Pública solo ve su departamento
-                        <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
+                        <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Via Publica</SelectItem>
                       ) : null}
                     </SelectContent>
                   </Select>
@@ -751,13 +749,12 @@ export default function ComprasPage() {
                   variant="outline"
                   onClick={() => {
                     setShowForm(false);
-                    // Resetear form pero mantener el departamento según el rol
                     const resetForm: Partial<TPurchase> = { date: new Date().toISOString().split("T")[0] };
                     if (userRole === EUserRole.BANDERAS) {
                       resetForm.department = EPurchaseDepartment.BANDERAS;
                     } else if (userRole === EUserRole.VIA_PUBLICA) {
                       resetForm.department = EPurchaseDepartment.VIA_PUBLICA;
-                    } else if (userRole === EUserRole.ADMINISTRACION) {
+                    } else if (userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN) {
                       resetForm.department = EPurchaseDepartment.ADMINISTRACION;
                     }
                     setForm(resetForm);
@@ -808,7 +805,7 @@ export default function ComprasPage() {
             <div className="flex-1">
               <Label className="mb-2 block">Buscar</Label>
               <Input
-                placeholder="Buscar por proveedor, descripción o monto..."
+                placeholder="Buscar por proveedor, descripcion o monto..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -918,7 +915,7 @@ export default function ComprasPage() {
                 }}
               />
             </div>
-            {/* <div className="flex-1">
+            <div className="flex-1">
               <Label className="mb-2 block">Departamento</Label>
               <Select
                 value={selectedDepartment}
@@ -933,11 +930,11 @@ export default function ComprasPage() {
                 <SelectContent>
                   <SelectItem value="all">Todos los departamentos</SelectItem>
                   <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
-                  <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
-                  <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administración</SelectItem>
+                  <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Via Publica</SelectItem>
+                  <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administracion</SelectItem>
                 </SelectContent>
               </Select>
-            </div> */}
+            </div>
             <div className="flex md:justify-end">
               <Button
                 variant="outline"
@@ -980,7 +977,7 @@ export default function ComprasPage() {
                       <SelectItem value="25">25</SelectItem>
                     </SelectContent>
                   </Select>
-                  <span className="text-sm text-gray-500">por página</span>
+                  <span className="text-sm text-gray-500">por pagina</span>
                 </div>
                 <div className="text-sm text-gray-500">
                   Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredPurchases?.length || 0)} de {filteredPurchases?.length || 0} compras
@@ -992,7 +989,7 @@ export default function ComprasPage() {
                   <TableRow>
                     <TableHead className="text-left">Fecha</TableHead>
                     <TableHead className="text-left">Proveedor</TableHead>
-                    <TableHead className="text-left">Descripción</TableHead>
+                    <TableHead className="text-left">Descripcion</TableHead>
                     <TableHead className="text-left">Departamento</TableHead>
                     <TableHead className="text-left">Forma de Pago</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
@@ -1009,8 +1006,8 @@ export default function ComprasPage() {
                         <TableCell>{compra.description}</TableCell>
                         <TableCell>
                           {compra.department === EPurchaseDepartment.BANDERAS && "Banderas"}
-                          {compra.department === EPurchaseDepartment.VIA_PUBLICA && "Vía Pública"}
-                          {compra.department === EPurchaseDepartment.ADMINISTRACION && "Administración"}
+                          {compra.department === EPurchaseDepartment.VIA_PUBLICA && "Via Publica"}
+                          {compra.department === EPurchaseDepartment.ADMINISTRACION && "Administracion"}
                           {!compra.department && "-"}
                         </TableCell>
                         <TableCell>
@@ -1049,7 +1046,7 @@ export default function ComprasPage() {
                         colSpan={8}
                         className="text-center py-6 text-slate-500"
                       >
-                        {searchTerm || dateRange || selectedProvider !== "all"
+                        {searchTerm || dateRange || selectedProvider !== "all" || selectedDepartment !== "all"
                           ? "No se encontraron compras con los filtros aplicados."
                           : "No hay compras registradas. ¡Registra tu primera compra!"}
                       </TableCell>
@@ -1105,7 +1102,7 @@ export default function ComprasPage() {
         onClose={handleCloseEditModal}
         purchaseId={selectedPurchaseId}
         onPurchaseUpdated={() => {
-          // Los datos se actualizan automáticamente con reactfire
+          // Los datos se actualizan automaticamente con reactfire
         }}
       />
     </div>

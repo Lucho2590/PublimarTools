@@ -26,6 +26,10 @@ const collections = {
   NOTES: "notes",
   DEVICES: "devices",
   BILLINGS: "billings",
+  PROVIDER_ACCOUNTS: "providerAccounts",
+  providerAccounts: {
+    PAYMENTS: "payments",
+  },
 } as const;
 
 export default collections;
