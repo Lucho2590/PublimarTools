@@ -42,6 +42,9 @@ export default function ProviderEditModal({
     cuit: '',
     contactPerson: '',
     notes: '',
+    cbu: '',
+    alias: '',
+    denominacion: '',
   });
 
   // Obtener los datos del proveedor solo si providerId existe
@@ -62,6 +65,9 @@ export default function ProviderEditModal({
         cuit: provider.cuit || '',
         contactPerson: provider.contactPerson || '',
         notes: provider.notes || '',
+        cbu: provider.cbu || '',
+        alias: provider.alias || '',
+        denominacion: provider.denominacion || '',
       });
     }
   }, [provider, providerId]);
@@ -77,6 +83,9 @@ export default function ProviderEditModal({
         cuit: '',
         contactPerson: '',
         notes: '',
+        cbu: '',
+        alias: '',
+        denominacion: '',
       });
     }
   }, [isOpen]);
@@ -234,6 +243,42 @@ export default function ProviderEditModal({
                   value={formData.address || ''}
                   onChange={handleChange}
                   className="w-full"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="cbu">CBU</Label>
+                <Input
+                  id="cbu"
+                  name="cbu"
+                  value={formData.cbu || ''}
+                  onChange={handleChange}
+                  className="w-full"
+                  placeholder="CBU del proveedor"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="alias">Alias</Label>
+                <Input
+                  id="alias"
+                  name="alias"
+                  value={formData.alias || ''}
+                  onChange={handleChange}
+                  className="w-full"
+                  placeholder="Alias bancario"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="denominacion">Denominación</Label>
+                <Input
+                  id="denominacion"
+                  name="denominacion"
+                  value={formData.denominacion || ''}
+                  onChange={handleChange}
+                  className="w-full"
+                  placeholder="Denominación de la cuenta"
                 />
               </div>
             </div>

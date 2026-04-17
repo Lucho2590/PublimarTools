@@ -11,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -24,11 +23,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import collections from "@/lib/collections";
-import { EQuoteStatus, TQuoteItem } from "@/types/quote";
+import { EQuoteStatus } from "@/types/quote";
 import { EClientSection, TClient } from "@/types/client";
 import { TDeviceType } from "@/types/device";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Trash2, Plus, Calendar as CalendarIcon } from "lucide-react";
+import { Save, Trash2, Plus, Calendar as CalendarIcon, Link2, Unlink } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, addDays } from "date-fns";
@@ -52,13 +51,10 @@ type FormItem = {
   productName: string;
   quantity: number | undefined;
   unitPrice: number | undefined;
-};
-
-type FormPeriodo = {
-  id: string;
-  fechaInicio: Date | undefined;
+  fechaSalida: Date | undefined;
   dias: number | undefined;
-  items: FormItem[];
+  periodoGroupId?: string;
+  selected?: boolean; // para selección de agrupamiento
 };
 
 const createEmptyItem = (): FormItem => ({
@@ -66,14 +62,19 @@ const createEmptyItem = (): FormItem => ({
   productName: "",
   quantity: undefined,
   unitPrice: undefined,
+  fechaSalida: undefined,
+  dias: undefined,
+  selected: false,
 });
 
-const createEmptyPeriodo = (): FormPeriodo => ({
-  id: Math.random().toString(36).substring(7),
-  fechaInicio: undefined,
-  dias: undefined,
-  items: [createEmptyItem()],
-});
+// Colores para grupos
+const GROUP_COLORS = [
+  { bg: "bg-blue-50", border: "border-blue-300", badge: "bg-blue-100 text-blue-800", label: "Grupo A" },
+  { bg: "bg-green-50", border: "border-green-300", badge: "bg-green-100 text-green-800", label: "Grupo B" },
+  { bg: "bg-purple-50", border: "border-purple-300", badge: "bg-purple-100 text-purple-800", label: "Grupo C" },
+  { bg: "bg-orange-50", border: "border-orange-300", badge: "bg-orange-100 text-orange-800", label: "Grupo D" },
+  { bg: "bg-pink-50", border: "border-pink-300", badge: "bg-pink-100 text-pink-800", label: "Grupo E" },
+];
 
 export default function NuevoPresupuestoPage() {
   const [loading, setLoading] = useState(false);
@@ -82,7 +83,7 @@ export default function NuevoPresupuestoPage() {
   const { data: user } = useUser();
   const isMobile = useIsMobile();
 
-  const allSections = ["info-general", "periodos", "impresiones", "formas-pago"];
+  const allSections = ["info-general", "dispositivos", "impresiones", "formas-pago"];
   const [openSection, setOpenSection] = useState<string>("");
 
   const [formData, setFormData] = useState({
@@ -91,8 +92,8 @@ export default function NuevoPresupuestoPage() {
     notes: "",
   });
 
-  // Periodos con dispositivos anidados
-  const [periodos, setPeriodos] = useState<FormPeriodo[]>([createEmptyPeriodo()]);
+  // Items planos con fecha individual
+  const [items, setItems] = useState<FormItem[]>([createEmptyItem()]);
 
   // Estado para impresiones/afiches
   const [conImpresiones, setConImpresiones] = useState(false);
@@ -107,54 +108,104 @@ export default function NuevoPresupuestoPage() {
     { tipo: "", monto: undefined, cuenta: "", factura: false, tipoFactura: "" },
   ]);
 
-  // --- Handlers de periodos ---
-  const addPeriodo = () => {
-    setPeriodos([...periodos, createEmptyPeriodo()]);
+  // --- Handlers de items ---
+  const handleItemChange = (idx: number, field: keyof FormItem, value: any) => {
+    const updated = [...items];
+    updated[idx] = { ...updated[idx], [field]: value };
+
+    // Si cambia fecha o días y el item pertenece a un grupo, actualizar todos los del grupo
+    if ((field === "fechaSalida" || field === "dias") && updated[idx].periodoGroupId) {
+      const groupId = updated[idx].periodoGroupId;
+      updated.forEach((item, i) => {
+        if (item.periodoGroupId === groupId) {
+          updated[i] = { ...updated[i], [field]: value };
+        }
+      });
+    }
+
+    setItems(updated);
   };
 
-  const removePeriodo = (index: number) => {
-    if (periodos.length > 1) {
-      setPeriodos(periodos.filter((_, i) => i !== index));
+  const addItem = () => {
+    setItems([...items, createEmptyItem()]);
+  };
+
+  const removeItem = (idx: number) => {
+    if (items.length > 1) {
+      setItems(items.filter((_, i) => i !== idx));
     }
   };
 
-  const handlePeriodoChange = (index: number, field: "fechaInicio" | "dias", value: Date | number | undefined) => {
-    const updated = [...periodos];
-    updated[index] = { ...updated[index], [field]: value };
-    setPeriodos(updated);
+  // --- Agrupación ---
+  const toggleItemSelection = (idx: number) => {
+    const updated = [...items];
+    updated[idx] = { ...updated[idx], selected: !updated[idx].selected };
+    setItems(updated);
   };
 
-  // --- Handlers de items dentro de periodos ---
-  const handleItemChange = (periodoIdx: number, itemIdx: number, field: keyof FormItem, value: string | number) => {
-    const updated = [...periodos];
-    updated[periodoIdx] = {
-      ...updated[periodoIdx],
-      items: updated[periodoIdx].items.map((item, i) =>
-        i === itemIdx ? { ...item, [field]: value } : item
-      ),
-    };
-    setPeriodos(updated);
+  const getUniqueGroupIds = (): string[] => {
+    const ids = new Set<string>();
+    items.forEach((item) => {
+      if (item.periodoGroupId) ids.add(item.periodoGroupId);
+    });
+    return Array.from(ids);
   };
 
-  const addItem = (periodoIdx: number) => {
-    const updated = [...periodos];
-    updated[periodoIdx] = {
-      ...updated[periodoIdx],
-      items: [...updated[periodoIdx].items, createEmptyItem()],
-    };
-    setPeriodos(updated);
+  const getGroupColor = (groupId: string) => {
+    const groups = getUniqueGroupIds();
+    const idx = groups.indexOf(groupId);
+    return GROUP_COLORS[idx % GROUP_COLORS.length];
   };
 
-  const removeItem = (periodoIdx: number, itemIdx: number) => {
-    const periodo = periodos[periodoIdx];
-    if (periodo.items.length > 1) {
-      const updated = [...periodos];
-      updated[periodoIdx] = {
-        ...updated[periodoIdx],
-        items: periodo.items.filter((_, i) => i !== itemIdx),
-      };
-      setPeriodos(updated);
+  const getGroupLabel = (groupId: string) => {
+    const groups = getUniqueGroupIds();
+    const idx = groups.indexOf(groupId);
+    return GROUP_COLORS[idx % GROUP_COLORS.length]?.label || `Grupo ${idx + 1}`;
+  };
+
+  const groupSelected = () => {
+    const selectedItems = items.filter((i) => i.selected);
+    if (selectedItems.length < 2) {
+      toast.error("Seleccioná al menos 2 dispositivos para agrupar");
+      return;
     }
+    const groupId = `group-${Date.now()}`;
+    // Tomar fecha y días del primer seleccionado que los tenga
+    const refItem = selectedItems.find((i) => i.fechaSalida) || selectedItems[0];
+    const updated = items.map((item) => {
+      if (item.selected) {
+        return {
+          ...item,
+          periodoGroupId: groupId,
+          fechaSalida: refItem.fechaSalida,
+          dias: refItem.dias,
+          selected: false,
+        };
+      }
+      return { ...item, selected: false };
+    });
+    setItems(updated);
+    toast.success("Dispositivos agrupados");
+  };
+
+  const ungroupItem = (idx: number) => {
+    const updated = [...items];
+    const groupId = updated[idx].periodoGroupId;
+    updated[idx] = { ...updated[idx], periodoGroupId: undefined };
+
+    // Si el grupo queda con menos de 2 items, desagrupar todos
+    if (groupId) {
+      const remaining = updated.filter((i) => i.periodoGroupId === groupId);
+      if (remaining.length < 2) {
+        updated.forEach((item, i) => {
+          if (item.periodoGroupId === groupId) {
+            updated[i] = { ...updated[i], periodoGroupId: undefined };
+          }
+        });
+      }
+    }
+
+    setItems(updated);
   };
 
   // --- Handlers de formas de pago ---
@@ -180,7 +231,7 @@ export default function NuevoPresupuestoPage() {
     setFormasPago(updated);
   };
 
-  // Calcular fecha fin de un período
+  // Calcular fecha fin
   const calcularFechaFin = (fechaInicio: Date | undefined, dias: number | undefined): Date | null => {
     if (!fechaInicio || !dias || dias <= 0) return null;
     return addDays(fechaInicio, dias - 1);
@@ -211,12 +262,10 @@ export default function NuevoPresupuestoPage() {
   // Calcular totales
   const calculateTotals = () => {
     let subtotalDispositivos = 0;
-    periodos.forEach((periodo) => {
-      periodo.items.forEach((item) => {
-        const cantidad = Number(item.quantity) || 0;
-        const precio = Number(item.unitPrice) || 0;
-        subtotalDispositivos += cantidad * precio;
-      });
+    items.forEach((item) => {
+      const cantidad = Number(item.quantity) || 0;
+      const precio = Number(item.unitPrice) || 0;
+      subtotalDispositivos += cantidad * precio;
     });
 
     const ventaImpresiones = conImpresiones ? Number(impresiones.venta) || 0 : 0;
@@ -252,10 +301,7 @@ export default function NuevoPresupuestoPage() {
       return;
     }
 
-    // Validar que haya al menos un item con dispositivo en algún periodo
-    const allItems = periodos.flatMap((p) => p.items);
-    const validItems = allItems.filter((item) => item.productName);
-
+    const validItems = items.filter((item) => item.productName);
     if (validItems.length === 0) {
       toast.error("Debes agregar al menos un dispositivo");
       return;
@@ -275,29 +321,7 @@ export default function NuevoPresupuestoPage() {
         return;
       }
 
-      // Preparar periodos con items anidados
-      const preparedPeriodos = periodos
-        .filter((p) => p.items.some((i) => i.productName))
-        .map((p) => {
-          const fechaFin = calcularFechaFin(p.fechaInicio, p.dias);
-          return {
-            id: p.id,
-            fechaInicio: p.fechaInicio ? Timestamp.fromDate(p.fechaInicio) : null,
-            dias: p.dias || null,
-            fechaFin: fechaFin ? Timestamp.fromDate(fechaFin) : null,
-            items: p.items
-              .filter((i) => i.productName)
-              .map((i) => ({
-                id: i.id,
-                productName: i.productName,
-                quantity: Number(i.quantity) || 0,
-                unitPrice: Number(i.unitPrice) || 0,
-                subtotal: (Number(i.quantity) || 0) * (Number(i.unitPrice) || 0),
-              })),
-          };
-        });
-
-      // Items flat para backward compat
+      // Preparar items con fechas
       const preparedItems = validItems.map((item) => ({
         id: item.id,
         productName: item.productName || "",
@@ -308,6 +332,9 @@ export default function NuevoPresupuestoPage() {
         tax: 0,
         taxAmount: 0,
         isManual: true,
+        fechaSalida: item.fechaSalida ? Timestamp.fromDate(item.fechaSalida) : null,
+        dias: item.dias || null,
+        periodoGroupId: item.periodoGroupId || null,
       }));
 
       // Preparar formas de pago
@@ -329,7 +356,6 @@ export default function NuevoPresupuestoPage() {
           section: selectedClient.section,
         },
         items: preparedItems,
-        periodos: preparedPeriodos,
         fecha: Timestamp.fromDate(new Date(formData.fecha)),
         formasPago: preparedFormasPago,
         conImpresiones,
@@ -386,10 +412,12 @@ export default function NuevoPresupuestoPage() {
     return clientName;
   };
 
-  const getPeriodosPreview = () => {
-    const totalItems = periodos.reduce((sum, p) => sum + p.items.filter((i) => i.productName).length, 0);
+  const getDispositivosPreview = () => {
+    const totalItems = items.filter((i) => i.productName).length;
     if (totalItems === 0) return "Sin dispositivos";
-    return `${periodos.length} período${periodos.length > 1 ? "s" : ""}, ${totalItems} dispositivo${totalItems > 1 ? "s" : ""} - ${formatCurrency(totals.subtotalDispositivos)}`;
+    const groups = getUniqueGroupIds().length;
+    const groupText = groups > 0 ? `, ${groups} grupo${groups > 1 ? "s" : ""}` : "";
+    return `${totalItems} dispositivo${totalItems > 1 ? "s" : ""}${groupText} - ${formatCurrency(totals.subtotalDispositivos)}`;
   };
 
   const getFormasPagoPreview = () => {
@@ -414,140 +442,197 @@ export default function NuevoPresupuestoPage() {
     return `Venta: ${formatCurrency(impresiones.venta || 0)}`;
   };
 
-  // --- Componente reutilizable: UI de un periodo con sus items ---
-  const renderPeriodo = (periodo: FormPeriodo, periodoIdx: number, variant: "mobile" | "desktop") => {
-    const fechaFin = calcularFechaFin(periodo.fechaInicio, periodo.dias);
-    const periodoSubtotal = periodo.items.reduce((sum, item) => {
-      return sum + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
-    }, 0);
+  const hasSelectedItems = items.some((i) => i.selected);
 
-    return (
-      <div key={periodo.id} className="border rounded-lg bg-slate-50 p-4 space-y-4">
-        {/* Header del periodo: fecha, días, fecha fin, eliminar */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-700">Periodo {periodoIdx + 1}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-3">
-            <div className="sm:w-[80px]">
-              <Label className="text-xs text-slate-500 sm:hidden">Días</Label>
-              <Input
-                type="number"
-                min="1"
-                value={periodo.dias ?? ""}
-                onChange={(e) => handlePeriodoChange(periodoIdx, "dias", e.target.value ? Number(e.target.value) : undefined)}
-                placeholder="Días"
-              />
-            </div>
-            <div className="sm:w-[170px]">
-              <Label className="text-xs text-slate-500 sm:hidden">Fecha salida</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !periodo.fechaInicio && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {periodo.fechaInicio ? (
-                      format(periodo.fechaInicio, "dd/MM/yyyy", { locale: es })
-                    ) : (
-                      <span>Fecha salida</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={periodo.fechaInicio}
-                    onSelect={(date) => handlePeriodoChange(periodoIdx, "fechaInicio", date)}
-                    locale={es}
-                    initialFocus
+  // Organizar items para renderizado: agrupar los que tienen periodoGroupId
+  const renderItems = () => {
+    const renderedGroupIds = new Set<string>();
+    const elements: React.ReactNode[] = [];
+
+    items.forEach((item, idx) => {
+      if (item.periodoGroupId) {
+        if (renderedGroupIds.has(item.periodoGroupId)) return;
+        renderedGroupIds.add(item.periodoGroupId);
+
+        // Renderizar grupo completo
+        const groupId = item.periodoGroupId;
+        const groupItems = items
+          .map((i, originalIdx) => ({ item: i, idx: originalIdx }))
+          .filter((entry) => entry.item.periodoGroupId === groupId);
+        const color = getGroupColor(groupId);
+        const groupLabel = getGroupLabel(groupId);
+
+        // Fecha y días del grupo (todos comparten)
+        const groupFechaSalida = groupItems[0].item.fechaSalida;
+        const groupDias = groupItems[0].item.dias;
+        const fechaFin = calcularFechaFin(groupFechaSalida, groupDias);
+
+        elements.push(
+          <div key={`group-${groupId}`} className={`border-2 ${color.border} ${color.bg} rounded-lg p-4 space-y-3`}>
+            {/* Header del grupo */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+              <span className={`text-xs font-semibold px-2 py-1 rounded-full ${color.badge}`}>{groupLabel}</span>
+
+              <div className="grid grid-cols-2 gap-3 sm:flex sm:gap-3">
+                <div className="sm:w-[80px]">
+                  <Label className="text-xs text-slate-500 sm:hidden">Días</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={groupDias ?? ""}
+                    onChange={(e) => {
+                      const val = e.target.value ? Number(e.target.value) : undefined;
+                      const updated = [...items];
+                      updated.forEach((it, i) => {
+                        if (it.periodoGroupId === groupId) updated[i] = { ...updated[i], dias: val };
+                      });
+                      setItems(updated);
+                    }}
+                    placeholder="Días"
                   />
-                </PopoverContent>
-              </Popover>
+                </div>
+                <div className="sm:w-[170px]">
+                  <Label className="text-xs text-slate-500 sm:hidden">Fecha salida</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !groupFechaSalida && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {groupFechaSalida ? format(groupFechaSalida, "dd/MM/yyyy", { locale: es }) : <span>Fecha salida</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={groupFechaSalida}
+                        onSelect={(date) => {
+                          const updated = [...items];
+                          updated.forEach((it, i) => {
+                            if (it.periodoGroupId === groupId) updated[i] = { ...updated[i], fechaSalida: date };
+                          });
+                          setItems(updated);
+                        }}
+                        locale={es}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">Hasta:</span>
+                {fechaFin ? (
+                  <span className="px-3 py-1 bg-green-100 text-green-800 rounded-md text-sm font-medium">
+                    {format(fechaFin, "dd/MM/yyyy", { locale: es })}
+                  </span>
+                ) : (
+                  <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-md text-sm">--/--/----</span>
+                )}
+              </div>
+            </div>
+
+            {/* Items del grupo */}
+            <div className="space-y-2">
+              {groupItems.map(({ item: gi, idx: giIdx }) => (
+                <div key={gi.id} className="flex gap-3 items-start bg-white rounded-lg p-3 border">
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-1">
+                      <Label className="text-xs text-slate-500">Dispositivo</Label>
+                      <DeviceAutocomplete
+                        devices={devices || []}
+                        value={gi.productName || ""}
+                        onChange={(value) => handleItemChange(giIdx, "productName", value)}
+                        placeholder="Seleccionar..."
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-500">Cantidad</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={gi.quantity ?? ""}
+                        onChange={(e) => handleItemChange(giIdx, "quantity", e.target.value ? Number(e.target.value) : undefined)}
+                        placeholder="Cant."
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-slate-500">Precio Unit.</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={gi.unitPrice ?? ""}
+                        onChange={(e) => handleItemChange(giIdx, "unitPrice", e.target.value ? Number(e.target.value) : undefined)}
+                        placeholder="$"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 pt-5">
+                    <Button
+                      type="button"
+                      onClick={() => ungroupItem(giIdx)}
+                      variant="ghost"
+                      size="sm"
+                      className="text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                      title="Desagrupar"
+                    >
+                      <Unlink className="h-4 w-4" />
+                    </Button>
+                    {items.length > 1 && (
+                      <Button
+                        type="button"
+                        onClick={() => removeItem(giIdx)}
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
+        );
+      } else {
+        // Item individual (sin grupo)
+        const fechaFin = calcularFechaFin(item.fechaSalida, item.dias);
 
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-500">Hasta:</span>
-            {fechaFin ? (
-              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-md text-sm font-medium">
-                {format(fechaFin, "dd/MM/yyyy", { locale: es })}
-              </span>
-            ) : (
-              <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-md text-sm">
-                --/--/----
-              </span>
-            )}
-          </div>
-
-          {periodos.length > 1 && (
-            <Button
-              type="button"
-              onClick={() => removePeriodo(periodoIdx)}
-              variant="ghost"
-              size="sm"
-              className="text-red-500 hover:text-red-700 hover:bg-red-50 self-end sm:self-auto sm:ml-auto"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-
-        {/* Dispositivos del periodo */}
-        <div>
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-sm font-medium text-slate-600">Dispositivos</span>
-            <Button
-              type="button"
-              onClick={() => addItem(periodoIdx)}
-              variant="outline"
-              size="sm"
-              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white h-7 text-xs"
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              Agregar
-            </Button>
-          </div>
-
-          {/* Mobile: cards */}
-          <div className="space-y-3 md:hidden">
-            {periodo.items.map((item, itemIdx) => (
-              <div key={item.id} className="p-3 border rounded-lg bg-white space-y-3">
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
+        elements.push(
+          <div key={item.id} className="p-4 border rounded-lg bg-white space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="pt-5">
+                <Checkbox
+                  checked={item.selected || false}
+                  onCheckedChange={() => toggleItemSelection(idx)}
+                />
+              </div>
+              <div className="flex-1 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
                     <Label className="text-xs text-slate-500">Dispositivo</Label>
                     <DeviceAutocomplete
                       devices={devices || []}
                       value={item.productName || ""}
-                      onChange={(value) => handleItemChange(periodoIdx, itemIdx, "productName", value)}
+                      onChange={(value) => handleItemChange(idx, "productName", value)}
                       placeholder="Seleccionar..."
                     />
                   </div>
-                  {periodo.items.length > 1 && (
-                    <Button
-                      type="button"
-                      onClick={() => removeItem(periodoIdx, itemIdx)}
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50 -mt-1 -mr-2"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs text-slate-500">Cantidad</Label>
                     <Input
                       type="number"
                       min="1"
                       value={item.quantity ?? ""}
-                      onChange={(e) => handleItemChange(periodoIdx, itemIdx, "quantity", e.target.value ? Number(e.target.value) : 0)}
+                      onChange={(e) => handleItemChange(idx, "quantity", e.target.value ? Number(e.target.value) : undefined)}
                       placeholder="Cant."
                     />
                   </div>
@@ -558,81 +643,83 @@ export default function NuevoPresupuestoPage() {
                       min="0"
                       step="0.01"
                       value={item.unitPrice ?? ""}
-                      onChange={(e) => handleItemChange(periodoIdx, itemIdx, "unitPrice", e.target.value ? Number(e.target.value) : 0)}
+                      onChange={(e) => handleItemChange(idx, "unitPrice", e.target.value ? Number(e.target.value) : undefined)}
                       placeholder="$"
                     />
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop: tabla */}
-          <div className="hidden md:block overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[250px]">Dispositivo</TableHead>
-                  <TableHead className="w-[100px]">Cantidad</TableHead>
-                  <TableHead className="w-[140px]">Precio Unit.</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {periodo.items.map((item, itemIdx) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <DeviceAutocomplete
-                        devices={devices || []}
-                        value={item.productName || ""}
-                        onChange={(value) => handleItemChange(periodoIdx, itemIdx, "productName", value)}
-                        placeholder="Seleccionar dispositivo..."
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={item.quantity ?? ""}
-                        onChange={(e) => handleItemChange(periodoIdx, itemIdx, "quantity", e.target.value ? Number(e.target.value) : 0)}
-                        placeholder="Cant."
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.unitPrice ?? ""}
-                        onChange={(e) => handleItemChange(periodoIdx, itemIdx, "unitPrice", e.target.value ? Number(e.target.value) : 0)}
-                        placeholder="$"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {periodo.items.length > 1 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="sm:w-[80px]">
+                    <Label className="text-xs text-slate-500">Días</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={item.dias ?? ""}
+                      onChange={(e) => handleItemChange(idx, "dias", e.target.value ? Number(e.target.value) : undefined)}
+                      placeholder="Días"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-500">Fecha salida</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button
                           type="button"
-                          onClick={() => removeItem(periodoIdx, itemIdx)}
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !item.fechaSalida && "text-muted-foreground"
+                          )}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {item.fechaSalida ? format(item.fechaSalida, "dd/MM/yyyy", { locale: es }) : <span>Fecha</span>}
                         </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={item.fechaSalida}
+                          onSelect={(date) => handleItemChange(idx, "fechaSalida", date)}
+                          locale={es}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="flex items-end gap-2 col-span-2 sm:col-span-2">
+                    <div>
+                      <Label className="text-xs text-slate-500">Hasta</Label>
+                      {fechaFin ? (
+                        <span className="block px-3 py-2 bg-green-100 text-green-800 rounded-md text-sm font-medium">
+                          {format(fechaFin, "dd/MM/yyyy", { locale: es })}
+                        </span>
+                      ) : (
+                        <span className="block px-3 py-2 bg-slate-100 text-slate-500 rounded-md text-sm">--/--/----</span>
                       )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-5">
+                {items.length > 1 && (
+                  <Button
+                    type="button"
+                    onClick={() => removeItem(idx)}
+                    variant="ghost"
+                    size="sm"
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
+        );
+      }
+    });
 
-          <div className="mt-2 text-right text-sm text-slate-600">
-            Subtotal: <span className="font-semibold">{formatCurrency(periodoSubtotal)}</span>
-          </div>
-        </div>
-      </div>
-    );
+    return elements;
   };
 
   // --- Componente reutilizable: Formas de pago ---
@@ -836,6 +923,42 @@ export default function NuevoPresupuestoPage() {
     </div>
   );
 
+  // --- Contenido de dispositivos ---
+  const renderDispositivosContent = () => (
+    <>
+      <div className="flex justify-end gap-2 mb-3">
+        {hasSelectedItems && (
+          <Button
+            type="button"
+            onClick={groupSelected}
+            variant="outline"
+            size="sm"
+            className="text-blue-900 border-blue-900 hover:bg-blue-50"
+          >
+            <Link2 className="h-4 w-4 mr-2" />
+            Agrupar seleccionados
+          </Button>
+        )}
+        <Button
+          type="button"
+          onClick={addItem}
+          variant="outline"
+          size="sm"
+          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Agregar Dispositivo
+        </Button>
+      </div>
+      <div className="space-y-4">
+        {renderItems()}
+      </div>
+      <div className="mt-4 text-right text-sm text-slate-600">
+        Total Dispositivos: <span className="font-semibold">{formatCurrency(totals.subtotalDispositivos)}</span>
+      </div>
+    </>
+  );
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
@@ -872,33 +995,16 @@ export default function NuevoPresupuestoPage() {
               </AccordionContent>
             </AccordionItem>
 
-            {/* Períodos con Dispositivos */}
-            <AccordionItem value="periodos" className="border rounded-lg bg-white">
+            {/* Dispositivos */}
+            <AccordionItem value="dispositivos" className="border rounded-lg bg-white">
               <AccordionTrigger className="px-4 py-3 hover:no-underline">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-left">
-                  <span className="font-semibold">Períodos y Dispositivos</span>
-                  <span className="text-sm text-slate-500 font-normal md:hidden">{getPeriodosPreview()}</span>
+                  <span className="font-semibold">Dispositivos</span>
+                  <span className="text-sm text-slate-500 font-normal md:hidden">{getDispositivosPreview()}</span>
                 </div>
               </AccordionTrigger>
               <AccordionContent className="px-4 pb-4">
-                <div className="flex justify-end mb-3">
-                  <Button
-                    type="button"
-                    onClick={addPeriodo}
-                    variant="outline"
-                    size="sm"
-                    className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Agregar Período
-                  </Button>
-                </div>
-                <div className="space-y-4">
-                  {periodos.map((periodo, idx) => renderPeriodo(periodo, idx, "mobile"))}
-                </div>
-                <div className="mt-4 text-right text-sm text-slate-600">
-                  Total Dispositivos: <span className="font-semibold">{formatCurrency(totals.subtotalDispositivos)}</span>
-                </div>
+                {renderDispositivosContent()}
               </AccordionContent>
             </AccordionItem>
 
@@ -953,24 +1059,38 @@ export default function NuevoPresupuestoPage() {
               </CardContent>
             </Card>
 
-            {/* Períodos con Dispositivos */}
+            {/* Dispositivos */}
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-3">
-                <CardTitle>Períodos y Dispositivos</CardTitle>
-                <Button
-                  type="button"
-                  onClick={addPeriodo}
-                  variant="outline"
-                  size="sm"
-                  className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar Período
-                </Button>
+                <CardTitle>Dispositivos</CardTitle>
+                <div className="flex gap-2">
+                  {hasSelectedItems && (
+                    <Button
+                      type="button"
+                      onClick={groupSelected}
+                      variant="outline"
+                      size="sm"
+                      className="text-blue-900 border-blue-900 hover:bg-blue-50"
+                    >
+                      <Link2 className="h-4 w-4 mr-2" />
+                      Agrupar seleccionados
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    onClick={addItem}
+                    variant="outline"
+                    size="sm"
+                    className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar Dispositivo
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {periodos.map((periodo, idx) => renderPeriodo(periodo, idx, "desktop"))}
+                  {renderItems()}
                 </div>
                 <div className="mt-4 text-right text-sm text-slate-600">
                   Total Dispositivos: <span className="font-semibold">{formatCurrency(totals.subtotalDispositivos)}</span>

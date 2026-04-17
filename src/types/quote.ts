@@ -37,6 +37,7 @@ export type TQuoteItem = {
   afiches?: number;          // Costo de afiches/impresión
   fechaSalida?: any;         // Fecha de salida del dispositivo
   dias?: number;             // Duración en días
+  periodoGroupId?: string;   // ID de grupo para agrupar dispositivos en un periodo compartido
 };
 
 export type TQuoteComment = {
