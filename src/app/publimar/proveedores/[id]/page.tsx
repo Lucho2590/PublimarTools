@@ -26,6 +26,9 @@ export default function EditarProveedorPage({ params }: { params: { id: string }
     notes: "",
     cuit: "",
     contactPerson: "",
+    cbu: "",
+    alias: "",
+    denominacion: "",
   });
 
   // Obtener el proveedor
@@ -114,6 +117,18 @@ export default function EditarProveedorPage({ params }: { params: { id: string }
             <div>
               <Label>Persona de contacto</Label>
               <Input name="contactPerson" value={formData.contactPerson || ""} onChange={handleChange} />
+            </div>
+            <div>
+              <Label>CBU</Label>
+              <Input name="cbu" value={formData.cbu || ""} onChange={handleChange} placeholder="CBU del proveedor" />
+            </div>
+            <div>
+              <Label>Alias</Label>
+              <Input name="alias" value={formData.alias || ""} onChange={handleChange} placeholder="Alias bancario" />
+            </div>
+            <div className="md:col-span-2">
+              <Label>Denominación</Label>
+              <Input name="denominacion" value={formData.denominacion || ""} onChange={handleChange} placeholder="Denominación de la cuenta" />
             </div>
             <div className="md:col-span-2">
               <Label>Notas</Label>

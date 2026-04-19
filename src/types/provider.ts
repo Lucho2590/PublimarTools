@@ -7,6 +7,9 @@ export interface TProvider {
   cuit?: string;
   contactPerson?: string;
   notes?: string;
+  cbu?: string;
+  alias?: string;
+  denominacion?: string;
   createdAt?: Date;
   updatedAt?: Date;
 } 

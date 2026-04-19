@@ -3,7 +3,9 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useFirestore } from "reactfire";
-import { collection, addDoc, serverTimestamp, query, orderBy } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, serverTimestamp, query, orderBy, where, getDocs, increment } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFirestoreCollectionData } from "reactfire";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,10 +26,20 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { TPurchase, EPurchaseDepartment } from "@/types/purchase";
+import { TPurchase, EPurchaseDepartment, EPurchasePaymentMethod } from "@/types/purchase";
 import { EUserRole } from "@/types/user";
 import { formatearPrecio } from "@/lib/utils";
-import { Edit, DollarSign, X } from "lucide-react";
+import { EProviderAccountStatus } from "@/types/providerAccount";
+import { Edit, DollarSign, Paperclip, X, AlertCircle, Plus, CheckCircle, Camera, Upload } from "lucide-react";
+
+const paymentMethodLabels: Record<string, string> = {
+  [EPurchasePaymentMethod.EFECTIVO]: "Efectivo",
+  [EPurchasePaymentMethod.TARJETA]: "Tarjeta",
+  [EPurchasePaymentMethod.TRANSFERENCIA]: "Transferencia",
+  [EPurchasePaymentMethod.CUENTA_CORRIENTE]: "Cuenta Corriente",
+  [EPurchasePaymentMethod.CHEQUE]: "Cheque",
+  [EPurchasePaymentMethod.ECHEQ]: "E-Cheq",
+};
 import PurchaseEditModal from "./modalCompras/purchaseEditModal";
 import { toast } from "sonner";
 
@@ -56,9 +68,15 @@ export default function ComprasPage() {
   });
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [facturaFile, setFacturaFile] = useState<File | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Estados para CC (Cuenta Corriente)
+  const [ccAccount, setCcAccount] = useState<any | null>(null);
+  const [ccLoading, setCcLoading] = useState(false);
+  const [ccChecked, setCcChecked] = useState(false);
 
   // Asignar automáticamente el departamento según el rol del usuario
   useEffect(() => {
@@ -298,6 +316,73 @@ export default function ComprasPage() {
     }
   };
 
+  // Verificar si el proveedor tiene CC activa
+  const checkProviderCC = async (providerId: string) => {
+    if (!providerId) {
+      setCcAccount(null);
+      setCcChecked(false);
+      return;
+    }
+    setCcLoading(true);
+    try {
+      const ccQuery = query(
+        collection(firestore, "providerAccounts"),
+        where("providerId", "==", providerId),
+        where("status", "==", EProviderAccountStatus.ACTIVE)
+      );
+      const snapshot = await getDocs(ccQuery);
+      if (!snapshot.empty) {
+        setCcAccount({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+      } else {
+        setCcAccount(null);
+      }
+      setCcChecked(true);
+    } catch (error) {
+      console.error("Error checking CC:", error);
+      setCcAccount(null);
+      setCcChecked(true);
+    } finally {
+      setCcLoading(false);
+    }
+  };
+
+  // Crear CC para el proveedor seleccionado
+  const handleCreateCC = async () => {
+    if (!form.providerId) {
+      toast.error("Seleccione un proveedor primero");
+      return;
+    }
+    try {
+      const provider = providers?.find((p: any) => p.id === form.providerId);
+      const docRef = await addDoc(collection(firestore, "providerAccounts"), {
+        providerId: form.providerId,
+        providerName: provider?.name || "",
+        balance: 0,
+        totalPurchases: 0,
+        totalPayments: 0,
+        status: EProviderAccountStatus.ACTIVE,
+        createdBy: userRole || "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      setCcAccount({ id: docRef.id, providerId: form.providerId, providerName: provider?.name || "", balance: 0, totalPurchases: 0, totalPayments: 0, status: EProviderAccountStatus.ACTIVE });
+      toast.success("Cuenta Corriente creada correctamente");
+    } catch (error) {
+      console.error("Error creating CC:", error);
+      toast.error("Error al crear la Cuenta Corriente");
+    }
+  };
+
+  // Efecto para verificar CC cuando cambia forma de pago o proveedor
+  useEffect(() => {
+    if (form.paymentMethod === EPurchasePaymentMethod.CUENTA_CORRIENTE && form.providerId) {
+      checkProviderCC(form.providerId);
+    } else {
+      setCcAccount(null);
+      setCcChecked(false);
+    }
+  }, [form.paymentMethod, form.providerId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -306,10 +391,16 @@ export default function ComprasPage() {
       return;
     }
 
+    // Si es CC, verificar que existe la CC
+    if (form.paymentMethod === EPurchasePaymentMethod.CUENTA_CORRIENTE && !ccAccount) {
+      toast.error("El proveedor no tiene una Cuenta Corriente activa. Cree una primero.");
+      return;
+    }
+
     setLoading(true);
     try {
       const provider = providers?.find((p: any) => p.id === form.providerId);
-      await addDoc(purchasesCollection, {
+      const docRef = await addDoc(purchasesCollection, {
         ...form,
         providerName: provider?.name || "",
         date: form.date,
@@ -317,6 +408,25 @@ export default function ComprasPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      // Subir factura si existe
+      if (facturaFile) {
+        const storageRef = ref(storage, `purchases/${docRef.id}/factura_${Date.now()}_${facturaFile.name}`);
+        await uploadBytes(storageRef, facturaFile);
+        const facturaUrl = await getDownloadURL(storageRef);
+        await updateDoc(docRef, { facturaUrl, facturaName: facturaFile.name });
+      }
+
+      // Si es CC, actualizar el saldo de la CC
+      if (form.paymentMethod === EPurchasePaymentMethod.CUENTA_CORRIENTE && ccAccount) {
+        const ccRef = doc(firestore, "providerAccounts", ccAccount.id);
+        await updateDoc(ccRef, {
+          balance: increment(Number(form.amount)),
+          totalPurchases: increment(Number(form.amount)),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
       // Resetear form pero mantener el departamento según el rol
       const resetForm: Partial<TPurchase> = { date: new Date().toISOString().split("T")[0] };
       if (userRole === EUserRole.BANDERAS) {
@@ -328,6 +438,9 @@ export default function ComprasPage() {
       }
       setForm(resetForm);
       setProviderInput("");
+      setFacturaFile(null);
+      setCcAccount(null);
+      setCcChecked(false);
       setShowForm(false);
       toast.success("Compra registrada correctamente");
     } catch (error) {
@@ -524,6 +637,113 @@ export default function ComprasPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="paymentMethod">Forma de Pago</Label>
+                  <Select
+                    value={form.paymentMethod || ""}
+                    onValueChange={(value) => setForm({ ...form, paymentMethod: value as EPurchasePaymentMethod })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Seleccionar forma de pago" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={EPurchasePaymentMethod.EFECTIVO}>Efectivo</SelectItem>
+                      <SelectItem value={EPurchasePaymentMethod.TARJETA}>Tarjeta</SelectItem>
+                      <SelectItem value={EPurchasePaymentMethod.TRANSFERENCIA}>Transferencia</SelectItem>
+                      <SelectItem value={EPurchasePaymentMethod.CUENTA_CORRIENTE}>Cuenta Corriente</SelectItem>
+                      <SelectItem value={EPurchasePaymentMethod.CHEQUE}>Cheque</SelectItem>
+                      <SelectItem value={EPurchasePaymentMethod.ECHEQ}>E-Cheq</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {/* CC Status */}
+                {form.paymentMethod === EPurchasePaymentMethod.CUENTA_CORRIENTE && (
+                  <div className="md:col-span-2">
+                    {!form.providerId ? (
+                      <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                        <AlertCircle className="h-4 w-4 text-yellow-600" />
+                        <span className="text-sm text-yellow-700">Seleccione un proveedor primero para verificar su Cuenta Corriente.</span>
+                      </div>
+                    ) : ccLoading ? (
+                      <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-md">
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-slate-600"></div>
+                        <span className="text-sm text-slate-600">Verificando Cuenta Corriente...</span>
+                      </div>
+                    ) : ccChecked && ccAccount ? (
+                      <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-md">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span className="text-sm text-green-700">CC activa — Saldo pendiente: <strong>{formatearPrecio(ccAccount.balance || 0)}</strong></span>
+                      </div>
+                    ) : ccChecked && !ccAccount ? (
+                      <div className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-md">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-orange-600" />
+                          <span className="text-sm text-orange-700">Este proveedor no tiene una Cuenta Corriente activa.</span>
+                        </div>
+                        <Button type="button" size="sm" variant="outline" className="border-orange-300 text-orange-700 hover:bg-orange-100" onClick={handleCreateCC}>
+                          <Plus className="h-3 w-3 mr-1" /> Crear CC
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Factura (PDF o imagen)</Label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      id="factura"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => setFacturaFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                    <input
+                      id="facturaCamera"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => setFacturaFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="md:hidden flex-1"
+                      onClick={() => document.getElementById('facturaCamera')?.click()}
+                    >
+                      <Camera className="h-4 w-4 mr-2" /> Tomar foto
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => document.getElementById('factura')?.click()}
+                    >
+                      <Upload className="h-4 w-4 mr-2" /> Cargar archivo
+                    </Button>
+                    {facturaFile && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setFacturaFile(null);
+                          const input = document.getElementById('factura') as HTMLInputElement;
+                          if (input) input.value = '';
+                          const cam = document.getElementById('facturaCamera') as HTMLInputElement;
+                          if (cam) cam.value = '';
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  {facturaFile && (
+                    <p className="text-sm text-slate-500 flex items-center gap-1">
+                      <Paperclip className="h-3 w-3" /> {facturaFile.name}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-4">
                 <Button
@@ -542,6 +762,7 @@ export default function ComprasPage() {
                     }
                     setForm(resetForm);
                     setProviderInput("");
+                    setFacturaFile(null);
                   }}
                 >
                   Cancelar
@@ -773,7 +994,9 @@ export default function ComprasPage() {
                     <TableHead className="text-left">Proveedor</TableHead>
                     <TableHead className="text-left">Descripción</TableHead>
                     <TableHead className="text-left">Departamento</TableHead>
+                    <TableHead className="text-left">Forma de Pago</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
+                    <TableHead className="text-center">Factura</TableHead>
                     <TableHead className="text-center">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -790,8 +1013,20 @@ export default function ComprasPage() {
                           {compra.department === EPurchaseDepartment.ADMINISTRACION && "Administración"}
                           {!compra.department && "-"}
                         </TableCell>
+                        <TableCell>
+                          {compra.paymentMethod ? paymentMethodLabels[compra.paymentMethod] || compra.paymentMethod : "-"}
+                        </TableCell>
                         <TableCell className="text-right font-semibold">
                           {formatearPrecio(Number(compra.amount))}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {compra.facturaUrl ? (
+                            <a href={compra.facturaUrl} target="_blank" rel="noopener noreferrer" title={compra.facturaName || "Ver factura"}>
+                              <Paperclip className="h-4 w-4 text-blue-600 inline" />
+                            </a>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex justify-center gap-2">
@@ -811,7 +1046,7 @@ export default function ComprasPage() {
                   ) : (
                     <TableRow>
                       <TableCell
-                        colSpan={6}
+                        colSpan={8}
                         className="text-center py-6 text-slate-500"
                       >
                         {searchTerm || dateRange || selectedProvider !== "all"

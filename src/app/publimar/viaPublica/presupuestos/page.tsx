@@ -358,101 +358,107 @@ export default function PresupuestosViaPublicaPage() {
 
       const quoteAny = quote as any;
       let finalY = yPosition;
+      const allItems = quote.items || [];
 
-      // Detectar nueva estructura (periodos con items anidados) vs vieja (items flat)
-      const hasNewStructure = quoteAny.periodos?.length > 0 && quoteAny.periodos[0]?.items?.length > 0;
+      // Group items: by periodoGroupId, or by matching fechaSalida+dias, or individual
+      type ItemGroup = { fechaSalida: string; dias: number | null; items: any[] };
+      const groups: ItemGroup[] = [];
+      const individualItems: any[] = [];
+      const processedGroupIds = new Set<string>();
 
-      if (hasNewStructure) {
-        // Nueva estructura: una tabla por periodo
-        quoteAny.periodos.forEach((periodo: any, periodoIdx: number) => {
-          if (finalY > pageHeight - 80) {
-            pdf.addPage();
-            finalY = margins.top + 10;
-          }
-
-          // Header del periodo
-          pdf.setFontSize(11);
-          pdf.setFont("helvetica", "bold");
-          const fechaInicioStr = formatDate(periodo.fechaInicio);
-          const fechaFinStr = formatDate(periodo.fechaFin);
-          const periodoLabel = fechaInicioStr !== "-"
-            ? `${fechaInicioStr} a ${fechaFinStr}` + (periodo.dias ? ` — ${periodo.dias} días` : "")
-            : periodo.dias ? `${periodo.dias} días` : `Periodo ${periodoIdx + 1}`;
-          pdf.text(periodoLabel, margins.left, finalY);
-          finalY += 2;
-
-          const tableHeaders = ["Dispositivo", "Cant.", "Precio", "Subtotal"];
-          const productNames = periodo.items.map((i: any) => i.productName || "");
-          const tableData = periodo.items.map((item: any) => [
-            item.productName || "",
-            (item.quantity || 0).toString(),
-            formatearPrecio(item.unitPrice || 0),
-            formatearPrecio((item.quantity || 0) * (item.unitPrice || 0)),
-          ]);
-
-          autoTable(pdf, {
-            head: [tableHeaders],
-            body: tableData,
-            startY: finalY,
-            margin: margins,
-            styles: { fontSize: 9, cellPadding: 4, lineWidth: 0, lineColor: [220, 220, 220] },
-            headStyles: { fillColor: [255, 255, 255], textColor: [80, 80, 80], fontStyle: "bold", halign: "left", lineWidth: { bottom: 0.3 }, lineColor: [200, 200, 200] },
-            bodyStyles: { lineWidth: { bottom: 0.15 }, lineColor: [230, 230, 230] },
-            alternateRowStyles: { fillColor: false as any },
-            columnStyles: {
-              0: { cellWidth: 105 },
-              1: { halign: "center", cellWidth: 20 },
-              2: { halign: "right", cellWidth: 30 },
-              3: { halign: "right", cellWidth: 35 },
-            },
-            tableWidth: "auto",
-            didParseCell: (data) => {
-              if (data.section === "head") {
-                if (data.column.index === 1) data.cell.styles.halign = "center";
-                else if (data.column.index === 2) data.cell.styles.halign = "right";
-                else if (data.column.index === 3) data.cell.styles.halign = "right";
-              }
-            },
-            rowPageBreak: "avoid",
-            didDrawCell: (data) => {
-              if (data.section === "body" && data.column.index === 0) {
-                const productName = productNames[data.row.index];
-                if (!productName) return;
-                const cell = data.cell;
-                const x = cell.x + cell.padding("left");
-                const y = cell.y + cell.padding("top") + 2.5;
-                const textWidth = pdf.getTextWidth(productName);
-                pdf.setFillColor(255, 255, 255);
-                pdf.rect(x, y - 2.5, textWidth + 1, 3.5, "F");
-                pdf.setFont("helvetica", "bold");
-                pdf.setFontSize(9);
-                pdf.setTextColor(0, 0, 0);
-                pdf.text(productName, x, y);
-                pdf.setFont("helvetica", "normal");
-              }
-            },
+      allItems.forEach((item: any) => {
+        if (item.periodoGroupId) {
+          if (processedGroupIds.has(item.periodoGroupId)) return;
+          processedGroupIds.add(item.periodoGroupId);
+          const groupItems = allItems.filter((i: any) => i.periodoGroupId === item.periodoGroupId);
+          groups.push({
+            fechaSalida: formatDate(item.fechaSalida),
+            dias: item.dias || null,
+            items: groupItems,
           });
+        } else {
+          individualItems.push(item);
+        }
+      });
 
-          finalY = (pdf as any).lastAutoTable.finalY + 10;
-        });
-      } else {
-        // Fallback: estructura vieja con items flat
+      // Also group individual items with the same fechaSalida+dias
+      const individualGroupMap = new Map<string, any[]>();
+      const trueIndividuals: any[] = [];
+      individualItems.forEach((item: any) => {
+        const fechaStr = formatDate(item.fechaSalida);
+        const key = `${fechaStr}|${item.dias || ""}`;
+        if (fechaStr !== "-" && item.dias) {
+          if (!individualGroupMap.has(key)) individualGroupMap.set(key, []);
+          individualGroupMap.get(key)!.push(item);
+        } else {
+          trueIndividuals.push(item);
+        }
+      });
+
+      // Merge individual items with same date into groups
+      individualGroupMap.forEach((items, key) => {
+        if (items.length > 1) {
+          const [fechaSalida, dias] = key.split("|");
+          groups.push({ fechaSalida, dias: dias ? Number(dias) : null, items });
+        } else {
+          trueIndividuals.push(items[0]);
+        }
+      });
+
+      // Render grouped items (one table per group with date header)
+      const tableStyles = {
+        styles: { fontSize: 9, cellPadding: 4, lineWidth: 0, lineColor: [220, 220, 220] } as any,
+        headStyles: { fillColor: [255, 255, 255], textColor: [80, 80, 80], fontStyle: "bold", halign: "left", lineWidth: { bottom: 0.3 }, lineColor: [200, 200, 200] } as any,
+        bodyStyles: { lineWidth: { bottom: 0.15 }, lineColor: [230, 230, 230] } as any,
+        alternateRowStyles: { fillColor: false as any },
+      };
+
+      const renderGroupTable = (group: ItemGroup) => {
+        if (finalY > pageHeight - 80) {
+          pdf.addPage();
+          finalY = margins.top + 10;
+        }
+
+        // Group header with date range
+        pdf.setFontSize(11);
+        pdf.setFont("helvetica", "bold");
+        const fechaInicioStr = group.fechaSalida;
+        let label = "";
+        if (fechaInicioStr !== "-" && group.dias) {
+          // Calculate end date from first item
+          const firstItem = group.items[0];
+          const fechaFinStr = firstItem.fechaSalida ? (() => {
+            const d = firstItem.fechaSalida.toDate ? firstItem.fechaSalida.toDate() : new Date(firstItem.fechaSalida.seconds ? firstItem.fechaSalida.seconds * 1000 : firstItem.fechaSalida);
+            const end = new Date(d);
+            end.setDate(end.getDate() + (group.dias! - 1));
+            return end.toLocaleDateString('es-AR');
+          })() : "-";
+          label = `${fechaInicioStr} a ${fechaFinStr} — ${group.dias} días`;
+        } else if (group.dias) {
+          label = `${group.dias} días`;
+        } else if (fechaInicioStr !== "-") {
+          label = fechaInicioStr;
+        }
+        if (label) {
+          pdf.text(label, margins.left, finalY);
+          finalY += 2;
+        }
+
         const tableHeaders = ["Dispositivo", "Cant.", "Precio", "Subtotal"];
-        const productNames = quote.items.map(item => item.productName || "");
-        const tableData = quote.items.map((item) => [
+        const productNames = group.items.map((i: any) => i.productName || "");
+        const tableData = group.items.map((item: any) => [
           item.productName || "",
-          item.quantity.toString(),
-          formatearPrecio(item.unitPrice),
-          formatearPrecio(item.subtotal),
+          (item.quantity || 0).toString(),
+          formatearPrecio(item.unitPrice || 0),
+          formatearPrecio((item.quantity || 0) * (item.unitPrice || 0)),
         ]);
 
         autoTable(pdf, {
           head: [tableHeaders],
           body: tableData,
-          startY: yPosition,
+          startY: finalY,
           margin: margins,
-          styles: { fontSize: 9, cellPadding: 4 },
-          headStyles: { fillColor: [255, 255, 255], textColor: [80, 80, 80], fontStyle: "bold", halign: "left", lineWidth: { bottom: 0.3 }, lineColor: [200, 200, 200] },
+          ...tableStyles,
           columnStyles: {
             0: { cellWidth: 105 },
             1: { halign: "center", cellWidth: 20 },
@@ -463,8 +469,7 @@ export default function PresupuestosViaPublicaPage() {
           didParseCell: (data) => {
             if (data.section === "head") {
               if (data.column.index === 1) data.cell.styles.halign = "center";
-              else if (data.column.index === 2) data.cell.styles.halign = "right";
-              else if (data.column.index === 3) data.cell.styles.halign = "right";
+              else if (data.column.index >= 2) data.cell.styles.halign = "right";
             }
           },
           rowPageBreak: "avoid",
@@ -477,10 +482,6 @@ export default function PresupuestosViaPublicaPage() {
               const y = cell.y + cell.padding("top") + 2.5;
               const textWidth = pdf.getTextWidth(productName);
               pdf.setFillColor(255, 255, 255);
-              if (data.row.index % 2 === 0 && cell.styles.fillColor) {
-                const fillColor = cell.styles.fillColor;
-                if (Array.isArray(fillColor)) pdf.setFillColor(fillColor[0], fillColor[1], fillColor[2]);
-              }
               pdf.rect(x, y - 2.5, textWidth + 1, 3.5, "F");
               pdf.setFont("helvetica", "bold");
               pdf.setFontSize(9);
@@ -489,6 +490,99 @@ export default function PresupuestosViaPublicaPage() {
               pdf.setFont("helvetica", "normal");
             }
           },
+        });
+
+        finalY = (pdf as any).lastAutoTable.finalY + 10;
+      };
+
+      // Render groups
+      groups.forEach((group) => renderGroupTable(group));
+
+      // Render individual items (with their own date columns)
+      if (trueIndividuals.length > 0) {
+        if (finalY > pageHeight - 80) {
+          pdf.addPage();
+          finalY = margins.top + 10;
+        }
+
+        const tableHeaders = ["Dispositivo", "Cant.", "Salida", "Días", "Precio", "Subtotal"];
+        const productNames = trueIndividuals.map((i: any) => i.productName || "");
+        const tableData = trueIndividuals.map((item: any) => [
+          item.productName || "",
+          (item.quantity || 0).toString(),
+          formatDate(item.fechaSalida),
+          item.dias ? item.dias.toString() : "-",
+          formatearPrecio(item.unitPrice || 0),
+          formatearPrecio((item.quantity || 0) * (item.unitPrice || 0)),
+        ]);
+
+        autoTable(pdf, {
+          head: [tableHeaders],
+          body: tableData,
+          startY: finalY,
+          margin: margins,
+          ...tableStyles,
+          columnStyles: {
+            0: { cellWidth: 65 },
+            1: { halign: "center", cellWidth: 18 },
+            2: { cellWidth: 30 },
+            3: { halign: "center", cellWidth: 18 },
+            4: { halign: "right", cellWidth: 30 },
+            5: { halign: "right", cellWidth: 30 },
+          },
+          tableWidth: "auto",
+          didParseCell: (data) => {
+            if (data.section === "head") {
+              if (data.column.index === 1 || data.column.index === 3) data.cell.styles.halign = "center";
+              else if (data.column.index >= 4) data.cell.styles.halign = "right";
+            }
+          },
+          rowPageBreak: "avoid",
+          didDrawCell: (data) => {
+            if (data.section === "body" && data.column.index === 0) {
+              const productName = productNames[data.row.index];
+              if (!productName) return;
+              const cell = data.cell;
+              const x = cell.x + cell.padding("left");
+              const y = cell.y + cell.padding("top") + 2.5;
+              const textWidth = pdf.getTextWidth(productName);
+              pdf.setFillColor(255, 255, 255);
+              pdf.rect(x, y - 2.5, textWidth + 1, 3.5, "F");
+              pdf.setFont("helvetica", "bold");
+              pdf.setFontSize(9);
+              pdf.setTextColor(0, 0, 0);
+              pdf.text(productName, x, y);
+              pdf.setFont("helvetica", "normal");
+            }
+          },
+        });
+
+        finalY = (pdf as any).lastAutoTable.finalY + 10;
+      }
+
+      // Fallback: if no items were rendered (shouldn't happen but just in case)
+      if (groups.length === 0 && trueIndividuals.length === 0 && allItems.length > 0) {
+        const tableHeaders = ["Dispositivo", "Cant.", "Precio", "Subtotal"];
+        const tableData = allItems.map((item: any) => [
+          item.productName || "",
+          (item.quantity || 0).toString(),
+          formatearPrecio(item.unitPrice || 0),
+          formatearPrecio((item.quantity || 0) * (item.unitPrice || 0)),
+        ]);
+
+        autoTable(pdf, {
+          head: [tableHeaders],
+          body: tableData,
+          startY: yPosition,
+          margin: margins,
+          ...tableStyles,
+          columnStyles: {
+            0: { cellWidth: 105 },
+            1: { halign: "center", cellWidth: 20 },
+            2: { halign: "right", cellWidth: 30 },
+            3: { halign: "right", cellWidth: 35 },
+          },
+          tableWidth: "auto",
         });
 
         finalY = (pdf as any).lastAutoTable.finalY + 10;

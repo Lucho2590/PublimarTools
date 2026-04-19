@@ -229,6 +229,38 @@ export default function ProveedoresPage() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="cbu">CBU</Label>
+                  <Input
+                    id="cbu"
+                    name="cbu"
+                    value={form.cbu || ""}
+                    onChange={handleChange}
+                    placeholder="CBU del proveedor"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="alias">Alias</Label>
+                  <Input
+                    id="alias"
+                    name="alias"
+                    value={form.alias || ""}
+                    onChange={handleChange}
+                    placeholder="Alias bancario"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="denominacion">Denominación</Label>
+                  <Input
+                    id="denominacion"
+                    name="denominacion"
+                    value={form.denominacion || ""}
+                    onChange={handleChange}
+                    placeholder="Denominación de la cuenta"
+                  />
+                </div>
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="notes">Notas</Label>
                 <Textarea

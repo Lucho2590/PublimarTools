@@ -54,7 +54,7 @@ export default function PurchaseEditModal({
     providerName: '',
     description: '',
     amount: 0,
-    department: EPurchaseDepartment.BANDERAS,
+    department: EPurchaseDepartment.ADMINISTRACION,
     paymentMethod: undefined,
   });
   const [facturaFile, setFacturaFile] = useState<File | null>(null);
@@ -79,24 +79,13 @@ export default function PurchaseEditModal({
   // Cargar datos de la compra en el formulario
   useEffect(() => {
     if (purchase && purchaseId) {
-      // Si el usuario no es administración, forzar su departamento
-      let department = purchase.department || EPurchaseDepartment.BANDERAS;
-      if (userRole === EUserRole.BANDERAS) {
-        department = EPurchaseDepartment.BANDERAS;
-      } else if (userRole === EUserRole.VIA_PUBLICA) {
-        department = EPurchaseDepartment.VIA_PUBLICA;
-      } else if (userRole === EUserRole.ADMINISTRACION) {
-        // Administración puede mantener el departamento de la compra
-        department = purchase.department || EPurchaseDepartment.ADMINISTRACION;
-      }
-      
       setFormData({
         date: purchase.date || '',
         providerId: purchase.providerId || '',
         providerName: purchase.providerName || '',
         description: purchase.description || '',
         amount: purchase.amount || 0,
-        department: department,
+        department: purchase.department || EPurchaseDepartment.ADMINISTRACION,
         paymentMethod: purchase.paymentMethod || undefined,
         facturaUrl: purchase.facturaUrl || undefined,
         facturaName: purchase.facturaName || undefined,
@@ -104,7 +93,7 @@ export default function PurchaseEditModal({
       setOriginalPaymentMethod(purchase.paymentMethod || undefined);
       setOriginalAmount(purchase.amount || 0);
     }
-  }, [purchase, purchaseId, userRole]);
+  }, [purchase, purchaseId]);
 
   // Resetear formulario al cerrar
   useEffect(() => {
@@ -115,7 +104,7 @@ export default function PurchaseEditModal({
         providerName: '',
         description: '',
         amount: 0,
-        department: EPurchaseDepartment.BANDERAS,
+        department: EPurchaseDepartment.ADMINISTRACION,
         paymentMethod: undefined,
         facturaUrl: undefined,
         facturaName: undefined,
@@ -260,6 +249,7 @@ export default function PurchaseEditModal({
       const newAmount = Number(formData.amount);
 
       if (wasCC && !isCC) {
+        // Cambió de CC a otra forma: decrementar el monto original
         const ccQuery = query(
           collection(firestore, "providerAccounts"),
           where("providerId", "==", formData.providerId),
@@ -275,6 +265,7 @@ export default function PurchaseEditModal({
           });
         }
       } else if (!wasCC && isCC && ccAccount) {
+        // Cambió de otra forma a CC: incrementar el nuevo monto
         const ccRef = doc(firestore, "providerAccounts", ccAccount.id);
         await updateDoc(ccRef, {
           balance: increment(newAmount),
@@ -282,6 +273,7 @@ export default function PurchaseEditModal({
           updatedAt: serverTimestamp(),
         });
       } else if (wasCC && isCC && ccAccount) {
+        // Sigue siendo CC pero puede haber cambiado el monto
         const delta = newAmount - originalAmount;
         if (delta !== 0) {
           const ccRef = doc(firestore, "providerAccounts", ccAccount.id);
@@ -308,7 +300,7 @@ export default function PurchaseEditModal({
     if (!purchaseId) return;
 
     const confirmDelete = window.confirm(
-      '¿Estás seguro de que deseas eliminar esta compra? Esta acción no se puede deshacer.'
+      '¿Estas seguro de que deseas eliminar esta compra? Esta accion no se puede deshacer.'
     );
 
     if (!confirmDelete) return;
@@ -406,7 +398,7 @@ export default function PurchaseEditModal({
               </div>
 
               <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="description">Descripción *</Label>
+                <Label htmlFor="description">Descripcion *</Label>
                 <Textarea
                   id="description"
                   name="description"
@@ -415,7 +407,7 @@ export default function PurchaseEditModal({
                   required
                   rows={3}
                   className="w-full"
-                  placeholder="Descripción de la compra..."
+                  placeholder="Descripcion de la compra..."
                 />
               </div>
 
@@ -448,18 +440,15 @@ export default function PurchaseEditModal({
                   </SelectTrigger>
                   <SelectContent>
                     {userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN ? (
-                      // Administración puede ver y seleccionar todos los departamentos
                       <>
                         <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
-                        <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
-                        <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administración</SelectItem>
+                        <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Via Publica</SelectItem>
+                        <SelectItem value={EPurchaseDepartment.ADMINISTRACION}>Administracion</SelectItem>
                       </>
                     ) : userRole === EUserRole.BANDERAS ? (
-                      // Banderas solo ve su departamento
                       <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
                     ) : userRole === EUserRole.VIA_PUBLICA ? (
-                      // Vía Pública solo ve su departamento
-                      <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Vía Pública</SelectItem>
+                      <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Via Publica</SelectItem>
                     ) : null}
                   </SelectContent>
                 </Select>

@@ -4,6 +4,15 @@ export enum EPurchaseDepartment {
   ADMINISTRACION = "administracion",
 }
 
+export enum EPurchasePaymentMethod {
+  EFECTIVO = "efectivo",
+  TARJETA = "tarjeta",
+  TRANSFERENCIA = "transferencia",
+  CUENTA_CORRIENTE = "cuenta_corriente",
+  CHEQUE = "cheque",
+  ECHEQ = "echeq",
+}
+
 export interface TPurchase {
   id?: string;
   providerId: string;
@@ -12,6 +21,9 @@ export interface TPurchase {
   description: string;
   amount: number;
   department: EPurchaseDepartment; // Área a la que se imputa la compra
+  paymentMethod?: EPurchasePaymentMethod; // Forma de pago
+  facturaUrl?: string;
+  facturaName?: string;
   createdBy: string;
   createdAt?: Date;
   updatedAt?: Date;
