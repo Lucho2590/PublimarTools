@@ -46,6 +46,7 @@ import {
   redondearTotal,
   redondearADecena,
   formatDateString,
+  formatDate,
 } from "@/lib/utils";
 import {
   Table,
@@ -1133,7 +1134,12 @@ export function SaleDetailsModal({
           updateData.invoiceNumber = invoiceNumber;
         }
       }
-      //Registrar cambio de fecha de creacion.
+      // Registrar cambio de fecha de creación
+      if (editedDate) {
+        updateData.createdAt = Timestamp.fromDate(
+          new Date(`${editedDate}T12:00:00`),
+        ) as unknown as Date;
+      }
 
       // Datos del cliente
       if (cliente) {
@@ -1263,19 +1269,6 @@ export function SaleDetailsModal({
       if (variant?.price) {
         setUnitPrice(Number(variant.price));
       }
-    }
-  };
-
-  const formatDate = (timestamp: any) => {
-    if (!timestamp) return "-";
-    try {
-      if (typeof timestamp === "object" && "seconds" in timestamp) {
-        return new Date(timestamp.seconds * 1000).toLocaleDateString();
-      }
-      return new Date(timestamp).toLocaleDateString();
-    } catch (error) {
-      console.error("Error al formatear fecha:", error);
-      return "-";
     }
   };
 
