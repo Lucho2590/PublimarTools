@@ -1,8 +1,98 @@
-export default function ViaPublicaPage() {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <h1 className="text-4xl font-bold mb-4">Administración</h1>
-        <p className="text-xl text-gray-600">Aun no contrato este servicio</p>
+"use client";
+
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  TrendingUp,
+  Wallet,
+  Truck,
+  Receipt,
+  Users,
+  CreditCard,
+  ArrowRight,
+  type LucideIcon,
+} from "lucide-react";
+
+interface AdminSection {
+  title: string;
+  description: string;
+  href: string;
+  icon: LucideIcon;
+}
+
+const SECTIONS: AdminSection[] = [
+  {
+    title: "Finanzas",
+    description:
+      "Ingresos, gastos y movimientos de cuentas en un solo lugar. Filtros por departamento, método y cuenta.",
+    href: "/publimar/administracion/finanzas",
+    icon: TrendingUp,
+  },
+  {
+    title: "Cuentas",
+    description:
+      "Gestioná bancos, billeteras digitales y cajas de efectivo. Saldos en tiempo real.",
+    href: "/publimar/administracion/cuentas",
+    icon: Wallet,
+  },
+  {
+    title: "Compras",
+    description: "Compras a proveedores con filtros por departamento y forma de pago.",
+    href: "/publimar/administracion/compras",
+    icon: Truck,
+  },
+  {
+    title: "Cuentas Corrientes",
+    description: "Saldos pendientes con proveedores e historial de pagos.",
+    href: "/publimar/administracion/cuentasCorrientes",
+    icon: CreditCard,
+  },
+  {
+    title: "Gastos Operativos",
+    description:
+      "Sueldos, alquiler, servicios e impuestos no asociados a una compra de proveedor.",
+    href: "/publimar/administracion/gastos-operativos",
+    icon: Receipt,
+  },
+  {
+    title: "RRHH",
+    description: "Empleados y liquidación de sueldos. Próximamente.",
+    href: "/publimar/administracion/rrhh",
+    icon: Users,
+  },
+];
+
+export default function AdministracionPage() {
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Administración</h1>
+        <p className="text-slate-600 text-sm mt-1">
+          Centro de control financiero y administrativo de Publimar.
+        </p>
       </div>
-    );
-  } 
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {SECTIONS.map((s) => (
+          <Card key={s.href} className="hover:shadow-md transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <s.icon className="h-5 w-5 text-blue-900" />
+                {s.title}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <p className="text-sm text-slate-600">{s.description}</p>
+              <Button asChild variant="outline" className="self-start">
+                <Link href={s.href}>
+                  Ir a {s.title} <ArrowRight className="h-4 w-4 ml-1" />
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}

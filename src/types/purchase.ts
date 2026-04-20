@@ -22,6 +22,7 @@ export interface TPurchase {
   amount: number;
   department: EPurchaseDepartment; // Área a la que se imputa la compra
   paymentMethod?: EPurchasePaymentMethod; // Forma de pago
+  accountId?: string | null; // Cuenta desde la que sale el pago
   facturaUrl?: string;
   facturaName?: string;
   createdBy: string;

@@ -12,7 +12,8 @@ export type TBillingPaymentMethod = {
   id: string;
   tipo: string;           // "efectivo" | "transferencia" | "cheque" | "cuenta_corriente" | "canje"
   monto: number;
-  cuenta?: string;        // Para transferencias
+  cuenta?: string;        // Para transferencias (legacy: nombre de banco)
+  accountId?: string;     // Referencia a la cuenta destino
   factura: boolean;
   tipoFactura?: "A" | "C";
 };
@@ -23,7 +24,8 @@ export type TPaymentRecord = {
   amount: number;
   date: Date;
   method: EPaymentMethod;
-  banco?: string;         // Para transferencias
+  banco?: string;         // Para transferencias (legacy)
+  accountId?: string;     // Cuenta receptora del pago
   notes?: string;
   registeredBy: string;   // User ID
   registeredByName?: string;

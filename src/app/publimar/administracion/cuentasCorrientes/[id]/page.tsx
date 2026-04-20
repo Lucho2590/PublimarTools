@@ -37,6 +37,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatearPrecio } from "@/lib/utils";
 import { toast } from "sonner";
 import { DollarSign, ArrowLeft, Plus, X } from "lucide-react";
+import { AccountSelect } from "@/components/admin/AccountSelect";
+import { useAccounts } from "@/hooks/useAccounts";
+import { registerAccountMovement } from "@/lib/accountMovements";
+import { EMovementType } from "@/types/accountMovement";
 
 const departmentLabels: Record<string, string> = {
   [EPurchaseDepartment.BANDERAS]: "Banderas",
@@ -71,8 +75,10 @@ export default function CuentaCorrienteDetailPage() {
     amount: '',
     date: new Date().toISOString().split("T")[0],
     method: '',
+    accountId: '',
     notes: '',
   });
+  const { accounts: allAccounts } = useAccounts({ includeArchived: true });
 
   // Obtener datos de la CC
   const accountRef = doc(firestore, "providerAccounts", accountId);
@@ -120,11 +126,17 @@ export default function CuentaCorrienteDetailPage() {
 
     setPaymentLoading(true);
     try {
+      const selectedAccount = paymentForm.accountId
+        ? allAccounts.find((a) => a.id === paymentForm.accountId)
+        : null;
+
       // Agregar pago a subcollection
-      await addDoc(paymentsCollection, {
+      const paymentDoc = await addDoc(paymentsCollection, {
         amount,
         date: paymentForm.date,
         method: paymentForm.method,
+        accountId: paymentForm.accountId || null,
+        accountName: selectedAccount?.name || null,
         notes: paymentForm.notes || "",
         registeredBy: userRole || "",
         registeredByName: userData?.displayName || "",
@@ -138,11 +150,33 @@ export default function CuentaCorrienteDetailPage() {
         updatedAt: serverTimestamp(),
       });
 
+      // Registrar movimiento en la cuenta de origen del pago (si está definida)
+      if (paymentForm.accountId) {
+        try {
+          await registerAccountMovement(firestore, {
+            accountId: paymentForm.accountId,
+            type: EMovementType.EXPENSE,
+            amount,
+            description: `Pago a ${account?.providerName || "proveedor"}`,
+            date: new Date(`${paymentForm.date}T12:00:00`),
+            sourceType: "providerPayment",
+            sourceId: paymentDoc.id,
+            createdBy: userData?.id || userRole || "",
+          });
+        } catch (movErr) {
+          console.error("Error al registrar movimiento", movErr);
+          toast.error(
+            "Pago registrado pero falló el movimiento en la cuenta de origen",
+          );
+        }
+      }
+
       toast.success("Pago registrado correctamente");
       setPaymentForm({
         amount: '',
         date: new Date().toISOString().split("T")[0],
         method: '',
+        accountId: '',
         notes: '',
       });
       setShowPaymentModal(false);
@@ -302,6 +336,7 @@ export default function CuentaCorrienteDetailPage() {
                   <TableHead className="text-left">Fecha</TableHead>
                   <TableHead className="text-right">Monto</TableHead>
                   <TableHead className="text-left">Metodo</TableHead>
+                  <TableHead className="text-left">Cuenta de origen</TableHead>
                   <TableHead className="text-left">Notas</TableHead>
                   <TableHead className="text-left">Registrado por</TableHead>
                 </TableRow>
@@ -313,13 +348,14 @@ export default function CuentaCorrienteDetailPage() {
                       <TableCell className="font-medium">{formatDate(payment.date)}</TableCell>
                       <TableCell className="text-right font-semibold text-green-600">{formatearPrecio(Number(payment.amount) || 0)}</TableCell>
                       <TableCell className="capitalize">{payment.method || "-"}</TableCell>
+                      <TableCell>{payment.accountName || (payment.accountId ? allAccounts.find((a) => a.id === payment.accountId)?.name : "-") || "-"}</TableCell>
                       <TableCell>{payment.notes || "-"}</TableCell>
                       <TableCell>{payment.registeredByName || payment.registeredBy || "-"}</TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-6 text-slate-500">
+                    <TableCell colSpan={6} className="text-center py-6 text-slate-500">
                       No hay pagos registrados.
                     </TableCell>
                   </TableRow>
@@ -387,6 +423,19 @@ export default function CuentaCorrienteDetailPage() {
                   <SelectItem value="tarjeta">Tarjeta</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Cuenta de origen</Label>
+              <AccountSelect
+                value={paymentForm.accountId}
+                onChange={(id) =>
+                  setPaymentForm((prev) => ({ ...prev, accountId: id }))
+                }
+                placeholder="Seleccionar cuenta (opcional)"
+              />
+              <p className="text-xs text-slate-500">
+                Si elegís una cuenta, se descuenta automáticamente el monto.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="paymentNotes">Notas</Label>
