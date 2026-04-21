@@ -17,6 +17,10 @@ import {
   Calendar,
   Eye,
   LayoutGrid,
+  TrendingUp,
+  Wallet,
+  Receipt,
+  CreditCard,
   LucideIcon,
 } from "lucide-react";
 
@@ -150,5 +154,37 @@ export const navConfig: NavItem[] = [
     name: "Administración",
     href: "/publimar/administracion",
     icon: LayoutGrid,
+    subItems: [
+      {
+        name: "Finanzas",
+        href: "/publimar/administracion/finanzas",
+        icon: TrendingUp,
+      },
+      {
+        name: "Cuentas",
+        href: "/publimar/administracion/cuentas",
+        icon: Wallet,
+      },
+      {
+        name: "Compras",
+        href: "/publimar/administracion/compras",
+        icon: Truck,
+      },
+      {
+        name: "CC Proveedores",
+        href: "/publimar/administracion/cuentasCorrientes",
+        icon: CreditCard,
+      },
+      {
+        name: "Gastos Operativos",
+        href: "/publimar/administracion/gastos-operativos",
+        icon: Receipt,
+      },
+      {
+        name: "RRHH",
+        href: "/publimar/administracion/rrhh",
+        icon: Users,
+      },
+    ],
   },
 ];

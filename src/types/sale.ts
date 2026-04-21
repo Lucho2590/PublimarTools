@@ -73,6 +73,7 @@ export interface TReturn {
 
 export interface TSale {
   bank?: string | null;
+  accountId?: string | null;
   id?: string;
   number: string;
   items: TSaleItem[];

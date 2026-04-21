@@ -64,6 +64,11 @@ import {
   EAuditEntityType,
   EAuditSection,
 } from "@/types/auditLog";
+import { AccountSelect } from "@/components/admin/AccountSelect";
+import { registerAccountMovement } from "@/lib/accountMovements";
+import { EMovementType } from "@/types/accountMovement";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAccounts } from "@/hooks/useAccounts";
 
 interface SaleItem {
   id: string;
@@ -78,6 +83,8 @@ export default function NuevaVentaPage() {
   const router = useRouter();
   const firestore = useFirestore();
   const { logEvent } = useAuditLog();
+  const { userRole } = useAuth();
+  const { accounts: allAccounts } = useAccounts({ includeArchived: true });
 
   // Hook de clientes - Solo clientes de la sección "banderas"
   const {
@@ -100,6 +107,7 @@ export default function NuevaVentaPage() {
     EPaymentMethod.CASH
   );
   const [bank, setBank] = useState<string>("");
+  const [accountId, setAccountId] = useState<string>("");
   const [isInvoiced, setIsInvoiced] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -183,6 +191,7 @@ export default function NuevaVentaPage() {
     setItems([]);
     setPaymentMethod(EPaymentMethod.CASH);
     setBank("");
+    setAccountId("");
     setIsInvoiced(false);
     setInvoiceNumber("");
     setSearchTerm("");
@@ -712,6 +721,7 @@ export default function NuevaVentaPage() {
         manualDiscount: redondearTotal(manualDiscount),
         paymentMethod,
         bank: paymentMethod === EPaymentMethod.TRANSFER ? bank : null,
+        accountId: accountId || null,
         invoiceNumber: isInvoiced ? invoiceNumber : null,
         facturas: facturas.length > 0 ? facturas : [],
         // Datos del cliente (solo se incluyen si tienen valor)
@@ -724,6 +734,27 @@ export default function NuevaVentaPage() {
       const saleDocRef = await addDoc(salesCollection, saleData);
       const correlationId = generateCorrelationId();
       const saleNumber = saleData.number;
+
+      // Si se eligió cuenta, registrar movimiento de ingreso
+      if (accountId) {
+        try {
+          const acc = allAccounts.find((a) => a.id === accountId);
+          await registerAccountMovement(firestore, {
+            accountId,
+            type: EMovementType.INCOME,
+            amount: redondearTotal(currentTotal),
+            description: `Venta #${saleData.number}${
+              clienteInput ? ` - ${clienteInput}` : ""
+            }${acc ? ` (${acc.name})` : ""}`,
+            date: new Date(),
+            sourceType: "sale",
+            sourceId: saleDocRef.id,
+            createdBy: userRole || "",
+          });
+        } catch (err) {
+          console.error("Error al registrar movimiento de cuenta:", err);
+        }
+      }
 
       const stockEventPayloads: Array<{
         productId: string;
@@ -1733,21 +1764,27 @@ export default function NuevaVentaPage() {
                   </Select>
                 </div>
 
-                {paymentMethod === EPaymentMethod.TRANSFER && (
+                {paymentMethod !== EPaymentMethod.CASH && (
                   <div className="space-y-2">
-                    <Label htmlFor="bank">Banco</Label>
-                    <Select value={bank} onValueChange={setBank}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar banco" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Galicia">Galicia</SelectItem>
-                        <SelectItem value="Frances">Frances</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Cuenta destino (opcional)</Label>
+                    <AccountSelect
+                      value={accountId}
+                      onChange={setAccountId}
+                      placeholder="Seleccionar cuenta"
+                    />
                   </div>
                 )}
               </div>
+              {paymentMethod === EPaymentMethod.CASH && (
+                <div className="space-y-2">
+                  <Label>Caja / cuenta (opcional)</Label>
+                  <AccountSelect
+                    value={accountId}
+                    onChange={setAccountId}
+                    placeholder="Ej: Efectivo Banderas"
+                  />
+                </div>
+              )}
 
               {isInvoiced && (
                 <div className="space-y-2">

@@ -31,6 +31,9 @@ import { EUserRole } from "@/types/user";
 import { formatearPrecio } from "@/lib/utils";
 import { EProviderAccountStatus } from "@/types/providerAccount";
 import { Edit, DollarSign, Paperclip, Upload, X, AlertCircle, Plus, CheckCircle, Camera } from "lucide-react";
+import { AccountSelect } from "@/components/admin/AccountSelect";
+import { registerAccountMovement } from "@/lib/accountMovements";
+import { EMovementType } from "@/types/accountMovement";
 
 const paymentMethodLabels: Record<string, string> = {
   [EPurchasePaymentMethod.EFECTIVO]: "Efectivo",
@@ -403,6 +406,7 @@ export default function ComprasAdminPage() {
         providerName: provider?.name || "",
         date: form.date,
         amount: Number(form.amount),
+        accountId: form.accountId || null,
       };
       const docRef = await addDoc(purchasesCollection, {
         ...createPayload,
@@ -444,6 +448,27 @@ export default function ComprasAdminPage() {
           totalPurchases: increment(Number(form.amount)),
           updatedAt: serverTimestamp(),
         });
+      }
+
+      // Si NO es CC y tiene accountId, registrar movimiento de egreso en la cuenta
+      if (
+        form.paymentMethod !== EPurchasePaymentMethod.CUENTA_CORRIENTE &&
+        form.accountId
+      ) {
+        try {
+          await registerAccountMovement(firestore, {
+            accountId: form.accountId,
+            type: EMovementType.EXPENSE,
+            amount: Number(form.amount),
+            description: `Compra: ${provider?.name || ""} - ${form.description}`,
+            date: new Date(`${form.date}T12:00:00`),
+            sourceType: "purchase",
+            sourceId: docRef.id,
+            createdBy: userRole || "",
+          });
+        } catch (err) {
+          console.error("Error al registrar movimiento de cuenta:", err);
+        }
       }
 
       // Resetear form pero mantener el departamento según el rol
@@ -679,6 +704,20 @@ export default function ComprasAdminPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                {form.paymentMethod &&
+                  form.paymentMethod !== EPurchasePaymentMethod.CUENTA_CORRIENTE && (
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Cuenta de origen (opcional)</Label>
+                      <AccountSelect
+                        value={form.accountId ?? ""}
+                        onChange={(v) => setForm({ ...form, accountId: v || null })}
+                        placeholder="Seleccionar cuenta"
+                      />
+                      <p className="text-xs text-slate-500">
+                        Si se elige una cuenta, se registra el egreso y se actualiza el saldo.
+                      </p>
+                    </div>
+                  )}
                 {/* CC Status */}
                 {form.paymentMethod === EPurchasePaymentMethod.CUENTA_CORRIENTE && (
                   <div className="md:col-span-2">
