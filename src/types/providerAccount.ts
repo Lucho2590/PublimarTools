@@ -8,6 +8,8 @@ export interface TProviderAccountPayment {
   amount: number;
   date: string; // YYYY-MM-DD
   method: string; // "efectivo", "transferencia", etc.
+  accountId?: string; // Cuenta desde la que sale el pago
+  accountName?: string; // Snapshot del nombre de la cuenta
   notes?: string;
   registeredBy: string;
   registeredByName?: string;

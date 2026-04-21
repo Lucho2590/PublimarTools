@@ -73,8 +73,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { DialogFooter } from "@/components/ui/dialog";
 import { useClients } from "@/hooks/useClients";
 import { EClientSection } from "@/types/client";
-
-const BANCOS = ["Galicia", "Frances"];
+import { AccountSelect } from "@/components/admin/AccountSelect";
+import { useAccounts } from "@/hooks/useAccounts";
 
 interface SaleDetailsModalProps {
   open: boolean;
@@ -106,6 +106,8 @@ export function SaleDetailsModal({
   const [invoiceNumber, setInvoiceNumber] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBank, setSelectedBank] = useState<string>("");
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const { accounts: allAccounts } = useAccounts({ includeArchived: true });
   const [total, setTotal] = useState(0);
   const [subtotal, setSubtotal] = useState(0);
   const [taxAmount, setTaxAmount] = useState(0);
@@ -246,6 +248,11 @@ export function SaleDetailsModal({
       }
       if (typedSale?.bank) {
         setSelectedBank(typedSale.bank);
+      }
+      if (typedSale?.accountId) {
+        setSelectedAccountId(typedSale.accountId);
+      } else {
+        setSelectedAccountId("");
       }
 
       // Inicializar fecha editable
@@ -1128,6 +1135,7 @@ export function SaleDetailsModal({
           updateData.bank = selectedBank;
         }
       }
+      updateData.accountId = selectedAccountId || null;
       if (isInvoiced !== null) {
         updateData.isInvoiced = isInvoiced;
         if (isInvoiced && invoiceNumber) {
@@ -1450,34 +1458,28 @@ export function SaleDetailsModal({
                         </p>
                       )}
 
-                      {isEditing &&
-                        paymentMethod === EPaymentMethod.TRANSFER && (
-                          <div>
-                            <label className="text-sm font-medium">Banco</label>
-                            <Select
-                              value={selectedBank}
-                              onValueChange={setSelectedBank}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar banco" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {BANCOS.map((banco) => (
-                                  <SelectItem key={banco} value={banco}>
-                                    {banco}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        )}
+                      {isEditing && (
+                        <div>
+                          <label className="text-sm font-medium">
+                            Cuenta destino
+                          </label>
+                          <AccountSelect
+                            value={selectedAccountId}
+                            onChange={setSelectedAccountId}
+                            placeholder="Seleccionar cuenta (opcional)"
+                          />
+                        </div>
+                      )}
 
                       {!isEditing &&
-                        typedSale?.paymentMethod === EPaymentMethod.TRANSFER &&
-                        typedSale?.bank && (
+                        (typedSale?.accountId || typedSale?.bank) && (
                           <p>
-                            <span className="font-medium">Banco:</span>{" "}
-                            {typedSale.bank}
+                            <span className="font-medium">Cuenta:</span>{" "}
+                            {typedSale?.accountId
+                              ? allAccounts.find(
+                                  (a) => a.id === typedSale.accountId,
+                                )?.name || "-"
+                              : typedSale?.bank}
                           </p>
                         )}
                       {!isEditing && typedSale?.clientName && (

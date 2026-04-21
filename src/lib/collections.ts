@@ -30,6 +30,9 @@ const collections = {
   providerAccounts: {
     PAYMENTS: "payments",
   },
+  ACCOUNTS: "accounts",
+  ACCOUNT_MOVEMENTS: "accountMovements",
+  OPERATIONAL_EXPENSES: "operationalExpenses",
 } as const;
 
 export default collections;
