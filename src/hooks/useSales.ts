@@ -20,6 +20,18 @@ import { useCallback, useMemo } from 'react'
 import { TSale, TSaleItem, EPaymentMethod } from '@/types/sale'
 import collections from '@/lib/collections'
 import { softDelete } from '@/lib/softDelete'
+import { useAuditLog } from '@/hooks/useAuditLog'
+import {
+  buildChanges,
+  describeSaleCreate,
+  describeSaleDelete,
+  describeSaleUpdate,
+} from '@/lib/auditLog'
+import {
+  EAuditAction,
+  EAuditEntityType,
+  EAuditSection,
+} from '@/types/auditLog'
 
 const COLLECTION_NAME = collections.SALES
 
@@ -31,6 +43,7 @@ interface UseSalesOptions {
 
 export function useSales(options?: UseSalesOptions) {
   const firestore = useFirestore()
+  const { logEvent } = useAuditLog()
   const pageSize = options?.pageSize
   const orderByField = options?.orderByField || "createdAt"
   const orderDirection = options?.orderDirection || "desc"
@@ -114,13 +127,29 @@ export function useSales(options?: UseSalesOptions) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       })
+      await logEvent({
+        section: EAuditSection.BANDERAS_VENTAS,
+        entityType: EAuditEntityType.SALE,
+        entityId: docRef.id,
+        entityLabel: cleanSaleData.number ?? null,
+        action: EAuditAction.CREATE,
+        description: describeSaleCreate(cleanSaleData.number ?? docRef.id, Number(cleanSaleData.total ?? 0)),
+        changes: buildChanges(null, cleanSaleData, [
+          "number","clientName","clientId","total","subtotal","paymentMethod","isInvoiced","invoiceNumber","discountPercentage","applyIVA"
+        ]),
+        metadata: {
+          total: cleanSaleData.total,
+          paymentMethod: cleanSaleData.paymentMethod,
+          itemsCount: Array.isArray(cleanSaleData.items) ? cleanSaleData.items.length : 0,
+        },
+      })
       return docRef.id
     } catch (error) {
       console.error('Error al crear venta:', error)
       console.error('Datos que se intentaron guardar:', cleanSaleData)
       throw new Error(`Error al crear venta: ${error instanceof Error ? error.message : 'Error desconocido'}`)
     }
-  }, [salesCollection])
+  }, [salesCollection, logEvent])
 
   const updateSale = useCallback(async (id: string, sale: Partial<Omit<TSale, 'id' | 'createdAt' | 'updatedAt'>>) => {
     // Función para limpiar valores undefined recursivamente
@@ -165,25 +194,59 @@ export function useSales(options?: UseSalesOptions) {
 
     try {
       const docRef = doc(firestore, COLLECTION_NAME, id)
+      const beforeSnap = await getDoc(docRef)
+      const before = beforeSnap.exists() ? beforeSnap.data() : null
       await updateDoc(docRef, {
         ...cleanSaleData,
         updatedAt: serverTimestamp()
+      })
+      const watched = [
+        "clientId","clientName","total","subtotal","paymentMethod","bank",
+        "isInvoiced","invoiceNumber","discountPercentage","applyIVA","date",
+      ]
+      const changes = buildChanges(before, cleanSaleData, watched)
+      const changedFields = Object.keys(changes.after ?? {})
+      const saleNumber = (before as any)?.number ?? cleanSaleData.number ?? id
+      await logEvent({
+        section: EAuditSection.BANDERAS_VENTAS,
+        entityType: EAuditEntityType.SALE,
+        entityId: id,
+        entityLabel: saleNumber,
+        action: EAuditAction.UPDATE,
+        description: describeSaleUpdate(saleNumber, changedFields),
+        changes,
       })
     } catch (error) {
       console.error('Error al actualizar venta:', error)
       throw new Error(`Error al actualizar venta: ${error instanceof Error ? error.message : 'Error desconocido'}`)
     }
-  }, [firestore])
+  }, [firestore, logEvent])
 
   const deleteSale = useCallback(async (id: string) => {
     try {
+      const docRef = doc(firestore, COLLECTION_NAME, id)
+      const beforeSnap = await getDoc(docRef)
+      const before = beforeSnap.exists() ? beforeSnap.data() : null
       await softDelete(firestore, COLLECTION_NAME, id)
+      const saleNumber = (before as any)?.number ?? id
+      await logEvent({
+        section: EAuditSection.BANDERAS_VENTAS,
+        entityType: EAuditEntityType.SALE,
+        entityId: id,
+        entityLabel: saleNumber,
+        action: EAuditAction.DELETE,
+        description: describeSaleDelete(saleNumber),
+        changes: before
+          ? buildChanges(before as any, null, ["number","clientName","total","paymentMethod"])
+          : undefined,
+        metadata: before ? { total: (before as any).total } : undefined,
+      })
       return true
     } catch (error) {
       console.error('Error al eliminar venta:', error)
       throw new Error(`Error al eliminar venta: ${error instanceof Error ? error.message : 'Error desconocido'}`)
     }
-  }, [firestore])
+  }, [firestore, logEvent])
 
   // Función auxiliar para generar número de venta
   const generateSaleNumber = useCallback(() => {

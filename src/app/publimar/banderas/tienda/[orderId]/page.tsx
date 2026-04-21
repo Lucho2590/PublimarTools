@@ -34,6 +34,8 @@ import {
 import { TEcommerceOrder, EcommerceOrderStatus } from "@/types/ecommerceOrder";
 import { toast } from "sonner";
 import { processOrderSale, isOrderAlreadyProcessed, cancelOrderSale } from "@/lib/ecommerceHelpers";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
 
 // Helper para convertir Timestamp a Date
 const timestampToDate = (timestamp: any): Date | null => {
@@ -49,6 +51,7 @@ const timestampToDate = (timestamp: any): Date | null => {
 
 export default function OrderDetailPage({ params }: { params: { orderId: string } }) {
   const firestore = useFirestore();
+  const { logEvent, actor } = useAuditLog();
   const [order, setOrder] = useState<TEcommerceOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -105,10 +108,30 @@ export default function OrderDetailPage({ params }: { params: { orderId: string 
 
       await updateDoc(orderRef, updates);
 
+      const previousStatus = freshOrder.status;
+      void logEvent({
+        section: EAuditSection.ECOMMERCE,
+        entityType: EAuditEntityType.ORDER,
+        entityId: freshOrder.id,
+        entityLabel: freshOrder.orderNumber ?? null,
+        action: EAuditAction.UPDATE,
+        description: `Cambió el estado del pedido ${freshOrder.orderNumber ?? freshOrder.id} de "${previousStatus}" a "${newStatus}"`,
+        changes: {
+          before: { status: previousStatus },
+          after: { status: newStatus },
+        },
+        metadata: {
+          orderId: freshOrder.id,
+          orderNumber: freshOrder.orderNumber,
+          total: freshOrder.total,
+          clientName: freshOrder.customer?.name ?? null,
+        },
+      });
+
       // Procesar venta y descontar stock cuando se envía o entrega (solo la primera vez)
       if ((newStatus === "shipped" || newStatus === "delivered") && !isOrderAlreadyProcessed(freshOrder)) {
         try {
-          const { saleNumber } = await processOrderSale(firestore, freshOrder);
+          const { saleNumber } = await processOrderSale(firestore, freshOrder, actor);
           toast.success(`Venta ${saleNumber} creada y stock descontado`);
         } catch (saleError) {
           console.error("Error procesando venta:", saleError);
@@ -118,7 +141,7 @@ export default function OrderDetailPage({ params }: { params: { orderId: string 
       // Cancelar venta y devolver stock cuando se cancela (si tenía venta)
       else if (newStatus === "cancelled" && isOrderAlreadyProcessed(freshOrder)) {
         try {
-          await cancelOrderSale(firestore, freshOrder);
+          await cancelOrderSale(firestore, freshOrder, actor);
           toast.success("Venta anulada y stock devuelto");
         } catch (cancelError) {
           console.error("Error cancelando venta:", cancelError);

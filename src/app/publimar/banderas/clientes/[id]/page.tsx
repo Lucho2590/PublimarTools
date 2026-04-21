@@ -20,7 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import collections from "@/lib/collections";
-import { EClientType, TClient, TClientContact } from "@/types/client";
+import { EClientType, EClientSection, TClient, TClientContact } from "@/types/client";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
 import {
   formatDate,
   formatearPrecio,
@@ -48,6 +50,7 @@ export default function ClienteDetallePage({
 }) {
   const firestore = useFirestore();
   const router = useRouter();
+  const { logEvent } = useAuditLog();
 
   // Extraer el ID real del slug
   const clientId = extractIdFromSlug(params.id);
@@ -146,6 +149,17 @@ export default function ClienteDetallePage({
     setIsDeleting(true);
     try {
       await softDelete(firestore, collections.CLIENTS, clientId);
+      await logEvent({
+        section:
+          typedClient.section === EClientSection.VIA_PUBLICA
+            ? EAuditSection.VIA_PUBLICA
+            : EAuditSection.BANDERAS_CLIENTES,
+        entityType: EAuditEntityType.CLIENT,
+        entityId: clientId,
+        entityLabel: typedClient.name ?? null,
+        action: EAuditAction.DELETE,
+        description: `Eliminó el cliente ${typedClient.name ?? ''}`.trim(),
+      });
       toast.success("Cliente eliminado correctamente");
       router.push("/publimar/banderas/clientes");
     } catch (error) {

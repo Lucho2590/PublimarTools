@@ -73,6 +73,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { DialogFooter } from "@/components/ui/dialog";
 import { useClients } from "@/hooks/useClients";
 import { EClientSection } from "@/types/client";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import {
+  buildChanges,
+  describeSaleDelete,
+  describeSaleUpdate,
+  describeStockChange,
+  generateCorrelationId,
+} from "@/lib/auditLog";
+import {
+  EAuditAction,
+  EAuditEntityType,
+  EAuditSection,
+} from "@/types/auditLog";
 
 const BANCOS = ["Galicia", "Frances"];
 
@@ -90,6 +103,7 @@ export function SaleDetailsModal({
   onSuccess,
 }: SaleDetailsModalProps) {
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const originalItemsRef = useRef<TSaleItem[]>([]);
@@ -1061,6 +1075,15 @@ export function SaleDetailsModal({
       }
 
       // Calcular deltas y actualizar stock
+      const stockEditEvents: Array<{
+        productId: string;
+        productName?: string;
+        variantId: string;
+        variantName?: string;
+        stockBefore: number;
+        stockAfter: number;
+        delta: number;
+      }> = [];
       const allKeys = new Set([...originalQty.keys(), ...newQty.keys()]);
       for (const key of allKeys) {
         const oldEntry = originalQty.get(key);
@@ -1082,6 +1105,8 @@ export function SaleDetailsModal({
             const currentProduct = productDoc.data();
 
             if (variantId && currentProduct.variants) {
+              const variant = currentProduct.variants.find((v: any) => v.id === variantId);
+              const stockBefore = Number(variant?.stock ?? 0);
               await updateDoc(productRef, {
                 variants: currentProduct.variants.map((v: any) =>
                   v.id === variantId
@@ -1091,11 +1116,29 @@ export function SaleDetailsModal({
                 ...(oldQ === 0 && newQ > 0 ? { salesCount: increment(1) } : {}),
                 ...(oldQ > 0 && newQ === 0 ? { salesCount: increment(-1) } : {}),
               });
+              stockEditEvents.push({
+                productId,
+                productName: currentProduct.name,
+                variantId,
+                variantName: variant?.size,
+                stockBefore,
+                stockAfter: stockBefore - delta,
+                delta: -delta,
+              });
             } else {
+              const stockBefore = Number(currentProduct.stock || 0);
               await updateDoc(productRef, {
-                stock: Number(currentProduct.stock || 0) - delta,
+                stock: stockBefore - delta,
                 ...(oldQ === 0 && newQ > 0 ? { salesCount: increment(1) } : {}),
                 ...(oldQ > 0 && newQ === 0 ? { salesCount: increment(-1) } : {}),
+              });
+              stockEditEvents.push({
+                productId,
+                productName: currentProduct.name,
+                variantId: "",
+                stockBefore,
+                stockAfter: stockBefore - delta,
+                delta: -delta,
               });
             }
           }
@@ -1169,6 +1212,63 @@ export function SaleDetailsModal({
       }
 
       await updateDoc(saleRef, updateData);
+
+      const correlationId = generateCorrelationId();
+      await Promise.all(
+        stockEditEvents.map((p) =>
+          logEvent({
+            section: EAuditSection.BANDERAS_STOCK,
+            entityType: EAuditEntityType.PRODUCT_VARIANT,
+            entityId: `${p.productId}:${p.variantId || "_"}`,
+            entityLabel: `${p.productName ?? p.productId}${p.variantName ? ` · ${p.variantName}` : ""}`,
+            action: EAuditAction.STOCK_CHANGE,
+            description: describeStockChange(p.productName ?? p.productId, p.variantName, p.delta, "sale_edit"),
+            metadata: {
+              reason: "sale_edit",
+              saleId,
+              saleNumber: typedSale?.number,
+              productId: p.productId,
+              productName: p.productName,
+              variantId: p.variantId,
+              variantName: p.variantName,
+              stockBefore: p.stockBefore,
+              stockAfter: p.stockAfter,
+              delta: p.delta,
+            },
+            correlationId,
+          })
+        )
+      );
+
+      const watched = [
+        "clientId","clientName","total","subtotal","paymentMethod","bank",
+        "isInvoiced","invoiceNumber","discountPercentage","applyIVA","createdAt",
+      ];
+      const changes = buildChanges(typedSale ?? null, updateData as any, watched);
+      const changedFields = Object.keys(changes.after ?? {});
+      const saleNumber = typedSale?.number ?? saleId ?? "";
+      await logEvent({
+        section: EAuditSection.BANDERAS_VENTAS,
+        entityType: EAuditEntityType.SALE,
+        entityId: saleId!,
+        entityLabel: saleNumber,
+        action: EAuditAction.UPDATE,
+        description: describeSaleUpdate(saleNumber, changedFields),
+        changes,
+        metadata: {
+          total: updateData.total,
+          itemsCount: items.length,
+          stockDeltas: stockEditEvents.map((p) => ({
+            productId: p.productId,
+            variantId: p.variantId,
+            productName: p.productName,
+            variantName: p.variantName,
+            delta: p.delta,
+          })),
+        },
+        correlationId,
+      });
+
       toast.success("Venta actualizada correctamente");
       onSuccess();
       setIsEditing(false);
@@ -1193,6 +1293,16 @@ export function SaleDetailsModal({
     );
 
     setIsLoading(true);
+    const correlationId = generateCorrelationId();
+    const stockRestoreEvents: Array<{
+      productId: string;
+      productName?: string;
+      variantId: string;
+      variantName?: string;
+      stockBefore: number;
+      stockAfter: number;
+      delta: number;
+    }> = [];
     try {
       if (shouldRestoreStock) {
         // Calcular cantidades ya devueltas por devoluciones previas (con stock devuelto)
@@ -1225,6 +1335,8 @@ export function SaleDetailsModal({
               const currentProduct = productDoc.data();
 
               if (item.variantId && currentProduct.variants) {
+                const variant = currentProduct.variants.find((v: any) => v.id === item.variantId);
+                const stockBefore = Number(variant?.stock ?? 0);
                 await updateDoc(productRef, {
                   variants: currentProduct.variants.map((v: any) =>
                     v.id === item.variantId
@@ -1233,10 +1345,29 @@ export function SaleDetailsModal({
                   ),
                   salesCount: increment(-1),
                 });
+                stockRestoreEvents.push({
+                  productId: item.productId,
+                  productName: item.productName ?? currentProduct.name,
+                  variantId: item.variantId,
+                  variantName: item.variantName ?? variant?.size,
+                  stockBefore,
+                  stockAfter: stockBefore + pendingQty,
+                  delta: pendingQty,
+                });
               } else {
+                const stockBefore = Number(currentProduct.stock || 0);
                 await updateDoc(productRef, {
-                  stock: Number(currentProduct.stock || 0) + pendingQty,
+                  stock: stockBefore + pendingQty,
                   salesCount: increment(-1),
+                });
+                stockRestoreEvents.push({
+                  productId: item.productId,
+                  productName: item.productName ?? currentProduct.name,
+                  variantId: "",
+                  variantName: item.variantName,
+                  stockBefore,
+                  stockAfter: stockBefore + pendingQty,
+                  delta: pendingQty,
                 });
               }
             }
@@ -1250,6 +1381,49 @@ export function SaleDetailsModal({
       }
 
       await softDelete(firestore, collections.SALES, saleId);
+
+      await Promise.all(
+        stockRestoreEvents.map((p) =>
+          logEvent({
+            section: EAuditSection.BANDERAS_STOCK,
+            entityType: EAuditEntityType.PRODUCT_VARIANT,
+            entityId: `${p.productId}:${p.variantId || "_"}`,
+            entityLabel: `${p.productName ?? p.productId}${p.variantName ? ` · ${p.variantName}` : ""}`,
+            action: EAuditAction.STOCK_CHANGE,
+            description: describeStockChange(p.productName ?? p.productId, p.variantName, p.delta, "sale_delete"),
+            metadata: {
+              reason: "sale_delete",
+              saleId,
+              saleNumber: typedSale.number,
+              productId: p.productId,
+              productName: p.productName,
+              variantId: p.variantId,
+              variantName: p.variantName,
+              stockBefore: p.stockBefore,
+              stockAfter: p.stockAfter,
+              delta: p.delta,
+            },
+            correlationId,
+          })
+        )
+      );
+
+      await logEvent({
+        section: EAuditSection.BANDERAS_VENTAS,
+        entityType: EAuditEntityType.SALE,
+        entityId: saleId,
+        entityLabel: typedSale.number ?? saleId,
+        action: EAuditAction.DELETE,
+        description: describeSaleDelete(typedSale.number ?? saleId),
+        changes: buildChanges(typedSale as any, null, ["number","clientName","total","paymentMethod"]),
+        metadata: {
+          total: typedSale.total,
+          stockRestored: shouldRestoreStock,
+          restoredItemsCount: stockRestoreEvents.length,
+        },
+        correlationId,
+      });
+
       toast.success("Venta eliminada correctamente");
       onSuccess();
       onOpenChange(false);

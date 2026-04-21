@@ -30,6 +30,14 @@ import { EProviderAccountStatus } from '@/types/providerAccount';
 import { EUserRole } from '@/types/user';
 import { Save, Trash2, X, Paperclip, AlertCircle, Plus, CheckCircle, Camera, Upload } from 'lucide-react';
 import { formatearPrecio } from '@/lib/utils';
+import { useAuditLog } from '@/hooks/useAuditLog';
+import { buildChanges } from '@/lib/auditLog';
+import { EAuditAction, EAuditEntityType, EAuditSection } from '@/types/auditLog';
+
+const PURCHASE_WATCHED_FIELDS = [
+  'date', 'providerId', 'providerName', 'description',
+  'amount', 'department', 'paymentMethod',
+];
 
 interface PurchaseEditModalProps {
   isOpen: boolean;
@@ -46,6 +54,7 @@ export default function PurchaseEditModal({
 }: PurchaseEditModalProps) {
   const firestore = useFirestore();
   const { userRole } = useAuth();
+  const { logEvent } = useAuditLog();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState<Partial<TPurchase>>({
@@ -221,6 +230,7 @@ export default function PurchaseEditModal({
 
     setLoading(true);
     try {
+      const beforeData = purchase as TPurchase | undefined;
       const purchaseRef = doc(firestore, 'purchases', purchaseId);
       await updateDoc(purchaseRef, {
         ...formData,
@@ -285,6 +295,32 @@ export default function PurchaseEditModal({
         }
       }
 
+      const afterData = {
+        ...formData,
+        amount: Number(formData.amount),
+      };
+      const changes = buildChanges(beforeData as any, afterData as any, PURCHASE_WATCHED_FIELDS);
+      const changedFields = Object.keys(changes.after ?? {});
+      const highlightDate = changedFields.includes('date')
+        ? ` — fecha: ${beforeData?.date ?? ''} → ${afterData.date ?? ''}`
+        : '';
+      await logEvent({
+        section: EAuditSection.ADMINISTRACION,
+        entityType: EAuditEntityType.PURCHASE,
+        entityId: purchaseId,
+        entityLabel: beforeData?.description?.slice(0, 40) ?? null,
+        action: EAuditAction.UPDATE,
+        description: changedFields.length
+          ? `Editó la compra (${changedFields.join(', ')})${highlightDate}`.trim()
+          : `Editó la compra`,
+        changes,
+        metadata: {
+          providerId: afterData.providerId,
+          providerName: afterData.providerName,
+          amount: afterData.amount,
+        },
+      });
+
       toast.success('Compra actualizada correctamente');
       onPurchaseUpdated?.();
       onClose();
@@ -307,7 +343,23 @@ export default function PurchaseEditModal({
 
     setDeleting(true);
     try {
+      const beforeData = purchase as TPurchase | undefined;
       await softDelete(firestore, 'purchases', purchaseId);
+
+      await logEvent({
+        section: EAuditSection.ADMINISTRACION,
+        entityType: EAuditEntityType.PURCHASE,
+        entityId: purchaseId,
+        entityLabel: beforeData?.description?.slice(0, 40) ?? null,
+        action: EAuditAction.DELETE,
+        description: `Eliminó la compra${beforeData?.providerName ? ' a ' + beforeData.providerName : ''}`,
+        metadata: {
+          providerId: beforeData?.providerId,
+          providerName: beforeData?.providerName,
+          amount: beforeData?.amount,
+          date: beforeData?.date,
+        },
+      });
 
       // Si era CC, decrementar el saldo
       if (formData.paymentMethod === EPurchasePaymentMethod.CUENTA_CORRIENTE && formData.providerId) {

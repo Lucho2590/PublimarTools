@@ -12,6 +12,23 @@ import {
 import { TEcommerceOrder } from "@/types/ecommerceOrder";
 import { TSale, TSaleItem, EPaymentMethod, ESaleDepartment } from "@/types/sale";
 import collections from "./collections";
+import {
+  TAuditActor,
+  writeAuditLog,
+  generateCorrelationId,
+} from "./auditLog";
+import {
+  EAuditAction,
+  EAuditEntityType,
+  EAuditSection,
+} from "@/types/auditLog";
+
+const SYSTEM_ACTOR: TAuditActor = {
+  userId: null,
+  userEmail: null,
+  userName: "Sistema (ecommerce)",
+  userRole: null,
+};
 
 /**
  * Genera un número de venta único
@@ -37,7 +54,10 @@ async function decrementStock(
   firestore: Firestore,
   productId: string,
   quantity: number,
-  variantId?: string
+  variantId: string | undefined,
+  actor: TAuditActor,
+  correlationId: string,
+  context: { orderId: string; orderNumber?: string | null; saleId?: string; saleNumber?: string | null }
 ): Promise<void> {
   const productRef = doc(firestore, collections.PRODUCTS, productId);
   const productSnap = await getDoc(productRef);
@@ -50,25 +70,42 @@ async function decrementStock(
   const productData = productSnap.data();
 
   if (variantId && productData.hasVariants && productData.variants) {
-    // Descontar de la variante específica
     const variants = [...productData.variants];
     const variantIndex = variants.findIndex((v: any) => v.id === variantId);
 
     if (variantIndex !== -1) {
       const currentStock = Number(variants[variantIndex].stock) || 0;
-      variants[variantIndex].stock = Math.max(0, currentStock - quantity);
+      const newStock = Math.max(0, currentStock - quantity);
+      const variantName = variants[variantIndex].size ?? variants[variantIndex].name;
+      variants[variantIndex].stock = newStock;
 
       await updateDoc(productRef, {
         variants,
         updatedAt: serverTimestamp(),
       });
 
-      console.log(
-        `📦 Stock actualizado: ${productData.name} (variante ${variantId}): ${currentStock} → ${variants[variantIndex].stock}`
-      );
+      await writeAuditLog(firestore, actor, {
+        section: EAuditSection.ECOMMERCE,
+        entityType: EAuditEntityType.PRODUCT_VARIANT,
+        entityId: variantId,
+        entityLabel: `${productData.name} (${variantName ?? ''})`.trim(),
+        action: EAuditAction.STOCK_CHANGE,
+        description: `-${quantity} en stock de ${productData.name}${variantName ? ' (' + variantName + ')' : ''} por pedido ecommerce`,
+        metadata: {
+          reason: "ecommerce",
+          productId,
+          productName: productData.name,
+          variantId,
+          variantName,
+          stockBefore: currentStock,
+          stockAfter: newStock,
+          delta: -quantity,
+          ...context,
+        },
+        correlationId,
+      });
     }
   } else {
-    // Descontar del stock general del producto
     const currentStock = Number(productData.stock) || 0;
     const newStock = Math.max(0, currentStock - quantity);
 
@@ -77,9 +114,24 @@ async function decrementStock(
       updatedAt: serverTimestamp(),
     });
 
-    console.log(
-      `📦 Stock actualizado: ${productData.name}: ${currentStock} → ${newStock}`
-    );
+    await writeAuditLog(firestore, actor, {
+      section: EAuditSection.ECOMMERCE,
+      entityType: EAuditEntityType.PRODUCT,
+      entityId: productId,
+      entityLabel: productData.name ?? null,
+      action: EAuditAction.STOCK_CHANGE,
+      description: `-${quantity} en stock de ${productData.name} por pedido ecommerce`,
+      metadata: {
+        reason: "ecommerce",
+        productId,
+        productName: productData.name,
+        stockBefore: currentStock,
+        stockAfter: newStock,
+        delta: -quantity,
+        ...context,
+      },
+      correlationId,
+    });
   }
 }
 
@@ -89,9 +141,11 @@ async function decrementStock(
  */
 export async function processOrderSale(
   firestore: Firestore,
-  order: TEcommerceOrder
+  order: TEcommerceOrder,
+  actor: TAuditActor = SYSTEM_ACTOR
 ): Promise<{ saleId: string; saleNumber: string }> {
-  // 1. Convertir items del pedido a items de venta
+  const correlationId = generateCorrelationId();
+
   const saleItems: TSaleItem[] = order.items.map((item) => ({
     productId: item.productId,
     productName: item.productName,
@@ -105,18 +159,16 @@ export async function processOrderSale(
       : item.productName,
   }));
 
-  // 2. Crear la venta
   const saleNumber = generateSaleNumber();
   const saleData: Omit<TSale, "id"> = {
     number: saleNumber,
     items: saleItems,
     subtotal: order.subtotal,
     total: order.total,
-    paymentMethod: EPaymentMethod.TRANSFER, // Por defecto transferencia para ecommerce
+    paymentMethod: EPaymentMethod.TRANSFER,
     department: ESaleDepartment.BANDERAS,
     isInvoiced: false,
     invoiceNumber: null,
-    // Cliente (si tenemos datos)
     clientName: order.customer?.name || "Cliente Web",
     tempClientData: order.customer
       ? {
@@ -128,7 +180,6 @@ export async function processOrderSale(
           updatedAt: new Date(),
         }
       : undefined,
-    // Referencia al pedido original
     orderId: order.id,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -140,24 +191,46 @@ export async function processOrderSale(
     updatedAt: serverTimestamp(),
   });
 
-  console.log(`✅ Venta creada: ${saleNumber} (ID: ${saleRef.id})`);
-
-  // 3. Descontar stock de cada producto
   for (const item of order.items) {
     await decrementStock(
       firestore,
       item.productId,
       item.quantity,
-      item.variant?.id
+      item.variant?.id,
+      actor,
+      correlationId,
+      {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        saleId: saleRef.id,
+        saleNumber,
+      }
     );
   }
 
-  // 4. Actualizar el pedido con la referencia a la venta
   const orderRef = doc(firestore, "ecommerceOrders", order.id);
   await updateDoc(orderRef, {
     saleId: saleRef.id,
     saleNumber: saleNumber,
     saleProcessedAt: serverTimestamp(),
+  });
+
+  await writeAuditLog(firestore, actor, {
+    section: EAuditSection.ECOMMERCE,
+    entityType: EAuditEntityType.SALE,
+    entityId: saleRef.id,
+    entityLabel: saleNumber,
+    action: EAuditAction.CREATE,
+    description: `Creó la venta ${saleNumber} desde pedido ${order.orderNumber ?? order.id} por $${order.total}`,
+    metadata: {
+      source: "ecommerce",
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      total: order.total,
+      itemsCount: order.items.length,
+      clientName: order.customer?.name ?? null,
+    },
+    correlationId,
   });
 
   return {
@@ -180,7 +253,10 @@ async function incrementStock(
   firestore: Firestore,
   productId: string,
   quantity: number,
-  variantId?: string
+  variantId: string | undefined,
+  actor: TAuditActor,
+  correlationId: string,
+  context: { orderId: string; orderNumber?: string | null; saleId?: string; saleNumber?: string | null }
 ): Promise<void> {
   const productRef = doc(firestore, collections.PRODUCTS, productId);
   const productSnap = await getDoc(productRef);
@@ -193,25 +269,42 @@ async function incrementStock(
   const productData = productSnap.data();
 
   if (variantId && productData.hasVariants && productData.variants) {
-    // Devolver a la variante específica
     const variants = [...productData.variants];
     const variantIndex = variants.findIndex((v: any) => v.id === variantId);
 
     if (variantIndex !== -1) {
       const currentStock = Number(variants[variantIndex].stock) || 0;
-      variants[variantIndex].stock = currentStock + quantity;
+      const newStock = currentStock + quantity;
+      const variantName = variants[variantIndex].size ?? variants[variantIndex].name;
+      variants[variantIndex].stock = newStock;
 
       await updateDoc(productRef, {
         variants,
         updatedAt: serverTimestamp(),
       });
 
-      console.log(
-        `📦 Stock devuelto: ${productData.name} (variante ${variantId}): ${currentStock} → ${variants[variantIndex].stock}`
-      );
+      await writeAuditLog(firestore, actor, {
+        section: EAuditSection.ECOMMERCE,
+        entityType: EAuditEntityType.PRODUCT_VARIANT,
+        entityId: variantId,
+        entityLabel: `${productData.name} (${variantName ?? ''})`.trim(),
+        action: EAuditAction.STOCK_CHANGE,
+        description: `+${quantity} en stock de ${productData.name}${variantName ? ' (' + variantName + ')' : ''} por cancelación de pedido ecommerce`,
+        metadata: {
+          reason: "ecommerce_cancel",
+          productId,
+          productName: productData.name,
+          variantId,
+          variantName,
+          stockBefore: currentStock,
+          stockAfter: newStock,
+          delta: quantity,
+          ...context,
+        },
+        correlationId,
+      });
     }
   } else {
-    // Devolver al stock general del producto
     const currentStock = Number(productData.stock) || 0;
     const newStock = currentStock + quantity;
 
@@ -220,9 +313,24 @@ async function incrementStock(
       updatedAt: serverTimestamp(),
     });
 
-    console.log(
-      `📦 Stock devuelto: ${productData.name}: ${currentStock} → ${newStock}`
-    );
+    await writeAuditLog(firestore, actor, {
+      section: EAuditSection.ECOMMERCE,
+      entityType: EAuditEntityType.PRODUCT,
+      entityId: productId,
+      entityLabel: productData.name ?? null,
+      action: EAuditAction.STOCK_CHANGE,
+      description: `+${quantity} en stock de ${productData.name} por cancelación de pedido ecommerce`,
+      metadata: {
+        reason: "ecommerce_cancel",
+        productId,
+        productName: productData.name,
+        stockBefore: currentStock,
+        stockAfter: newStock,
+        delta: quantity,
+        ...context,
+      },
+      correlationId,
+    });
   }
 }
 
@@ -231,15 +339,16 @@ async function incrementStock(
  */
 export async function cancelOrderSale(
   firestore: Firestore,
-  order: TEcommerceOrder
+  order: TEcommerceOrder,
+  actor: TAuditActor = SYSTEM_ACTOR
 ): Promise<void> {
-  // Verificar que el pedido tenga una venta asociada
   if (!order.saleId) {
     console.log("El pedido no tiene venta asociada, nada que cancelar");
     return;
   }
 
-  // 1. Marcar la venta como anulada
+  const correlationId = generateCorrelationId();
+
   const saleRef = doc(firestore, collections.SALES, order.saleId);
   const saleSnap = await getDoc(saleRef);
 
@@ -250,20 +359,44 @@ export async function cancelOrderSale(
       cancellationReason: "Pedido ecommerce cancelado",
       updatedAt: serverTimestamp(),
     });
-    console.log(`❌ Venta ${order.saleNumber} marcada como anulada`);
+
+    await writeAuditLog(firestore, actor, {
+      section: EAuditSection.ECOMMERCE,
+      entityType: EAuditEntityType.SALE,
+      entityId: order.saleId,
+      entityLabel: order.saleNumber ?? null,
+      action: EAuditAction.UPDATE,
+      description: `Anuló la venta ${order.saleNumber ?? ''} por cancelación de pedido ecommerce`.trim(),
+      changes: {
+        before: { cancelled: false },
+        after: { cancelled: true, cancellationReason: "Pedido ecommerce cancelado" },
+      },
+      metadata: {
+        source: "ecommerce",
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+      },
+      correlationId,
+    });
   }
 
-  // 2. Devolver stock de cada producto
   for (const item of order.items) {
     await incrementStock(
       firestore,
       item.productId,
       item.quantity,
-      item.variant?.id
+      item.variant?.id,
+      actor,
+      correlationId,
+      {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        saleId: order.saleId,
+        saleNumber: order.saleNumber,
+      }
     );
   }
 
-  // 3. Actualizar el pedido para indicar que la venta fue cancelada
   const orderRef = doc(firestore, "ecommerceOrders", order.id);
   await updateDoc(orderRef, {
     saleCancelledAt: serverTimestamp(),

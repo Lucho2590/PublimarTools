@@ -12,10 +12,19 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 // import collections from "@/lib/collections";
 import { TProvider } from "@/types/provider";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { buildChanges } from "@/lib/auditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
+
+const PROVIDER_WATCHED_FIELDS = [
+  'name', 'email', 'phone', 'address', 'cuit', 'contactPerson',
+  'notes', 'cbu', 'alias', 'denominacion',
+];
 
 export default function EditarProveedorPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState<Partial<TProvider>>({
@@ -49,10 +58,26 @@ export default function EditarProveedorPage({ params }: { params: { id: string }
     e.preventDefault();
     setLoading(true);
     try {
+      const beforeData = data as TProvider | undefined;
       await updateDoc(doc(firestore, "providers", params.id), {
         ...formData,
         updatedAt: new Date(),
       });
+
+      const changes = buildChanges(beforeData as any, formData as any, PROVIDER_WATCHED_FIELDS);
+      const changedFields = Object.keys(changes.after ?? {});
+      await logEvent({
+        section: EAuditSection.PROVEEDORES,
+        entityType: EAuditEntityType.PROVIDER,
+        entityId: params.id,
+        entityLabel: beforeData?.name ?? formData.name ?? null,
+        action: EAuditAction.UPDATE,
+        description: changedFields.length
+          ? `Editó el proveedor ${beforeData?.name ?? ''} (${changedFields.join(', ')})`.trim()
+          : `Editó el proveedor ${beforeData?.name ?? ''}`.trim(),
+        changes,
+      });
+
       toast.success("Proveedor actualizado correctamente");
       router.push("/publimar/proveedores");
     } catch (error) {
@@ -67,7 +92,18 @@ export default function EditarProveedorPage({ params }: { params: { id: string }
     if (!confirm("¿Estás seguro de que deseas eliminar este proveedor?")) return;
     setDeleting(true);
     try {
+      const beforeData = data as TProvider | undefined;
       await softDelete(firestore, "providers", params.id);
+
+      await logEvent({
+        section: EAuditSection.PROVEEDORES,
+        entityType: EAuditEntityType.PROVIDER,
+        entityId: params.id,
+        entityLabel: beforeData?.name ?? null,
+        action: EAuditAction.DELETE,
+        description: `Eliminó el proveedor ${beforeData?.name ?? ''}`.trim(),
+      });
+
       router.push("/publimar/proveedores");
     } catch (error) {
       console.error("Error al eliminar proveedor:", error);
