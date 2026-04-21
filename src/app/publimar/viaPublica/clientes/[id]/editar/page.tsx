@@ -28,10 +28,14 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { Trash2, Plus } from "lucide-react";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { buildChanges } from "@/lib/auditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
 
 export default function EditarClientePage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
   const clientId = extractIdFromSlug(params.id);
   const clientRef = doc(firestore, collections.CLIENTS, clientId);
   const { status, data: client } = useFirestoreDocData(clientRef, {
@@ -137,6 +141,12 @@ export default function EditarClientePage({ params }: { params: { id: string } }
           ...(rs.cuit.trim() && { cuit: rs.cuit }),
         }));
 
+      const beforeData = client as TClient | undefined;
+      const afterData = {
+        ...finalFormData,
+        contacts: filteredContacts,
+        razonesSociales: filteredRazonesSociales,
+      };
       await updateDoc(clientRef, {
         ...finalFormData,
         contacts: filteredContacts,
@@ -144,6 +154,24 @@ export default function EditarClientePage({ params }: { params: { id: string } }
           ? { razonesSociales: filteredRazonesSociales }
           : { razonesSociales: [] }),
         updatedAt: new Date(),
+      });
+
+      const watched = [
+        'name', 'type', 'status', 'section', 'businessName', 'fantasyName',
+        'razonesSociales', 'email', 'phone', 'address', 'cuit', 'reference', 'notes', 'contacts',
+      ];
+      const changes = buildChanges(beforeData as any, afterData as any, watched);
+      const changedFields = Object.keys(changes.after ?? {});
+      await logEvent({
+        section: EAuditSection.VIA_PUBLICA,
+        entityType: EAuditEntityType.CLIENT,
+        entityId: clientId,
+        entityLabel: beforeData?.name ?? finalFormData.name ?? null,
+        action: EAuditAction.UPDATE,
+        description: changedFields.length
+          ? `Editó el cliente ${beforeData?.name ?? ''} (${changedFields.join(', ')})`.trim()
+          : `Editó el cliente ${beforeData?.name ?? ''}`.trim(),
+        changes,
       });
 
       toast.success("Cliente actualizado correctamente");

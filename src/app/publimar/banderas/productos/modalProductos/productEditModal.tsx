@@ -2,7 +2,20 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore, useFirestoreDoc, useFirestoreCollectionData } from "reactfire";
-import { collection, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import {
+  buildChanges,
+  describeProductUpdate,
+  describeStockChange,
+  diffVariants,
+  generateCorrelationId,
+} from "@/lib/auditLog";
+import {
+  EAuditAction,
+  EAuditEntityType,
+  EAuditSection,
+} from "@/types/auditLog";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -50,6 +63,7 @@ export default function ProductEditModal({
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -328,7 +342,69 @@ export default function ProductEditModal({
         productData.slug = slug;
       }
 
+      // Snapshot before update for audit diff
+      const beforeSnap = await getDoc(productRef);
+      const before = beforeSnap.exists() ? beforeSnap.data() : null;
+
       await updateDoc(productRef, productData);
+
+      const correlationId = generateCorrelationId();
+      const variantDiffs = diffVariants(
+        productId!,
+        before?.name ?? productData.name,
+        (before?.variants ?? []) as any,
+        productData.variants as any
+      );
+
+      await Promise.all(
+        variantDiffs.map((d) =>
+          logEvent({
+            section: EAuditSection.BANDERAS_STOCK,
+            entityType: EAuditEntityType.PRODUCT_VARIANT,
+            entityId: `${d.productId}:${d.variantId}`,
+            entityLabel: `${d.productName ?? ""}${d.variantName ? ` · ${d.variantName}` : ""}`,
+            action: EAuditAction.STOCK_CHANGE,
+            description: describeStockChange(
+              d.productName ?? "",
+              d.variantName,
+              d.delta,
+              "product_edit"
+            ),
+            metadata: {
+              reason: "product_edit",
+              productId: d.productId,
+              productName: d.productName,
+              variantId: d.variantId,
+              variantName: d.variantName,
+              stockBefore: d.stockBefore,
+              stockAfter: d.stockAfter,
+              delta: d.delta,
+            },
+            correlationId,
+          })
+        )
+      );
+
+      const productWatched = [
+        "name","description","categories","group","sku","lowStock","ecommerce","imageUrls","variants"
+      ];
+      const productChanges = buildChanges(before as any, productData as any, productWatched);
+      const changedFields = Object.keys(productChanges.after ?? {});
+      await logEvent({
+        section: EAuditSection.BANDERAS_PRODUCTOS,
+        entityType: EAuditEntityType.PRODUCT,
+        entityId: productId!,
+        entityLabel: productData.name,
+        action: EAuditAction.UPDATE,
+        description: describeProductUpdate(productData.name, changedFields),
+        changes: productChanges,
+        metadata: {
+          variantCount: productData.variants.length,
+          stockChanges: variantDiffs.length,
+        },
+        correlationId,
+      });
+
       toast.success("Producto actualizado con éxito");
       onProductUpdated?.();
       onClose();

@@ -17,6 +17,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { TProvider } from '@/types/provider';
 import { Save, Trash2, X } from 'lucide-react';
+import { useAuditLog } from '@/hooks/useAuditLog';
+import { buildChanges } from '@/lib/auditLog';
+import { EAuditAction, EAuditEntityType, EAuditSection } from '@/types/auditLog';
+
+const PROVIDER_WATCHED_FIELDS = [
+  'name', 'email', 'phone', 'address', 'cuit', 'contactPerson',
+  'notes', 'cbu', 'alias', 'denominacion',
+];
 
 interface ProviderEditModalProps {
   isOpen: boolean;
@@ -32,6 +40,7 @@ export default function ProviderEditModal({
   onProviderUpdated,
 }: ProviderEditModalProps) {
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [formData, setFormData] = useState<Partial<TProvider>>({
@@ -112,9 +121,24 @@ export default function ProviderEditModal({
     setLoading(true);
     try {
       const providerRef = doc(firestore, 'providers', providerId);
+      const beforeData = provider as TProvider | undefined;
       await updateDoc(providerRef, {
         ...formData,
         updatedAt: new Date(),
+      });
+
+      const changes = buildChanges(beforeData as any, formData as any, PROVIDER_WATCHED_FIELDS);
+      const changedFields = Object.keys(changes.after ?? {});
+      await logEvent({
+        section: EAuditSection.PROVEEDORES,
+        entityType: EAuditEntityType.PROVIDER,
+        entityId: providerId,
+        entityLabel: beforeData?.name ?? formData.name ?? null,
+        action: EAuditAction.UPDATE,
+        description: changedFields.length
+          ? `Editó el proveedor ${beforeData?.name ?? ''} (${changedFields.join(', ')})`.trim()
+          : `Editó el proveedor ${beforeData?.name ?? ''}`.trim(),
+        changes,
       });
 
       toast.success('Proveedor actualizado correctamente');
@@ -139,7 +163,17 @@ export default function ProviderEditModal({
 
     setDeleting(true);
     try {
+      const beforeData = provider as TProvider | undefined;
       await softDelete(firestore, 'providers', providerId);
+
+      await logEvent({
+        section: EAuditSection.PROVEEDORES,
+        entityType: EAuditEntityType.PROVIDER,
+        entityId: providerId,
+        entityLabel: beforeData?.name ?? null,
+        action: EAuditAction.DELETE,
+        description: `Eliminó el proveedor ${beforeData?.name ?? ''}`.trim(),
+      });
 
       toast.success('Proveedor eliminado correctamente');
       onProviderUpdated?.();

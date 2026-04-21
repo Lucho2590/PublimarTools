@@ -30,6 +30,7 @@ const collections = {
   providerAccounts: {
     PAYMENTS: "payments",
   },
+  AUDIT_LOG: "auditLog",
   ACCOUNTS: "accounts",
   ACCOUNT_MOVEMENTS: "accountMovements",
   OPERATIONAL_EXPENSES: "operationalExpenses",

@@ -30,9 +30,13 @@ import collections from "@/lib/collections";
 import {
   EClientType,
   EClientStatus,
+  EClientSection,
   TClient,
   TClientContact,
 } from "@/types/client";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { buildChanges } from "@/lib/auditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { Edit, Save, Trash2 } from "lucide-react";
@@ -56,6 +60,7 @@ export default function ClientDetailsModal({
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
 
   const [formData, setFormData] = useState<Partial<TClient>>({
     name: "",
@@ -196,10 +201,34 @@ export default function ClientDetailsModal({
         finalFormData.name = finalFormData.fantasyName || finalFormData.businessName || finalFormData.name;
       }
 
+      const beforeData = client as TClient | undefined;
+      const afterData = {
+        ...finalFormData,
+        contacts: filteredContacts,
+      };
       await updateDoc(clientRef, {
         ...finalFormData,
         contacts: filteredContacts,
         updatedAt: new Date(),
+      });
+
+      const watched = [
+        'name', 'type', 'status', 'section', 'businessName', 'fantasyName',
+        'email', 'phone', 'address', 'cuit', 'reference', 'notes', 'contacts',
+      ];
+      const changes = buildChanges(beforeData as any, afterData as any, watched);
+      const changedFields = Object.keys(changes.after ?? {});
+      const sectionValue = (beforeData?.section ?? finalFormData.section) as EClientSection | undefined;
+      await logEvent({
+        section: sectionValue === EClientSection.VIA_PUBLICA ? EAuditSection.VIA_PUBLICA : EAuditSection.BANDERAS_CLIENTES,
+        entityType: EAuditEntityType.CLIENT,
+        entityId: clientId!,
+        entityLabel: beforeData?.name ?? finalFormData.name ?? null,
+        action: EAuditAction.UPDATE,
+        description: changedFields.length
+          ? `Editó el cliente ${beforeData?.name ?? ''} (${changedFields.join(', ')})`.trim()
+          : `Editó el cliente ${beforeData?.name ?? ''}`.trim(),
+        changes,
       });
 
       toast.success("Cliente actualizado correctamente");

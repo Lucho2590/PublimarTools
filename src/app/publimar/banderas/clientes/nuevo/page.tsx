@@ -22,12 +22,16 @@ import collections from "@/lib/collections";
 import { EClientType, EClientStatus, EClientSection, TClientContact } from "@/types/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Save, Trash2 } from "lucide-react";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { buildChanges } from "@/lib/auditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
 
 export default function NuevoClientePage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const firestore = useFirestore();
   const { data: user } = useUser();
+  const { logEvent } = useAuditLog();
 
   // Estado para los contactos del cliente
   const [contacts, setContacts] = useState<TClientContact[]>([
@@ -139,7 +143,23 @@ export default function NuevoClientePage() {
       });
 
       const clientsCollection = collection(firestore, collections.CLIENTS);
-      await addDoc(clientsCollection, clientData);
+      const docRef = await addDoc(clientsCollection, clientData);
+
+      await logEvent({
+        section:
+          finalFormData.section === EClientSection.VIA_PUBLICA
+            ? EAuditSection.VIA_PUBLICA
+            : EAuditSection.BANDERAS_CLIENTES,
+        entityType: EAuditEntityType.CLIENT,
+        entityId: docRef.id,
+        entityLabel: finalFormData.name ?? null,
+        action: EAuditAction.CREATE,
+        description: `Creó el cliente ${finalFormData.name ?? ''}`.trim(),
+        changes: buildChanges(null, { ...finalFormData, contacts: filteredContacts } as any, [
+          'name', 'type', 'status', 'section', 'businessName', 'fantasyName',
+          'email', 'phone', 'address', 'cuit', 'reference', 'notes', 'contacts',
+        ]),
+      });
 
       toast.success("Cliente creado con éxito");
       router.push("/publimar/banderas/clientes");

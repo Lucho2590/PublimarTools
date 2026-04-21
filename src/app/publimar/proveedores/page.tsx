@@ -30,9 +30,13 @@ import { TProvider } from "@/types/provider";
 import { Edit, Eye, Trash2 } from "lucide-react";
 import ProviderEditModal from "./modalProveedores/providerEditModal";
 import { toast } from "sonner";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { buildChanges } from "@/lib/auditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
 
 export default function ProveedoresPage() {
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
   const [form, setForm] = useState<Partial<TProvider>>({});
   const [loading, setLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -61,11 +65,25 @@ export default function ProveedoresPage() {
 
     setLoading(true);
     try {
-      await addDoc(providersCollection, {
+      const docRef = await addDoc(providersCollection, {
         ...form,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      await logEvent({
+        section: EAuditSection.PROVEEDORES,
+        entityType: EAuditEntityType.PROVIDER,
+        entityId: docRef.id,
+        entityLabel: form.name ?? null,
+        action: EAuditAction.CREATE,
+        description: `Creó el proveedor ${form.name ?? ''}`.trim(),
+        changes: buildChanges(null, form as any, [
+          'name', 'email', 'phone', 'address', 'cuit', 'contactPerson',
+          'notes', 'cbu', 'alias', 'denominacion',
+        ]),
+      });
+
       setForm({});
       setShowForm(false);
       toast.success("Proveedor agregado correctamente");

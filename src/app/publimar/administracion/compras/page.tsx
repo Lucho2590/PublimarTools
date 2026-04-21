@@ -45,6 +45,9 @@ const paymentMethodLabels: Record<string, string> = {
 };
 import PurchaseEditModal from "./modalCompras/purchaseEditModal";
 import { toast } from "sonner";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { buildChanges } from "@/lib/auditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
 
 // Formatear fecha
 const formatDate = (timestamp: any) => {
@@ -66,6 +69,7 @@ const formatDate = (timestamp: any) => {
 export default function ComprasAdminPage() {
   const firestore = useFirestore();
   const { userRole } = useAuth();
+  const { logEvent } = useAuditLog();
   const [form, setForm] = useState<Partial<TPurchase>>({
     date: new Date().toISOString().split("T")[0]
   });
@@ -397,14 +401,35 @@ export default function ComprasAdminPage() {
     setLoading(true);
     try {
       const provider = providers?.find((p: any) => p.id === form.providerId);
-      const docRef = await addDoc(purchasesCollection, {
+      const createPayload = {
         ...form,
         providerName: provider?.name || "",
         date: form.date,
         amount: Number(form.amount),
         accountId: form.accountId || null,
+      };
+      const docRef = await addDoc(purchasesCollection, {
+        ...createPayload,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+      });
+
+      await logEvent({
+        section: EAuditSection.ADMINISTRACION,
+        entityType: EAuditEntityType.PURCHASE,
+        entityId: docRef.id,
+        entityLabel: (createPayload.description ?? '').slice(0, 40) || null,
+        action: EAuditAction.CREATE,
+        description: `Creó una compra a ${createPayload.providerName ?? ''} por $${createPayload.amount}`.trim(),
+        changes: buildChanges(null, createPayload as any, [
+          'date', 'providerId', 'providerName', 'description',
+          'amount', 'department', 'paymentMethod',
+        ]),
+        metadata: {
+          providerId: createPayload.providerId,
+          providerName: createPayload.providerName,
+          amount: createPayload.amount,
+        },
       });
 
       // Subir factura si existe

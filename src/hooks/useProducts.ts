@@ -18,11 +18,15 @@ import {
 import { TProduct } from '@/types/product'
 import collections from '@/lib/collections'
 import { softDelete } from '@/lib/softDelete'
+import { useAuditLog } from '@/hooks/useAuditLog'
+import { describeStockChange } from '@/lib/auditLog'
+import { EAuditAction, EAuditEntityType, EAuditSection } from '@/types/auditLog'
 
 const COLLECTION_NAME = collections.PRODUCTS
 
 export function useProducts() {
   const firestore = useFirestore()
+  const { logEvent } = useAuditLog()
   const productsCollection = collection(firestore, COLLECTION_NAME)
   const productsQuery = query(productsCollection, orderBy("name"))
   
@@ -71,12 +75,14 @@ export function useProducts() {
     try {
       const productRef = doc(firestore, COLLECTION_NAME, productId)
       const productDoc = await getDoc(productRef)
-      
+
       if (!productDoc.exists()) {
         throw new Error('Producto no encontrado')
       }
 
       const product = { id: productDoc.id, ...productDoc.data() } as TProduct
+      const prevVariant = product.variants.find(v => v.id === variantId)
+      const stockBefore = Number(prevVariant?.stock ?? 0)
       const updatedVariants = product.variants.map(variant =>
         variant.id === variantId
           ? { ...variant, stock: newStock }
@@ -87,6 +93,32 @@ export function useProducts() {
         variants: updatedVariants,
         updatedAt: serverTimestamp()
       })
+
+      if (stockBefore !== newStock) {
+        await logEvent({
+          section: EAuditSection.BANDERAS_STOCK,
+          entityType: EAuditEntityType.PRODUCT_VARIANT,
+          entityId: `${productId}:${variantId}`,
+          entityLabel: `${product.name}${prevVariant?.size ? ` · ${prevVariant.size}` : ""}`,
+          action: EAuditAction.STOCK_CHANGE,
+          description: describeStockChange(
+            product.name,
+            prevVariant?.size,
+            newStock - stockBefore,
+            "manual_edit"
+          ),
+          metadata: {
+            reason: "manual_edit",
+            productId,
+            productName: product.name,
+            variantId,
+            variantName: prevVariant?.size,
+            stockBefore,
+            stockAfter: newStock,
+            delta: newStock - stockBefore,
+          },
+        })
+      }
     } catch (error) {
       console.error('Error al actualizar stock de variante:', error)
       throw new Error('Error al actualizar stock de variante')

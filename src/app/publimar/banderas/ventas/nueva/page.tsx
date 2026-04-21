@@ -52,6 +52,18 @@ import { EPaymentMethod, ESaleDepartment, TFactura } from "@/types/sale";
 import { formatearPrecio, redondearADecena, redondearTotal, formatDateString } from "@/lib/utils";
 import { useClients } from "@/hooks/useClients";
 import { EClientSection } from "@/types/client";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import {
+  buildChanges,
+  describeSaleCreate,
+  describeStockChange,
+  generateCorrelationId,
+} from "@/lib/auditLog";
+import {
+  EAuditAction,
+  EAuditEntityType,
+  EAuditSection,
+} from "@/types/auditLog";
 import { AccountSelect } from "@/components/admin/AccountSelect";
 import { registerAccountMovement } from "@/lib/accountMovements";
 import { EMovementType } from "@/types/accountMovement";
@@ -70,6 +82,7 @@ interface SaleItem {
 export default function NuevaVentaPage() {
   const router = useRouter();
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
   const { userRole } = useAuth();
   const { accounts: allAccounts } = useAccounts({ includeArchived: true });
 
@@ -718,7 +731,9 @@ export default function NuevaVentaPage() {
       };
 
       const salesCollection = collection(firestore, collections.SALES);
-      const saleRef = await addDoc(salesCollection, saleData);
+      const saleDocRef = await addDoc(salesCollection, saleData);
+      const correlationId = generateCorrelationId();
+      const saleNumber = saleData.number;
 
       // Si se eligió cuenta, registrar movimiento de ingreso
       if (accountId) {
@@ -733,7 +748,7 @@ export default function NuevaVentaPage() {
             }${acc ? ` (${acc.name})` : ""}`,
             date: new Date(),
             sourceType: "sale",
-            sourceId: saleRef.id,
+            sourceId: saleDocRef.id,
             createdBy: userRole || "",
           });
         } catch (err) {
@@ -741,18 +756,30 @@ export default function NuevaVentaPage() {
         }
       }
 
-      for (const item of items) {
-        // Solo actualizar stock para productos del catálogo, no para items manuales
-        const isManualItem = item.product.id.startsWith('manual-');
-        
-        if (!isManualItem) {
+      const stockEventPayloads: Array<{
+        productId: string;
+        productName: string;
+        variantId: string;
+        variantName: string;
+        stockBefore: number;
+        stockAfter: number;
+        delta: number;
+      }> = [];
+
+      await Promise.all(
+        items.map(async (item) => {
+          const isManualItem = item.product.id.startsWith('manual-');
+          if (isManualItem) return;
+
           const productRef = doc(
             firestore,
             collections.PRODUCTS,
             item.product.id
           );
-          
-          // Actualizar stock Y contadores de ventas (increment es atómico)
+
+          const stockBefore = Number(item.variant.stock ?? 0);
+          const stockAfter = stockBefore - item.quantity;
+
           await updateDoc(productRef, {
             variants: item.product.variants.map((v) =>
               v.id === item.variant.id
@@ -762,8 +789,69 @@ export default function NuevaVentaPage() {
             salesCount: increment(1),
             lastSaleDate: new Date(),
           });
-        }
-      }
+
+          stockEventPayloads.push({
+            productId: item.product.id,
+            productName: item.product.name,
+            variantId: item.variant.id,
+            variantName: item.variant.size,
+            stockBefore,
+            stockAfter,
+            delta: -item.quantity,
+          });
+        })
+      );
+
+      await Promise.all(
+        stockEventPayloads.map((p) =>
+          logEvent({
+            section: EAuditSection.BANDERAS_STOCK,
+            entityType: EAuditEntityType.PRODUCT_VARIANT,
+            entityId: `${p.productId}:${p.variantId}`,
+            entityLabel: `${p.productName}${p.variantName ? ` · ${p.variantName}` : ""}`,
+            action: EAuditAction.STOCK_CHANGE,
+            description: describeStockChange(p.productName, p.variantName, p.delta, "sale"),
+            metadata: {
+              reason: "sale",
+              saleId: saleDocRef.id,
+              saleNumber,
+              productId: p.productId,
+              productName: p.productName,
+              variantId: p.variantId,
+              variantName: p.variantName,
+              stockBefore: p.stockBefore,
+              stockAfter: p.stockAfter,
+              delta: p.delta,
+            },
+            correlationId,
+          })
+        )
+      );
+
+      await logEvent({
+        section: EAuditSection.BANDERAS_VENTAS,
+        entityType: EAuditEntityType.SALE,
+        entityId: saleDocRef.id,
+        entityLabel: saleNumber,
+        action: EAuditAction.CREATE,
+        description: describeSaleCreate(saleNumber, currentTotal),
+        changes: buildChanges(null, saleData, [
+          "number","clientId","clientName","total","subtotal","paymentMethod","bank","isInvoiced","invoiceNumber","discountPercentage","applyIVA",
+        ]),
+        metadata: {
+          total: currentTotal,
+          paymentMethod,
+          itemsCount: items.length,
+          stockDeltas: stockEventPayloads.map((p) => ({
+            productId: p.productId,
+            variantId: p.variantId,
+            productName: p.productName,
+            variantName: p.variantName,
+            delta: p.delta,
+          })),
+        },
+        correlationId,
+      });
 
       toast.success("Venta registrada con éxito");
       router.push("/publimar/banderas/ventas");
