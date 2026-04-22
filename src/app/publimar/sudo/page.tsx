@@ -28,7 +28,6 @@ import { formatDate } from "@/lib/utils";
 import { Trash2, RotateCcw, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import collections from "@/lib/collections";
 import { useAuth } from "@/contexts/AuthContext";
-import { EUserRole } from "@/types/user";
 import { AuditLogTab } from "./components/AuditLogTab";
 import {
   HIDDEN_FIELDS,
@@ -67,14 +66,12 @@ const COLLECTIONS_TO_SCAN = [
 
 export default function SudoPage() {
   const firestore = useFirestore();
-  const { userRole, loadingUserData, user } = useAuth();
+  const { loadingUserData, user } = useAuth();
   const [deletedItems, setDeletedItems] = useState<DeletedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [topTab, setTopTab] = useState<"eliminados" | "audit">("eliminados");
-
-  const isAdmin = userRole === EUserRole.ADMIN;
 
   const loadDeletedItems = async () => {
     setLoading(true);
@@ -120,8 +117,8 @@ export default function SudoPage() {
   };
 
   useEffect(() => {
-    if (isAdmin) loadDeletedItems();
-  }, [firestore, isAdmin]);
+    loadDeletedItems();
+  }, [firestore]);
 
   const handleRestore = async (item: DeletedItem) => {
     try {
@@ -224,21 +221,6 @@ export default function SudoPage() {
   if (loadingUserData || !user) {
     return (
       <div className="text-center py-12 text-muted-foreground">Cargando…</div>
-    );
-  }
-
-  if (!isAdmin) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>No autorizado</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Esta sección es exclusiva para administradores.
-          </p>
-        </CardContent>
-      </Card>
     );
   }
 

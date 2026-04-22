@@ -37,6 +37,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { TablePagination } from "@/components/admin/TablePagination";
 import { ChevronDown, ChevronRight, RefreshCw, X } from "lucide-react";
 import {
   AUDIT_ACTION_LABELS,
@@ -83,6 +84,8 @@ export function AuditLogTab() {
   const [actionFilter, setActionFilter] = useState<EAuditAction | "all">("all");
   const [userFilter, setUserFilter] = useState<string>("all");
   const [searchText, setSearchText] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
     const to = new Date();
     const from = new Date();
@@ -185,6 +188,21 @@ export function AuditLogTab() {
     }
     return out;
   }, [items, userFilter, searchText]);
+
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / itemsPerPage));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sectionFilter, entityFilter, actionFilter, userFilter, searchText, dateRange, itemsPerPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const pageItems = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return visibleItems.slice(start, start + itemsPerPage);
+  }, [visibleItems, currentPage, itemsPerPage]);
 
   const userOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -354,7 +372,7 @@ export function AuditLogTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleItems.map((ev) => {
+            {pageItems.map((ev) => {
               const open = expanded.has(ev.id);
               return (
                 <>
@@ -402,7 +420,7 @@ export function AuditLogTab() {
                 </>
               );
             })}
-            {visibleItems.length === 0 && !loading && (
+            {pageItems.length === 0 && !loading && (
               <TableRow>
                 <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                   No hay eventos
@@ -412,10 +430,19 @@ export function AuditLogTab() {
           </TableBody>
         </Table>
 
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={visibleItems.length}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
+
         <div className="flex justify-center mt-4">
           {hasMore ? (
             <Button variant="outline" onClick={() => load("more")} disabled={loading}>
-              {loading ? "Cargando…" : "Cargar más"}
+              {loading ? "Cargando…" : "Cargar más eventos"}
             </Button>
           ) : items.length > 0 ? (
             <span className="text-xs text-muted-foreground">No hay más eventos</span>

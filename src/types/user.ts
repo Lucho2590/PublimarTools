@@ -1,8 +1,8 @@
 export enum EUserRole {
+    SUPERUSER = "superuser",
     ADMIN = "admin",
     BANDERAS = "banderas",
     VIA_PUBLICA = "via_publica",
-    ADMINISTRACION = "administracion",
 }
 
 export enum EUserStatus {

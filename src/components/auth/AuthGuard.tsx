@@ -8,12 +8,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  
+
   // Normalizar pathname removiendo barra final
-  const normalizedPathname = pathname.endsWith('/') && pathname.length > 1 
-    ? pathname.slice(0, -1) 
+  const normalizedPathname = pathname.endsWith('/') && pathname.length > 1
+    ? pathname.slice(0, -1)
     : pathname;
-  
+
   const isLoginPage = normalizedPathname === '/login';
 
   useEffect(() => {
@@ -49,4 +49,4 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   return <>{children}</>;
-} 
+}
