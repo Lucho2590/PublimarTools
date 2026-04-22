@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { TPurchase, EPurchaseDepartment, EPurchasePaymentMethod } from '@/types/purchase';
 import { EProviderAccountStatus } from '@/types/providerAccount';
 import { EUserRole } from '@/types/user';
+import { isAdminOrAbove } from '@/lib/permissions';
 import { formatearPrecio } from '@/lib/utils';
 import { Save, Trash2, X, Paperclip, AlertCircle, Plus, CheckCircle, Camera, Upload } from 'lucide-react';
 import { useAuditLog } from '@/hooks/useAuditLog';
@@ -94,7 +95,7 @@ export default function PurchaseEditModal({
         department = EPurchaseDepartment.BANDERAS;
       } else if (userRole === EUserRole.VIA_PUBLICA) {
         department = EPurchaseDepartment.VIA_PUBLICA;
-      } else if (userRole === EUserRole.ADMINISTRACION) {
+      } else if (isAdminOrAbove(userRole)) {
         // Administración puede mantener el departamento de la compra
         department = purchase.department || EPurchaseDepartment.ADMINISTRACION;
       }
@@ -493,13 +494,13 @@ export default function PurchaseEditModal({
                   value={formData.department || ''}
                   onValueChange={handleDepartmentChange}
                   required
-                  disabled={(userRole !== EUserRole.ADMINISTRACION) && (userRole !== EUserRole.ADMIN)}
+                  disabled={!isAdminOrAbove(userRole)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Seleccionar departamento" />
                   </SelectTrigger>
                   <SelectContent>
-                    {userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN ? (
+                    {isAdminOrAbove(userRole) ? (
                       // Administración puede ver y seleccionar todos los departamentos
                       <>
                         <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>

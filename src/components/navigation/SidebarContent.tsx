@@ -1,13 +1,26 @@
 'use client';
 
-import React from "react";
+import React, { useMemo } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { LogOut, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { navConfig } from "./navConfig";
+import { navConfig, NavItem as TNavItem } from "./navConfig";
 import { NavItem } from "./NavItem";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+import { canAccessRoute } from "@/lib/permissions";
+import { EUserRole } from "@/types/user";
+
+function filterNavByRole(items: TNavItem[], role: EUserRole | null): TNavItem[] {
+  return items
+    .filter((item) => canAccessRoute(role, item.href))
+    .map((item) =>
+      item.subItems
+        ? { ...item, subItems: filterNavByRole(item.subItems, role) }
+        : item
+    );
+}
 
 interface SidebarContentProps {
   isSidebarOpen: boolean;
@@ -31,6 +44,8 @@ export function SidebarContent({
   onLogout,
 }: SidebarContentProps) {
   const isOpen = isSidebarOpen || isMobile;
+  const { userRole } = useAuth();
+  const visibleNav = useMemo(() => filterNavByRole(navConfig, userRole), [userRole]);
 
   return (
     <TooltipProvider>
@@ -85,7 +100,7 @@ export function SidebarContent({
         {/* Navigation */}
         <nav className="mt-3 flex-1 overflow-y-auto">
           <ul className="space-y-1">
-            {navConfig.map((item, index) => (
+            {visibleNav.map((item, index) => (
               <React.Fragment key={item.name}>
                 {/* Separador entre secciones principales (no antes del primero) */}
                 {index > 0 && (

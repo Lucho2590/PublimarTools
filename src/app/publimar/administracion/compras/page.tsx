@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/pagination";
 import { TPurchase, EPurchaseDepartment, EPurchasePaymentMethod } from "@/types/purchase";
 import { EUserRole } from "@/types/user";
+import { isAdminOrAbove } from "@/lib/permissions";
 import { formatearPrecio } from "@/lib/utils";
 import { EProviderAccountStatus } from "@/types/providerAccount";
 import { Edit, DollarSign, Paperclip, Upload, X, AlertCircle, Plus, CheckCircle, Camera } from "lucide-react";
@@ -92,7 +93,7 @@ export default function ComprasAdminPage() {
         setForm(prev => ({ ...prev, department: EPurchaseDepartment.BANDERAS }));
       } else if (userRole === EUserRole.VIA_PUBLICA) {
         setForm(prev => ({ ...prev, department: EPurchaseDepartment.VIA_PUBLICA }));
-      } else if (userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN) {
+      } else if (isAdminOrAbove(userRole)) {
         setForm(prev => ({ ...prev, department: EPurchaseDepartment.ADMINISTRACION }));
       }
     }
@@ -477,7 +478,7 @@ export default function ComprasAdminPage() {
         resetForm.department = EPurchaseDepartment.BANDERAS;
       } else if (userRole === EUserRole.VIA_PUBLICA) {
         resetForm.department = EPurchaseDepartment.VIA_PUBLICA;
-      } else if (userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN) {
+      } else if (isAdminOrAbove(userRole)) {
         resetForm.department = EPurchaseDepartment.ADMINISTRACION;
       }
       setForm(resetForm);
@@ -665,13 +666,13 @@ export default function ComprasAdminPage() {
                     value={form.department || ""}
                     onValueChange={handleDepartmentChange}
                     required
-                    disabled={(userRole !== EUserRole.ADMINISTRACION) && (userRole !== EUserRole.ADMIN)}
+                    disabled={!isAdminOrAbove(userRole)}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Seleccionar departamento" />
                     </SelectTrigger>
                     <SelectContent>
-                      {userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN ? (
+                      {isAdminOrAbove(userRole) ? (
                         <>
                           <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
                           <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Via Publica</SelectItem>
@@ -818,7 +819,7 @@ export default function ComprasAdminPage() {
                       resetForm.department = EPurchaseDepartment.BANDERAS;
                     } else if (userRole === EUserRole.VIA_PUBLICA) {
                       resetForm.department = EPurchaseDepartment.VIA_PUBLICA;
-                    } else if (userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN) {
+                    } else if (isAdminOrAbove(userRole)) {
                       resetForm.department = EPurchaseDepartment.ADMINISTRACION;
                     }
                     setForm(resetForm);

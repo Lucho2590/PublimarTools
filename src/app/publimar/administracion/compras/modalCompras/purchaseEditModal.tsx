@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { TPurchase, EPurchaseDepartment, EPurchasePaymentMethod } from '@/types/purchase';
 import { EProviderAccountStatus } from '@/types/providerAccount';
 import { EUserRole } from '@/types/user';
+import { isAdminOrAbove } from '@/lib/permissions';
 import { Save, Trash2, X, Paperclip, AlertCircle, Plus, CheckCircle, Camera, Upload } from 'lucide-react';
 import { formatearPrecio } from '@/lib/utils';
 import { useAuditLog } from '@/hooks/useAuditLog';
@@ -485,13 +486,13 @@ export default function PurchaseEditModal({
                   value={formData.department || ''}
                   onValueChange={handleDepartmentChange}
                   required
-                  disabled={(userRole !== EUserRole.ADMINISTRACION) && (userRole !== EUserRole.ADMIN)}
+                  disabled={!isAdminOrAbove(userRole)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Seleccionar departamento" />
                   </SelectTrigger>
                   <SelectContent>
-                    {userRole === EUserRole.ADMINISTRACION || userRole === EUserRole.ADMIN ? (
+                    {isAdminOrAbove(userRole) ? (
                       <>
                         <SelectItem value={EPurchaseDepartment.BANDERAS}>Banderas</SelectItem>
                         <SelectItem value={EPurchaseDepartment.VIA_PUBLICA}>Via Publica</SelectItem>
