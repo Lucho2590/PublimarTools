@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { CuitInput } from '@/components/cuit-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
@@ -249,11 +250,13 @@ export default function ProviderEditModal({
 
               <div className="space-y-2">
                 <Label htmlFor="cuit">CUIT/CUIL</Label>
-                <Input
+                <CuitInput
                   id="cuit"
                   name="cuit"
                   value={formData.cuit || ''}
-                  onChange={handleChange}
+                  onValueChange={(digits) =>
+                    setFormData((prev) => ({ ...prev, cuit: digits }))
+                  }
                   className="w-full"
                 />
               </div>

@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CuitInput } from "@/components/cuit-input";
+import { formatCuit } from "@/lib/cuit";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useUser } from "reactfire";
@@ -1182,7 +1184,7 @@ export default function NuevasOrdenesPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>CUIT/CUIL</Label>
-                <Input value={cuit} onChange={(e) => setCuit(e.target.value)} />
+                <CuitInput value={cuit} onValueChange={setCuit} />
               </div>
               <div className="space-y-2">
                 <Label>Referencia</Label>
@@ -2251,7 +2253,7 @@ export default function NuevasOrdenesPage() {
                   )}
                   {cuit && (
                     <div>
-                      <strong>CUIT:</strong> {cuit}
+                      <strong>CUIT:</strong> {formatCuit(cuit)}
                     </div>
                   )}
                   {direccion && (

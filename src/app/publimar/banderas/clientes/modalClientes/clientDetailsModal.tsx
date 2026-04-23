@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { CuitInput } from "@/components/cuit-input";
+import { formatCuit } from "@/lib/cuit";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -391,7 +393,7 @@ export default function ClientDetailsModal({
                     {typedClient.cuit && (
                       <div>
                         <h3 className="font-semibold text-slate-700">CUIT</h3>
-                        <p className="text-slate-900">{typedClient.cuit}</p>
+                        <p className="text-slate-900 font-mono tabular-nums">{formatCuit(typedClient.cuit)}</p>
                       </div>
                     )}
                     {typedClient.reference && (
@@ -643,11 +645,11 @@ export default function ClientDetailsModal({
 
                   <div className="space-y-2">
                     <Label htmlFor="cuit">CUIT</Label>
-                    <Input
+                    <CuitInput
                       id="cuit"
                       value={formData.cuit}
-                      onChange={(e) =>
-                        setFormData({ ...formData, cuit: e.target.value })
+                      onValueChange={(digits) =>
+                        setFormData({ ...formData, cuit: digits })
                       }
                     />
                   </div>

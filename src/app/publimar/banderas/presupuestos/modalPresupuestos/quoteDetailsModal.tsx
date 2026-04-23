@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatCuit } from "@/lib/cuit";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -911,7 +912,7 @@ export default function QuoteDetailsModal({
                   )}
                   {quote.client.cuit && (
                     <p className="text-slate-600">
-                      CUIT/CUIL: {quote.client.cuit}
+                      CUIT/CUIL: <span className="font-mono tabular-nums">{formatCuit(quote.client.cuit)}</span>
                     </p>
                   )}
                 </CardContent>

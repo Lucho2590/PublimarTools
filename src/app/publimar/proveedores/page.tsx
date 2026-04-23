@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import { formatCuit } from "@/lib/cuit";
 import {
   Select,
   SelectContent,
@@ -389,8 +390,8 @@ export default function ProveedoresPage() {
                         <TableCell className="text-left">
                           {provider.phone || "-"}
                         </TableCell>
-                        <TableCell className="text-left">
-                          {provider.cuit || "-"}
+                        <TableCell className="text-left font-mono tabular-nums">
+                          {formatCuit(provider.cuit) || "-"}
                         </TableCell>
                         <TableCell className="text-left">
                           {provider.contactPerson || "-"}

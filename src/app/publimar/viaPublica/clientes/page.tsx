@@ -8,6 +8,7 @@ import { collection, query, orderBy, where } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatCuit } from "@/lib/cuit";
 import {
   Table,
   TableBody,
@@ -219,8 +220,8 @@ export default function ClientesPage() {
                         <TableCell className="text-left hidden lg:table-cell">
                           {client.reference || "-"}
                         </TableCell>
-                        <TableCell className="text-left hidden md:table-cell">
-                          {client.cuit || "-"}
+                        <TableCell className="text-left hidden md:table-cell font-mono tabular-nums">
+                          {formatCuit(client.cuit) || "-"}
                         </TableCell>
                         <TableCell className="text-left hidden lg:table-cell">
                         {client.contacts?.[0]?.name || client.name || "-"}

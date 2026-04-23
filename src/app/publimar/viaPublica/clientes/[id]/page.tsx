@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import collections from "@/lib/collections";
+import { formatCuit } from "@/lib/cuit";
 import { EClientType, TClient, TClientContact } from "@/types/client";
 import { formatDate, formatearPrecio, extractIdFromSlug, generateSlug } from "@/lib/utils";
 import { EOrderStatus } from "@/types/order";
@@ -188,7 +189,7 @@ export default function ClienteDetallePage({
                 {typedClient.cuit && (
                   <div>
                     <h3 className="font-semibold text-slate-700">CUIT</h3>
-                    <p className="text-slate-900">{typedClient.cuit}</p>
+                    <p className="text-slate-900 font-mono tabular-nums">{formatCuit(typedClient.cuit)}</p>
                   </div>
                 )}
                 {typedClient.notes && (

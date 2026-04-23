@@ -1,4 +1,3 @@
-
 "use client";
 export const dynamic = "force-dynamic";
 
@@ -8,23 +7,73 @@ import { useFirestore, useUser } from "reactfire";
 import { collection, addDoc, serverTimestamp, doc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CuitInput } from "@/components/cuit-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import collections from "@/lib/collections";
-import { EClientType, EClientStatus, EClientSection, TClientContact } from "@/types/client";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Trash2 } from "lucide-react";
+import {
+  EClientType,
+  EClientStatus,
+  EClientSection,
+  EClientTaxCondition,
+  TClientContact,
+} from "@/types/client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Save,
+  Trash2,
+  Plus,
+  Loader2,
+  ArrowLeft,
+  Users,
+} from "lucide-react";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { buildChanges } from "@/lib/auditLog";
-import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
+import {
+  EAuditAction,
+  EAuditEntityType,
+  EAuditSection,
+} from "@/types/auditLog";
+
+const taxConditionOptions: {
+  value: EClientTaxCondition;
+  label: string;
+  invoice: string;
+}[] = [
+  {
+    value: EClientTaxCondition.IVA_INSCRIPTO,
+    label: "IVA Inscripto",
+    invoice: "Factura A",
+  },
+  {
+    value: EClientTaxCondition.IVA_EXENTO,
+    label: "IVA Exento",
+    invoice: "Factura B",
+  },
+  {
+    value: EClientTaxCondition.IVA_NO_ALCANZADO,
+    label: "IVA No Alcanzado",
+    invoice: "Factura B",
+  },
+  {
+    value: EClientTaxCondition.CONSUMIDOR_FINAL,
+    label: "Consumidor Final",
+    invoice: "Factura B",
+  },
+];
 
 export default function NuevoClientePage() {
   const [loading, setLoading] = useState(false);
@@ -33,12 +82,25 @@ export default function NuevoClientePage() {
   const { data: user } = useUser();
   const { logEvent } = useAuditLog();
 
-  // Estado para los contactos del cliente
   const [contacts, setContacts] = useState<TClientContact[]>([
     { name: "", email: "", phone: "" },
   ]);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    type: EClientType;
+    status: EClientStatus;
+    section: EClientSection;
+    businessName: string;
+    fantasyName: string;
+    email: string;
+    phone: string;
+    address: string;
+    cuit: string;
+    taxCondition: EClientTaxCondition | undefined;
+    reference: string;
+    notes: string;
+  }>({
     name: "",
     type: EClientType.COMPANY,
     status: EClientStatus.ACTIVE,
@@ -49,6 +111,7 @@ export default function NuevoClientePage() {
     phone: "",
     address: "",
     cuit: "",
+    taxCondition: undefined,
     reference: "",
     notes: "",
   });
@@ -84,15 +147,14 @@ export default function NuevoClientePage() {
 
   const removeContact = (index: number) => {
     if (contacts.length > 1) {
-      const updatedContacts = contacts.filter((_, i) => i !== index);
-      setContacts(updatedContacts);
+      setContacts(contacts.filter((_, i) => i !== index));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
-    // Validación según tipo
+
     if (formData.type === EClientType.COMPANY) {
       if (!formData.businessName) {
         toast.error("La razón social es requerida");
@@ -111,7 +173,6 @@ export default function NuevoClientePage() {
     setLoading(true);
 
     try {
-      // Filtrar contactos vacíos
       const filteredContacts = contacts.filter(
         (contact) =>
           contact.name.trim() !== "" ||
@@ -119,13 +180,12 @@ export default function NuevoClientePage() {
           contact.phone.trim() !== ""
       );
 
-      // Si es empresa, name = fantasyName || businessName
       const finalFormData = { ...formData };
       if (finalFormData.type === EClientType.COMPANY) {
-        finalFormData.name = finalFormData.fantasyName || finalFormData.businessName;
+        finalFormData.name =
+          finalFormData.fantasyName || finalFormData.businessName;
       }
 
-      // Crear un nuevo cliente en Firestore
       const clientData: Record<string, any> = {
         ...finalFormData,
         contacts: filteredContacts,
@@ -135,9 +195,11 @@ export default function NuevoClientePage() {
         updatedBy: doc(firestore, `users/${user.uid}`),
       };
 
-      // Eliminar campos vacíos, excepto los campos requeridos
       Object.keys(clientData).forEach((key) => {
-        if (clientData[key] === "" && key !== "name") {
+        if (
+          (clientData[key] === "" || clientData[key] === undefined) &&
+          key !== "name"
+        ) {
           delete clientData[key];
         }
       });
@@ -154,11 +216,27 @@ export default function NuevoClientePage() {
         entityId: docRef.id,
         entityLabel: finalFormData.name ?? null,
         action: EAuditAction.CREATE,
-        description: `Creó el cliente ${finalFormData.name ?? ''}`.trim(),
-        changes: buildChanges(null, { ...finalFormData, contacts: filteredContacts } as any, [
-          'name', 'type', 'status', 'section', 'businessName', 'fantasyName',
-          'email', 'phone', 'address', 'cuit', 'reference', 'notes', 'contacts',
-        ]),
+        description: `Creó el cliente ${finalFormData.name ?? ""}`.trim(),
+        changes: buildChanges(
+          null,
+          { ...finalFormData, contacts: filteredContacts } as any,
+          [
+            "name",
+            "type",
+            "status",
+            "section",
+            "businessName",
+            "fantasyName",
+            "email",
+            "phone",
+            "address",
+            "cuit",
+            "taxCondition",
+            "reference",
+            "notes",
+            "contacts",
+          ]
+        ),
       });
 
       toast.success("Cliente creado con éxito");
@@ -172,47 +250,69 @@ export default function NuevoClientePage() {
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Crear nuevo cliente</h1>
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Crear nuevo cliente
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Ingresá los datos y la condición fiscal para facturar
+          </p>
+        </div>
         <Button
+          type="button"
           variant="outline"
           onClick={() => router.push("/publimar/banderas/clientes")}
-          className="bg-red-500 hover:bg-red-600 text-white"
         >
+          <ArrowLeft className="h-4 w-4 mr-1.5" />
           Cancelar
         </Button>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Información básica</CardTitle>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold">
+              Información básica
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="pt-0 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="type">Tipo de cliente</Label>
                 <Select
                   value={formData.type}
-                  onValueChange={(value) => handleChange({ target: { name: "type", value } } as any)}
+                  onValueChange={(value) =>
+                    handleChange({
+                      target: { name: "type", value },
+                    } as any)
+                  }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Seleccionar tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={EClientType.INDIVIDUAL}>Particular</SelectItem>
+                    <SelectItem value={EClientType.INDIVIDUAL}>
+                      Persona física
+                    </SelectItem>
                     <SelectItem value={EClientType.COMPANY}>Empresa</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cuit">{formData.type === EClientType.COMPANY ? "CUIT" : "CUIL"}</Label>
-                <Input
+                <Label htmlFor="cuit">
+                  {formData.type === EClientType.COMPANY
+                    ? "CUIT"
+                    : "CUIT / CUIL"}
+                </Label>
+                <CuitInput
                   id="cuit"
                   name="cuit"
                   value={formData.cuit}
-                  onChange={handleChange}
+                  onValueChange={(digits) =>
+                    setFormData((prev) => ({ ...prev, cuit: digits }))
+                  }
                 />
               </div>
             </div>
@@ -273,31 +373,32 @@ export default function NuevoClientePage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="reference">Referencia</Label>
-                <Input
-                  id="reference"
-                  name="reference"
-                  value={formData.reference}
-                  onChange={handleChange}
-                  placeholder="Referencia del cliente..."
-                />
-              </div>
-              {/* <div className="space-y-2">
-                <Label htmlFor="status">Estado</Label>
-                <select
-                  id="status"
-                  name="status"
-                  className="w-full p-2 border border-slate-300 rounded-md"
-                  value={formData.status}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value={EClientStatus.ACTIVE}>Activo</option>
-                  <option value={EClientStatus.INACTIVE}>Inactivo</option>
-                </select>
-              </div> */}
+            <div className="space-y-2">
+              <Label htmlFor="taxCondition">Condición frente al IVA</Label>
+              <Select
+                value={formData.taxCondition ?? "none"}
+                onValueChange={(value) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    taxCondition:
+                      value === "none"
+                        ? undefined
+                        : (value as EClientTaxCondition),
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar condición fiscal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin definir</SelectItem>
+                  {taxConditionOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label} · {opt.invoice}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -322,7 +423,16 @@ export default function NuevoClientePage() {
               </div>
             </div>
 
-      
+            <div className="space-y-2">
+              <Label htmlFor="reference">Referencia</Label>
+              <Input
+                id="reference"
+                name="reference"
+                value={formData.reference}
+                onChange={handleChange}
+                placeholder="Referencia del cliente..."
+              />
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notas</Label>
@@ -337,39 +447,45 @@ export default function NuevoClientePage() {
           </CardContent>
         </Card>
 
-        <Card className="mb-6">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Contactos</CardTitle>
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Users className="h-4 w-4 text-slate-500" />
+              Personas de contacto
+            </CardTitle>
             <Button
               type="button"
               onClick={addContact}
               variant="outline"
               size="sm"
-              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
             >
+              <Plus className="h-4 w-4 mr-1.5" />
               Añadir contacto
             </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="pt-0 space-y-3">
             {contacts.map((contact, index) => (
-              <div key={index} className="border p-4 rounded-md">
-                <div className="flex justify-between mb-4">
-                  <h3 className="font-medium">Contacto {index + 1}</h3>
+              <div
+                key={index}
+                className="p-4 rounded-lg bg-slate-50 space-y-3"
+              >
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-semibold">
+                    Contacto {index + 1}
+                  </h3>
                   {contacts.length > 1 && (
                     <Button
                       type="button"
                       onClick={() => removeContact(index)}
                       variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                      title="Eliminar"  
+                      size="icon"
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8"
                     >
-                          <Trash2 className="h-4 w-4" />
-                      {/* Eliminar */}
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor={`contact-name-${index}`}>Nombre</Label>
                     <Input
@@ -377,6 +493,18 @@ export default function NuevoClientePage() {
                       value={contact.name}
                       onChange={(e) =>
                         handleContactChange(index, "name", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`contact-position-${index}`}>
+                      Cargo / Posición
+                    </Label>
+                    <Input
+                      id={`contact-position-${index}`}
+                      value={contact.position || ""}
+                      onChange={(e) =>
+                        handleContactChange(index, "position", e.target.value)
                       }
                     />
                   </div>
@@ -402,41 +530,34 @@ export default function NuevoClientePage() {
                     />
                   </div>
                 </div>
-                <div className="mt-4">
-                  <div className="space-y-2">
-                    <Label htmlFor={`contact-position-${index}`}>
-                      Cargo/Posición
-                    </Label>
-                    <Input
-                      id={`contact-position-${index}`}
-                      value={contact.position || ""}
-                      onChange={(e) =>
-                        handleContactChange(index, "position", e.target.value)
-                      }
-                    />
-                  </div>
-                </div>
               </div>
             ))}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardFooter className="flex justify-between pt-6">
-            <Button
-              variant="outline"
-              onClick={() => router.push("/publimar/banderas/clientes")}
-              disabled={loading}
-                className="bg-red-500 hover:bg-red-600 text-white"
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={loading} className="bg-green-600 hover:bg-green-700 hover:text-white text-white">
-              <Save className="h-4 w-4 mr-2" />
-              {loading ? "Guardando..." : "Guardar cliente"}
-            </Button>
-          </CardFooter>
-        </Card>
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push("/publimar/banderas/clientes")}
+            disabled={loading}
+          >
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={loading}>
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                Guardando...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-1.5" />
+                Guardar cliente
+              </>
+            )}
+          </Button>
+        </div>
       </form>
     </div>
   );

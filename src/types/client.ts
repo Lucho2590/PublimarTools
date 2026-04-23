@@ -14,7 +14,14 @@ export enum EClientType {
     BANDERAS = "banderas",
     VIA_PUBLICA = "viaPublica",
   }
-  
+
+  export enum EClientTaxCondition {
+    IVA_INSCRIPTO = "ivaInscripto",
+    IVA_EXENTO = "ivaExento",
+    IVA_NO_ALCANZADO = "ivaNoAlcanzado",
+    CONSUMIDOR_FINAL = "consumidorFinal",
+  }
+
   export type TClientContact = {
     name: string;
     email: string;
@@ -42,6 +49,7 @@ export enum EClientType {
     phone?: string;
     address?: string;
     cuit?: string; // CUIT/CUIL
+    taxCondition?: EClientTaxCondition; // Condición frente al IVA
     reference?: string; // Referencia del cliente
     notes?: string;
     contacts?: TClientContact[];

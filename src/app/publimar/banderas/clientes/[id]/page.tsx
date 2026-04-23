@@ -13,14 +13,25 @@ import {
   collection,
   query,
   where,
-  orderBy,
 } from "firebase/firestore";
-import { softDelete } from '@/lib/softDelete';
+import { softDelete } from "@/lib/softDelete";
+import { formatCuit } from "@/lib/cuit";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import collections from "@/lib/collections";
-import { EClientType, EClientSection, TClient, TClientContact } from "@/types/client";
+import {
+  EClientType,
+  EClientSection,
+  EClientTaxCondition,
+  TClient,
+  TClientContact,
+} from "@/types/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
 import {
@@ -28,10 +39,25 @@ import {
   formatearPrecio,
   extractIdFromSlug,
   generateSlug,
+  cn,
 } from "@/lib/utils";
 import { EOrderStatus } from "@/types/order";
 import { EPaymentMethod } from "@/types/sale";
-import { EyeIcon, Trash2 } from "lucide-react";
+import {
+  EyeIcon,
+  Trash2,
+  Pencil,
+  Building2,
+  User,
+  Mail,
+  Phone,
+  MapPin,
+  FileText,
+  StickyNote,
+  Users,
+  Loader2,
+  ArrowLeft,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +69,32 @@ import {
 import { toast } from "sonner";
 import { SaleDetailsModal } from "../../ventas/modalVentas/saleDetailsModal";
 
+const taxConditionInfo: Record<
+  EClientTaxCondition,
+  { label: string; invoice: string; className: string }
+> = {
+  [EClientTaxCondition.IVA_INSCRIPTO]: {
+    label: "IVA Inscripto",
+    invoice: "Factura A",
+    className: "bg-blue-50 text-blue-700 border border-blue-200",
+  },
+  [EClientTaxCondition.IVA_EXENTO]: {
+    label: "IVA Exento",
+    invoice: "Factura B",
+    className: "bg-amber-50 text-amber-700 border border-amber-200",
+  },
+  [EClientTaxCondition.IVA_NO_ALCANZADO]: {
+    label: "IVA No Alcanzado",
+    invoice: "Factura B",
+    className: "bg-slate-50 text-slate-700 border border-slate-200",
+  },
+  [EClientTaxCondition.CONSUMIDOR_FINAL]: {
+    label: "Consumidor Final",
+    invoice: "Factura B",
+    className: "bg-violet-50 text-violet-700 border border-violet-200",
+  },
+};
+
 export default function ClienteDetallePage({
   params,
 }: {
@@ -52,7 +104,6 @@ export default function ClienteDetallePage({
   const router = useRouter();
   const { logEvent } = useAuditLog();
 
-  // Extraer el ID real del slug
   const clientId = extractIdFromSlug(params.id);
 
   const clientRef = doc(firestore, collections.CLIENTS, clientId);
@@ -60,60 +111,51 @@ export default function ClienteDetallePage({
     idField: "id",
   });
 
-  // Obtener presupuestos del cliente
   const { status: quotesStatus, data: quotes } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.QUOTES),
-      where("client.id", "==", clientId),
+      where("client.id", "==", clientId)
     ),
-    { idField: "id" },
+    { idField: "id" }
   );
 
-  // Obtener órdenes del cliente
   const { status: ordersStatus, data: orders } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.ORDERS),
-      where("clientId", "==", clientId),
+      where("clientId", "==", clientId)
     ),
-    { idField: "id" },
+    { idField: "id" }
   );
 
-  // Obtener ventas del cliente
   const { status: salesStatus, data: sales } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.SALES),
-      where("clientId", "==", clientId),
+      where("clientId", "==", clientId)
     ),
-    { idField: "id" },
+    { idField: "id" }
   );
 
   const { status: salesStatus2, data: sales2 } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.SALES),
-      where("client", "==", clientId),
+      where("client", "==", clientId)
     ),
-    { idField: "id" },
+    { idField: "id" }
   );
 
-  // Filtrar ventas eliminadas
   const activeSales = sales?.filter((s: any) => !s.deleted);
   const activeSales2 = sales2?.filter((s: any) => !s.deleted);
 
-  // Estados para el modal de ventas
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
-
-  // Estados para eliminar cliente
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Función para abrir el modal de venta
   const handleViewSale = (saleId: string) => {
     setSelectedSaleId(saleId);
     setIsSaleModalOpen(true);
   };
 
-  // Función para cerrar el modal
   const handleCloseSaleModal = () => {
     setIsSaleModalOpen(false);
     setSelectedSaleId(null);
@@ -121,29 +163,38 @@ export default function ClienteDetallePage({
 
   if (status === "loading") {
     return (
-      <div className="flex justify-center my-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     );
   }
 
   if (!client) {
     return (
-      <div className="text-center py-12">
-        <h2 className="text-2xl font-bold text-slate-900">
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <h2 className="text-2xl font-bold tracking-tight">
           Cliente no encontrado
         </h2>
-        <p className="mt-2 text-slate-600">
+        <p className="mt-2 text-sm text-muted-foreground">
           El cliente que buscas no existe o ha sido eliminado.
         </p>
-        <Button asChild className="mt-4">
-          <Link href="/publimar/banderas/clientes">Volver a clientes</Link>
+        <Button asChild className="mt-6">
+          <Link href="/publimar/banderas/clientes">
+            <ArrowLeft className="h-4 w-4 mr-1.5" />
+            Volver a clientes
+          </Link>
         </Button>
       </div>
     );
   }
 
   const typedClient = client as TClient;
+  const isCompany = typedClient.type === EClientType.COMPANY;
+  const TypeIcon = isCompany ? Building2 : User;
+  const typeLabel = isCompany ? "Empresa" : "Persona física";
+  const tax = typedClient.taxCondition
+    ? taxConditionInfo[typedClient.taxCondition]
+    : null;
 
   const handleDeleteClient = async () => {
     setIsDeleting(true);
@@ -158,7 +209,7 @@ export default function ClienteDetallePage({
         entityId: clientId,
         entityLabel: typedClient.name ?? null,
         action: EAuditAction.DELETE,
-        description: `Eliminó el cliente ${typedClient.name ?? ''}`.trim(),
+        description: `Eliminó el cliente ${typedClient.name ?? ""}`.trim(),
       });
       toast.success("Cliente eliminado correctamente");
       router.push("/publimar/banderas/clientes");
@@ -171,12 +222,84 @@ export default function ClienteDetallePage({
     }
   };
 
+  const infoItem = (
+    icon: React.ComponentType<{ className?: string }>,
+    label: string,
+    value?: React.ReactNode
+  ) => {
+    if (!value) return null;
+    const Icon = icon;
+    return (
+      <div className="flex items-start gap-3">
+        <div className="h-9 w-9 rounded-lg bg-slate-50 flex items-center justify-center shrink-0">
+          <Icon className="h-4 w-4 text-slate-500" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="text-sm font-medium break-words">{value}</p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">
-          Detalle del Cliente: {typedClient.name}
-        </h1>
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <div className="h-11 w-11 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+            <TypeIcon className="h-5 w-5 text-blue-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-bold tracking-tight truncate">
+              {typedClient.name}
+            </h1>
+            <div className="flex items-center gap-2 flex-wrap mt-1.5">
+              <span className="text-sm text-muted-foreground">{typeLabel}</span>
+              {tax && (
+                <>
+                  <span className="text-muted-foreground">·</span>
+                  <span
+                    className={cn(
+                      "px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap",
+                      tax.className
+                    )}
+                  >
+                    {tax.label}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {tax.invoice}
+                  </span>
+                </>
+              )}
+              {!tax && (
+                <>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap bg-slate-50 text-slate-400 border border-dashed border-slate-200">
+                    Sin condición fiscal
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsDeleteDialogOpen(true)}
+            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+            title="Eliminar cliente"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+          <Button asChild size="sm">
+            <Link href={`/publimar/banderas/clientes/${clientId}/editar`}>
+              <Pencil className="h-4 w-4 mr-1.5" />
+              Editar
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="info" className="space-y-4">
@@ -188,202 +311,183 @@ export default function ClienteDetallePage({
         </TabsList>
 
         <TabsContent value="info" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Información General</CardTitle>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={() => setIsDeleteDialogOpen(true)}
-                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                  title="Eliminar cliente"
-                  size="icon"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  className="bg-blue-900 hover:bg-blue-700 text-white"
-                >
-                  <Link href={`/publimar/banderas/clientes/${clientId}/editar`}>
-                    Editar
-                  </Link>
-                </Button>
-              </div>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">
+                Información general
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="pt-0">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h3 className="font-semibold text-slate-700">Nombre</h3>
-                  <p className="text-slate-900">{typedClient.name}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-slate-700">Tipo</h3>
-                  <p className="text-slate-900">
-                    {typedClient.type === EClientType.COMPANY
-                      ? "Empresa"
-                      : "Individual"}
-                  </p>
-                </div>
-                {typedClient.type === EClientType.COMPANY &&
-                  typedClient.businessName && (
-                    <div>
-                      <h3 className="font-semibold text-slate-700">
-                        Razón Social
-                      </h3>
-                      <p className="text-slate-900">
-                        {typedClient.businessName}
-                      </p>
-                    </div>
+                {isCompany &&
+                  infoItem(FileText, "Razón Social", typedClient.businessName)}
+                {isCompany &&
+                  infoItem(
+                    FileText,
+                    "Nombre de Fantasía",
+                    typedClient.fantasyName
                   )}
-                <div>
-                  <h3 className="font-semibold text-slate-700">Email</h3>
-                  <p className="text-slate-900">{typedClient.email || "-"}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-slate-700">Teléfono</h3>
-                  <p className="text-slate-900">{typedClient.phone || "-"}</p>
-                </div>
-                {typedClient.address && (
-                  <div className="md:col-span-2">
-                    <h3 className="font-semibold text-slate-700">Dirección</h3>
-                    <p className="text-slate-900">{typedClient.address}</p>
-                  </div>
+                {infoItem(
+                  FileText,
+                  isCompany ? "CUIT" : "CUIT / CUIL",
+                  formatCuit(typedClient.cuit) || undefined
                 )}
-                {typedClient.cuit && (
-                  <div>
-                    <h3 className="font-semibold text-slate-700">CUIT</h3>
-                    <p className="text-slate-900">{typedClient.cuit}</p>
-                  </div>
+                {infoItem(
+                  FileText,
+                  "Condición fiscal",
+                  tax ? `${tax.label} · ${tax.invoice}` : undefined
                 )}
+                {infoItem(Mail, "Email", typedClient.email)}
+                {infoItem(Phone, "Teléfono", typedClient.phone)}
+                {infoItem(MapPin, "Dirección", typedClient.address)}
+                {infoItem(FileText, "Referencia", typedClient.reference)}
                 {typedClient.notes && (
                   <div className="md:col-span-2">
-                    <h3 className="font-semibold text-slate-700">Notas</h3>
-                    <p className="text-slate-900">{typedClient.notes}</p>
-                  </div>
-                )}
-                {typedClient.contacts && typedClient.contacts.length > 0 && (
-                  <div className="md:col-span-2">
-                    <h3 className="font-semibold text-slate-700 mb-2">
-                      Personas de Contacto
-                    </h3>
-                    <div className="space-y-4">
-                      {typedClient.contacts.map(
-                        (contact: TClientContact, index: number) => (
-                          <div
-                            key={index}
-                            className="border rounded-lg p-4 bg-slate-50"
-                          >
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <h4 className="font-medium text-slate-900">
-                                  {contact.name}
-                                </h4>
-                                {contact.position && (
-                                  <p className="text-sm text-slate-600">
-                                    {contact.position}
-                                  </p>
-                                )}
-                              </div>
-                              <div className="space-y-1">
-                                {contact.email && (
-                                  <p className="text-sm text-slate-600">
-                                    <span className="font-medium">Email:</span>{" "}
-                                    {contact.email}
-                                  </p>
-                                )}
-                                {contact.phone && (
-                                  <p className="text-sm text-slate-600">
-                                    <span className="font-medium">
-                                      Teléfono:
-                                    </span>{" "}
-                                    {contact.phone}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ),
-                      )}
-                    </div>
+                    {infoItem(StickyNote, "Notas", typedClient.notes)}
                   </div>
                 )}
               </div>
             </CardContent>
           </Card>
+
+          {typedClient.contacts && typedClient.contacts.length > 0 && (
+            <Card className="border-0 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Users className="h-4 w-4 text-slate-500" />
+                  Personas de contacto
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {typedClient.contacts.map(
+                    (contact: TClientContact, index: number) => (
+                      <div
+                        key={index}
+                        className="p-4 rounded-lg bg-slate-50 space-y-2"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold">
+                            {contact.name || "-"}
+                          </p>
+                          {contact.position && (
+                            <p className="text-xs text-muted-foreground">
+                              {contact.position}
+                            </p>
+                          )}
+                        </div>
+                        {(contact.email || contact.phone) && (
+                          <div className="space-y-1 pt-1 border-t border-slate-200">
+                            {contact.email && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                <Mail className="h-3 w-3" />
+                                {contact.email}
+                              </p>
+                            )}
+                            {contact.phone && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                <Phone className="h-3 w-3" />
+                                {contact.phone}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="presupuestos">
-          <Card>
-            <CardHeader>
-              <CardTitle>Presupuestos</CardTitle>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">
+                Presupuestos
+              </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {quotesStatus === "loading" ? (
-                <div className="flex justify-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                 </div>
               ) : quotes && quotes.length > 0 ? (
-                <div className="space-y-4">
-                  {quotes.map((quote) => (
-                    <div
-                      key={quote.id}
-                      className="border rounded-lg p-4 hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium">
-                            Presupuesto #{quote.number}
-                          </h3>
-                          <p className="text-sm text-slate-500">
-                            Fecha: {formatDate(quote.createdAt)}
-                          </p>
-                          <p className="text-sm text-slate-500">
-                            Válido hasta: {formatDate(quote.validUntil)}
-                          </p>
+                <div className="space-y-2">
+                  {quotes.map((quote) => {
+                    const statusMap: Record<
+                      string,
+                      { label: string; className: string }
+                    > = {
+                      draft: {
+                        label: "Borrador",
+                        className:
+                          "bg-slate-50 text-slate-700 border border-slate-200",
+                      },
+                      sent: {
+                        label: "Enviado",
+                        className:
+                          "bg-blue-50 text-blue-700 border border-blue-200",
+                      },
+                      confirmed: {
+                        label: "Confirmado",
+                        className:
+                          "bg-emerald-50 text-emerald-700 border border-emerald-200",
+                      },
+                      rejected: {
+                        label: "Rechazado",
+                        className:
+                          "bg-red-50 text-red-700 border border-red-200",
+                      },
+                    };
+                    const s = statusMap[quote.status] || {
+                      label: quote.status,
+                      className:
+                        "bg-slate-50 text-slate-700 border border-slate-200",
+                    };
+                    return (
+                      <Link
+                        key={quote.id}
+                        href={`/publimar/banderas/presupuestos/${generateSlug(
+                          quote.number,
+                          quote.id
+                        )}`}
+                        className="flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-150 group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium">
+                              Presupuesto #{quote.number}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(quote.createdAt)}
+                              {quote.validUntil &&
+                                ` · válido hasta ${formatDate(quote.validUntil)}`}
+                            </p>
+                          </div>
                         </div>
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="sm"
-                          className="bg-blue-900 hover:bg-blue-700 text-white"
-                          title="Ver presupuesto"
-                        >
-                          <Link
-                            href={`/publimar/banderas/presupuestos/${generateSlug(quote.number, quote.id)}`}
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span
+                            className={cn(
+                              "px-2 py-0.5 rounded-md text-xs font-medium",
+                              s.className
+                            )}
                           >
-                            <EyeIcon className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                      </div>
-                      <div className="mt-2">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            quote.status === "draft"
-                              ? "bg-slate-100 text-slate-800"
-                              : quote.status === "sent"
-                                ? "bg-blue-100 text-blue-800"
-                                : quote.status === "confirmed"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {quote.status === "draft"
-                            ? "Borrador"
-                            : quote.status === "sent"
-                              ? "Enviado"
-                              : quote.status === "confirmed"
-                                ? "Confirmado"
-                                : "Rechazado"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                            {s.label}
+                          </span>
+                          <EyeIcon className="h-4 w-4 text-muted-foreground opacity-0 md:group-hover:opacity-100 md:transition-opacity" />
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="text-center py-4 text-slate-500">
-                  No hay presupuestos asociados a este cliente
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No hay presupuestos asociados a este cliente.
                 </div>
               )}
             </CardContent>
@@ -391,82 +495,90 @@ export default function ClienteDetallePage({
         </TabsContent>
 
         <TabsContent value="ordenes">
-          <Card>
-            <CardHeader>
-              <CardTitle>Órdenes de Trabajo</CardTitle>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">
+                Órdenes de trabajo
+              </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {ordersStatus === "loading" ? (
-                <div className="flex justify-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                 </div>
               ) : orders && orders.length > 0 ? (
-                <div className="space-y-4">
-                  {orders.map((order: any) => (
-                    <div
-                      key={order.id}
-                      className="border rounded-lg p-4 hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-medium">Orden #{order.number}</h3>
-                          <p className="text-sm text-slate-500">
-                            Fecha de creación: {formatDate(order.createdAt)}
-                          </p>
-                          {order.startDate && (
-                            <p className="text-sm text-slate-500">
-                              Fecha de inicio: {formatDate(order.startDate)}
+                <div className="space-y-2">
+                  {orders.map((order: any) => {
+                    const statusMap: Record<
+                      string,
+                      { label: string; className: string }
+                    > = {
+                      [EOrderStatus.IN_PROCESS]: {
+                        label: "En proceso",
+                        className:
+                          "bg-blue-50 text-blue-700 border border-blue-200",
+                      },
+                      [EOrderStatus.COMPLETED]: {
+                        label: "Finalizado",
+                        className:
+                          "bg-emerald-50 text-emerald-700 border border-emerald-200",
+                      },
+                      [EOrderStatus.CANCELLED]: {
+                        label: "Cancelado",
+                        className:
+                          "bg-red-50 text-red-700 border border-red-200",
+                      },
+                    };
+                    const s = statusMap[order.status] || {
+                      label: order.status || "-",
+                      className:
+                        "bg-slate-50 text-slate-700 border border-slate-200",
+                    };
+                    return (
+                      <Link
+                        key={order.id}
+                        href={`/publimar/banderas/ordenes/${generateSlug(
+                          order.number,
+                          order.id
+                        )}`}
+                        className="flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-150 group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium">
+                              Orden #{order.number}
                             </p>
-                          )}
-                          {order.deliveryDate && (
-                            <p className="text-sm text-slate-500">
-                              Fecha de entrega: {formatDate(order.deliveryDate)}
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(order.createdAt)}
+                              {order.deliveryDate &&
+                                ` · entrega ${formatDate(order.deliveryDate)}`}
                             </p>
-                          )}
-                          <p className="text-sm font-semibold mt-2">
-                            Total: {formatearPrecio(order.total || 0)}
-                          </p>
+                          </div>
                         </div>
-                        <Button
-                          asChild
-                          variant="ghost"
-                          size="sm"
-                          className="bg-blue-900 hover:bg-blue-700 text-white"
-                        >
-                          <Link
-                            href={`/publimar/banderas/ordenes/${generateSlug(order.number, order.id)}`}
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span
+                            className={cn(
+                              "px-2 py-0.5 rounded-md text-xs font-medium",
+                              s.className
+                            )}
                           >
-                            <EyeIcon className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                      </div>
-                      <div className="mt-2">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            order.status === EOrderStatus.IN_PROCESS
-                              ? "bg-blue-100 text-blue-800"
-                              : order.status === EOrderStatus.COMPLETED
-                                ? "bg-green-100 text-green-800"
-                                : order.status === EOrderStatus.CANCELLED
-                                  ? "bg-purple-100 text-purple-800"
-                                  : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {order.status === EOrderStatus.IN_PROCESS
-                            ? "En Proceso"
-                            : order.status === EOrderStatus.COMPLETED
-                              ? "Finalizado"
-                              : order.status === EOrderStatus.COMPLETED
-                                ? "Entregado"
-                                : "Cancelado"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                            {s.label}
+                          </span>
+                          <span className="text-sm font-semibold hidden sm:inline">
+                            {formatearPrecio(order.total || 0)}
+                          </span>
+                          <EyeIcon className="h-4 w-4 text-muted-foreground opacity-0 md:group-hover:opacity-100 md:transition-opacity" />
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="text-center py-4 text-slate-500">
-                  No hay órdenes asociadas a este cliente
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No hay órdenes asociadas a este cliente.
                 </div>
               )}
             </CardContent>
@@ -474,83 +586,80 @@ export default function ClienteDetallePage({
         </TabsContent>
 
         <TabsContent value="ventas">
-          <Card>
-            <CardHeader>
-              <CardTitle>Ventas</CardTitle>
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Ventas</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               {salesStatus === "loading" || salesStatus2 === "loading" ? (
-                <div className="flex justify-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                 </div>
               ) : (activeSales && activeSales.length > 0) ||
                 (activeSales2 && activeSales2.length > 0) ? (
-                <div className="space-y-4">
-                  {(activeSales && activeSales.length > 0 ? activeSales : activeSales2).map(
-                    (sale: any) => (
-                      <div
+                <div className="space-y-2">
+                  {(activeSales && activeSales.length > 0
+                    ? activeSales
+                    : activeSales2
+                  )?.map((sale: any) => {
+                    const isFacturado =
+                      sale.facturas && sale.facturas.length > 0;
+                    const paymentLabel =
+                      sale.paymentMethod === EPaymentMethod.CASH
+                        ? "Efectivo"
+                        : sale.paymentMethod === EPaymentMethod.TRANSFER
+                          ? "Transferencia"
+                          : sale.paymentMethod === EPaymentMethod.CREDIT_CARD
+                            ? "Tarjeta"
+                            : sale.paymentMethod === EPaymentMethod.CHECK
+                              ? "Cheque"
+                              : sale.paymentMethod === EPaymentMethod.MERCADOPAGO
+                                ? "MercadoPago"
+                                : "-";
+                    return (
+                      <button
+                        type="button"
                         key={sale.id}
-                        className="border rounded-lg p-4 hover:bg-slate-50 transition-colors"
+                        onClick={() => handleViewSale(sale.id)}
+                        className="w-full text-left flex items-center justify-between gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-150 group cursor-pointer"
                       >
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-medium">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                            <FileText className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium">
                               Venta #{sale.number || sale.id.substring(0, 8)}
-                            </h3>
-                            <p className="text-sm text-slate-500">
-                              Fecha:{" "}
-                              {formatDate(sale.saleDate || sale.createdAt)}
                             </p>
-                            <p className="text-sm text-slate-500">
-                              Método de pago:{" "}
-                              {sale.paymentMethod === EPaymentMethod.CASH
-                                ? "Efectivo"
-                                : sale.paymentMethod === EPaymentMethod.TRANSFER
-                                  ? "Transferencia"
-                                  : sale.paymentMethod ===
-                                      EPaymentMethod.CREDIT_CARD
-                                    ? "Tarjeta"
-                                    : sale.paymentMethod ===
-                                        EPaymentMethod.CHECK
-                                      ? "Cheque"
-                                      : sale.paymentMethod ===
-                                          EPaymentMethod.MERCADOPAGO
-                                        ? "Otro"
-                                        : "-"}
-                            </p>
-                            <p className="text-sm font-semibold mt-2">
-                              Total: {formatearPrecio(sale.total || 0)}
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(sale.saleDate || sale.createdAt)} ·{" "}
+                              {paymentLabel}
                             </p>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="bg-blue-900 hover:bg-blue-700 text-white"
-                            onClick={() => handleViewSale(sale.id)}
-                          >
-                            <EyeIcon className="h-4 w-4" />
-                          </Button>
                         </div>
-                        <div className="mt-2">
+                        <div className="flex items-center gap-3 shrink-0">
                           <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              sale.facturas && sale.facturas.length > 0
-                                ? "bg-green-100 text-green-800"
-                                : "bg-slate-100 text-slate-800"
-                            }`}
+                            className={cn(
+                              "px-2 py-0.5 rounded-md text-xs font-medium",
+                              isFacturado
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-slate-50 text-slate-700 border border-slate-200"
+                            )}
                           >
-                            {sale.facturas && sale.facturas.length > 0
-                              ? "Facturado"
-                              : "Sin Facturar"}
+                            {isFacturado ? "Facturado" : "Sin facturar"}
                           </span>
+                          <span className="text-sm font-semibold hidden sm:inline">
+                            {formatearPrecio(sale.total || 0)}
+                          </span>
+                          <EyeIcon className="h-4 w-4 text-muted-foreground opacity-0 md:group-hover:opacity-100 md:transition-opacity" />
                         </div>
-                      </div>
-                    ),
-                  )}
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="text-center py-4 text-slate-500">
-                  No hay ventas asociadas a este cliente
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No hay ventas asociadas a este cliente.
                 </div>
               )}
             </CardContent>
@@ -558,7 +667,6 @@ export default function ClienteDetallePage({
         </TabsContent>
       </Tabs>
 
-      {/* Modal de detalles de venta */}
       <SaleDetailsModal
         open={isSaleModalOpen}
         onOpenChange={setIsSaleModalOpen}
@@ -566,7 +674,6 @@ export default function ClienteDetallePage({
         onSuccess={handleCloseSaleModal}
       />
 
-      {/* Diálogo de confirmación para eliminar cliente */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

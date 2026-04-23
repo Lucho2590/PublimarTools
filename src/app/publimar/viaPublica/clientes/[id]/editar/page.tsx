@@ -6,6 +6,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { CuitInput } from "@/components/cuit-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -250,11 +251,11 @@ export default function EditarClientePage({ params }: { params: { id: string } }
 
               <div className="space-y-2">
                 <Label htmlFor="cuit">{formData.type === EClientType.COMPANY ? "CUIT" : "CUIL"}</Label>
-                <Input
+                <CuitInput
                   id="cuit"
                   value={formData.cuit}
-                  onChange={(e) =>
-                    setFormData({ ...formData, cuit: e.target.value })
+                  onValueChange={(digits) =>
+                    setFormData({ ...formData, cuit: digits })
                   }
                 />
               </div>
@@ -331,10 +332,9 @@ export default function EditarClientePage({ params }: { params: { id: string } }
                             </div>
                             <div className="space-y-2">
                               <Label>CUIT</Label>
-                              <Input
+                              <CuitInput
                                 value={rs.cuit}
-                                onChange={(e) => handleRazonSocialChange(index, "cuit", e.target.value)}
-                                placeholder="CUIT..."
+                                onValueChange={(digits) => handleRazonSocialChange(index, "cuit", digits)}
                               />
                             </div>
                           </div>
