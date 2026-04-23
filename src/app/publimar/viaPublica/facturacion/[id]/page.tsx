@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatCuit } from "@/lib/cuit";
 import {
   Table,
   TableBody,
@@ -375,7 +376,7 @@ export default function FacturacionDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">CUIT</p>
-                  <p className="font-medium">{billing.client?.cuit || '-'}</p>
+                  <p className="font-medium font-mono tabular-nums">{formatCuit(billing.client?.cuit) || '-'}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Teléfono</p>

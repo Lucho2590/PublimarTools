@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CuitInput } from "@/components/cuit-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -1023,9 +1024,9 @@ export default function NuevaVentaPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>CUIT</Label>
-                <Input
+                <CuitInput
                   value={cuit}
-                  onChange={(e) => setCuit(e.target.value)}
+                  onValueChange={setCuit}
                 />
               </div>
             </div>

@@ -8,6 +8,7 @@ import { useFirestore, useUser } from "reactfire";
 import { collection, addDoc, serverTimestamp, doc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CuitInput } from "@/components/cuit-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
@@ -234,11 +235,13 @@ export default function NuevoClientePage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cuit">{formData.type === EClientType.COMPANY ? "CUIT" : "CUIL"}</Label>
-                <Input
+                <CuitInput
                   id="cuit"
                   name="cuit"
                   value={formData.cuit}
-                  onChange={handleChange}
+                  onValueChange={(digits) =>
+                    setFormData((prev) => ({ ...prev, cuit: digits }))
+                  }
                 />
               </div>
             </div>
@@ -325,10 +328,9 @@ export default function NuevoClientePage() {
                           </div>
                           <div className="space-y-2">
                             <Label>CUIT</Label>
-                            <Input
+                            <CuitInput
                               value={rs.cuit}
-                              onChange={(e) => handleRazonSocialChange(index, "cuit", e.target.value)}
-                              placeholder="CUIT..."
+                              onValueChange={(digits) => handleRazonSocialChange(index, "cuit", digits)}
                             />
                           </div>
                         </div>

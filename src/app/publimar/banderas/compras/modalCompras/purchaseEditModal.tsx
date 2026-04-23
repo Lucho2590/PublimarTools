@@ -30,7 +30,7 @@ import { EProviderAccountStatus } from '@/types/providerAccount';
 import { EUserRole } from '@/types/user';
 import { isAdminOrAbove } from '@/lib/permissions';
 import { formatearPrecio } from '@/lib/utils';
-import { Save, Trash2, X, Paperclip, AlertCircle, Plus, CheckCircle, Camera, Upload } from 'lucide-react';
+import { Save, Trash2, X, Paperclip, AlertCircle, Plus, CheckCircle, Camera, Upload, Loader2 } from 'lucide-react';
 import { useAuditLog } from '@/hooks/useAuditLog';
 import { buildChanges, generateCorrelationId } from '@/lib/auditLog';
 import { EAuditAction, EAuditEntityType, EAuditSection } from '@/types/auditLog';
@@ -420,7 +420,7 @@ export default function PurchaseEditModal({
 
         {status === 'loading' ? (
           <div className="flex justify-center items-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">

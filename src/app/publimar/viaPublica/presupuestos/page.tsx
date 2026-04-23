@@ -7,6 +7,7 @@ import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp, get
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatCuit } from "@/lib/cuit";
 import {
   Table,
   TableBody,
@@ -323,7 +324,7 @@ export default function PresupuestosViaPublicaPage() {
         quote.client?.email ? { label: "Email:", value: quote.client.email } : null,
         quote.client?.phone ? { label: "Teléfono:", value: quote.client.phone } : null,
         quote.client?.address ? { label: "Dirección:", value: quote.client.address } : null,
-        quote.client?.cuit ? { label: "CUIT/CUIL:", value: quote.client.cuit } : null,
+        quote.client?.cuit ? { label: "CUIT/CUIL:", value: formatCuit(quote.client.cuit) } : null,
       ].filter(Boolean);
 
       clientInfo.forEach((info) => {

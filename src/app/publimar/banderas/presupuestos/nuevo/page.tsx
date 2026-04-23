@@ -15,6 +15,8 @@ import {
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CuitInput } from "@/components/cuit-input";
+import { formatCuit } from "@/lib/cuit";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
@@ -1027,7 +1029,7 @@ export default function NuevoPresupuestoPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>CUIT/CUIL</Label>
-                <Input value={cuit} onChange={(e) => setCuit(e.target.value)} />
+                <CuitInput value={cuit} onValueChange={setCuit} />
               </div>
               <div className="space-y-2">
                 <Label>Referencia</Label>
@@ -1774,7 +1776,7 @@ export default function NuevoPresupuestoPage() {
                     {email && <p>• Email: {email}</p>}
                     {telefono && <p>• Tel: {telefono}</p>}
                     {direccion && <p>• Dir: {direccion}</p>}
-                    {cuit && <p>• CUIT: {cuit}</p>}
+                    {cuit && <p>• CUIT: {formatCuit(cuit)}</p>}
                   </div>
                 )}
               </div>
