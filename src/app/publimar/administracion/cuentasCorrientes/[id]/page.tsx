@@ -95,7 +95,7 @@ export default function CuentaCorrienteDetailPage() {
 
   // Filtrar compras que no estén eliminadas (soft delete)
   const activePurchases = useMemo(() => {
-    return purchases?.filter((p: any) => !p.deletedAt) || [];
+    return purchases?.filter((p: any) => !p.deleted) || [];
   }, [purchases]);
 
   // Obtener pagos de la CC

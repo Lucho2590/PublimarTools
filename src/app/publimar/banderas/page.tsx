@@ -155,7 +155,7 @@ export default function DashboardPage() {
     { idField: "id" }
   );
   const events = allEvents?.filter((event: any) =>
-    !event.section || event.section === EEventSection.BANDERAS
+    !event.deleted && (!event.section || event.section === EEventSection.BANDERAS)
   );
 
   // --- Ventas
@@ -194,6 +194,7 @@ export default function DashboardPage() {
     useFirestoreCollectionData(purchasesQuery);
 
   const monthlyPurchasesData = allPurchasesData?.filter((purchase: any) => {
+    if (purchase.deleted) return false;
     if (!purchase.date) return false;
     const purchaseDate = new Date(purchase.date);
     const currentMonth = new Date().getMonth();
@@ -202,6 +203,7 @@ export default function DashboardPage() {
   });
 
   const yearlyPurchasesData = allPurchasesData?.filter((purchase: any) => {
+    if (purchase.deleted) return false;
     if (!purchase.date) return false;
     const purchaseDate = new Date(purchase.date);
     const currentYear = new Date().getFullYear();

@@ -143,6 +143,8 @@ export default function ComprasAdminPage() {
   // Filtrar compras según búsqueda, fechas, proveedor y departamento
   const filteredPurchases = useMemo(() => {
     return purchases?.filter((purchase: any) => {
+      if (purchase.deleted) return false;
+
       const searchNormalized = normalizeText(searchTerm);
       const matchesSearch =
         normalizeText(purchase.providerName || '').includes(searchNormalized) ||

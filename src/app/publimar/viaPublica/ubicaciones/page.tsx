@@ -173,7 +173,7 @@ export default function UbicacionesPage() {
   };
 
   const locations: TLocation[] =
-    (locationsData as any[])?.map((loc) => ({
+    (locationsData as any[])?.filter((loc) => !loc.deleted).map((loc) => ({
       id: loc.id,
       code: loc.code,
       lat: loc.lat,

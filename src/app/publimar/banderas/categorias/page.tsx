@@ -179,6 +179,7 @@ export default function CategoriasPage() {
             </TableHeader>
             <TableBody>
               {categories
+                ?.filter((c: any) => !c.deleted)
                 ?.sort((a, b) => a.name.localeCompare(b.name))
                 ?.map((category) => {
                 const typedCategory = category as unknown as TProductCategory;

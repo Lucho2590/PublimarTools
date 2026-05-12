@@ -116,6 +116,7 @@ export default function ProveedoresPage() {
 
   // Filtrar proveedores según la búsqueda
   const filteredProviders = providers?.filter((provider: any) => {
+    if (provider.deleted) return false;
     const searchNormalized = normalizeText(searchTerm);
     return (
       normalizeText(provider.name || '').includes(searchNormalized) ||
