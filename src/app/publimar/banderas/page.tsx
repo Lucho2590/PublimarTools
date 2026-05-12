@@ -156,7 +156,7 @@ export default function DashboardPage() {
 
   // Filtrar eventos de Banderas del lado del cliente
   const events = allEvents?.filter((event: any) =>
-    !event.section || event.section === EEventSection.BANDERAS
+    !event.deleted && (!event.section || event.section === EEventSection.BANDERAS)
   );
 
   // Calcular ventas del mes
@@ -198,6 +198,7 @@ export default function DashboardPage() {
 
   // Filtrar compras del mes y año del lado del cliente usando el campo 'date'
   const monthlyPurchasesData = allPurchasesData?.filter((purchase: any) => {
+    if (purchase.deleted) return false;
     if (!purchase.date) return false;
     const purchaseDate = new Date(purchase.date);
     const currentMonth = new Date().getMonth();
@@ -206,6 +207,7 @@ export default function DashboardPage() {
   });
 
   const yearlyPurchasesData = allPurchasesData?.filter((purchase: any) => {
+    if (purchase.deleted) return false;
     if (!purchase.date) return false;
     const purchaseDate = new Date(purchase.date);
     const currentYear = new Date().getFullYear();

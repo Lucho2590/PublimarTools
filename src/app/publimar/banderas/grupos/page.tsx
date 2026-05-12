@@ -203,6 +203,7 @@ export default function GruposPage() {
             </TableHeader>
             <TableBody>
               {groups
+                ?.filter((g: any) => !g.deleted)
                 ?.sort((a, b) => a.name.localeCompare(b.name))
                 ?.map((group) => {
                 const typedGroup = group as unknown as TProductGroup;

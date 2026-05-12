@@ -156,7 +156,7 @@ export default function DashboardPage() {
 
   // Filtrar eventos de Vía Pública del lado del cliente
   const events = allEvents?.filter((event: any) =>
-    event.section === EEventSection.VIA_PUBLICA
+    !event.deleted && event.section === EEventSection.VIA_PUBLICA
   );
 
   // Calcular ventas del mes

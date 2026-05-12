@@ -151,7 +151,7 @@ export default function ComprasPage() {
   const banderasPurchases = useMemo(
     () =>
       purchases?.filter(
-        (p: any) => p.department === EPurchaseDepartment.BANDERAS
+        (p: any) => !p.deleted && p.department === EPurchaseDepartment.BANDERAS
       ) || [],
     [purchases]
   );

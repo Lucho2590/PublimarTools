@@ -125,7 +125,9 @@ export default function PedidosPage() {
         ...constraints
       );
       const ordersSnap = await getDocs(ordersQuery);
-      const ordersData = ordersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder));
+      const ordersData = ordersSnap.docs
+        .map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder))
+        .filter((o: any) => !o.deleted);
       setOrders(ordersData);
       setFilteredOrders(ordersData);
 
