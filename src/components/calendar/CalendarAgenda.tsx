@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,9 +13,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Clock, Trash2, Edit2, Calendar as CalendarIcon, User } from "lucide-react";
+import { Plus, Clock, Trash2, Edit2, Calendar as CalendarIcon, User, Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { TEvent, EEventSection } from "@/types/event";
 import { addDoc, collection, doc, updateDoc, getDoc, Timestamp } from "firebase/firestore";
@@ -42,9 +44,13 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
     description: "",
     time: "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Excluir eventos eliminados (softDelete marca deleted: true)
+  const activeEvents = (events || []).filter((event: any) => !event.deleted);
 
   // Filtrar eventos del día seleccionado
-  const eventsForSelectedDate = events?.filter((event) => {
+  const eventsForSelectedDate = activeEvents.filter((event) => {
     if (!selectedDate) return false;
     const eventDate = event.date?.toDate ? event.date.toDate() : new Date(event.date);
     return (
@@ -59,17 +65,19 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
   });
 
   // Obtener días con eventos para marcar en el calendario
-  const daysWithEvents = events?.map((event) => {
+  const daysWithEvents = activeEvents.map((event) => {
     const eventDate = event.date?.toDate ? event.date.toDate() : new Date(event.date);
     return eventDate;
-  }) || [];
+  });
 
   const handleCreateEvent = async () => {
+    if (isSubmitting) return;
     if (!newEvent.title || !newEvent.time) {
       toast.error("El título y la hora son obligatorios");
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const eventDate = new Date(selectedDate || new Date());
       const [hours, minutes] = newEvent.time.split(":");
@@ -101,15 +109,19 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
     } catch (error) {
       console.error("Error al crear evento:", error);
       toast.error("Error al crear el evento");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleUpdateEvent = async () => {
+    if (isSubmitting) return;
     if (!editingEvent || !newEvent.title || !newEvent.time) {
       toast.error("El título y la hora son obligatorios");
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const eventDate = new Date(selectedDate || new Date());
       const [hours, minutes] = newEvent.time.split(":");
@@ -139,6 +151,8 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
     } catch (error) {
       console.error("Error al actualizar evento:", error);
       toast.error("Error al actualizar el evento");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -213,7 +227,7 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
             Agenda
           </CardTitle>
         </CardHeader>
-        <CardContent className="flex justify-center pb-4">
+        <CardContent className="px-3 pb-4">
           <Calendar
             mode="single"
             selected={selectedDate}
@@ -221,7 +235,17 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
             locale={es}
             modifiers={modifiers}
             modifiersClassNames={modifiersClassNames}
-            className="rounded-md border"
+            className="p-0 w-full"
+            classNames={{
+              months: "w-full",
+              month: "w-full space-y-4",
+              cell: "h-10 text-center text-sm p-0 relative flex items-center justify-center [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+              day: cn(
+                buttonVariants({ variant: "ghost" }),
+                "h-10 w-full p-0 font-normal text-sm aria-selected:opacity-100"
+              ),
+              head_cell: "text-slate-500 font-normal text-xs flex items-center justify-center h-9",
+            }}
           />
         </CardContent>
       </Card>
@@ -315,60 +339,108 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
       </Card>
 
       {/* Modal para crear/editar evento */}
-      <Dialog open={showEventModal} onOpenChange={setShowEventModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editingEvent ? "Editar Evento" : "Nuevo Evento"}
+      <Dialog
+        open={showEventModal}
+        onOpenChange={(open) => {
+          if (isSubmitting) return;
+          if (!open) handleCloseModal();
+          else setShowEventModal(true);
+        }}
+      >
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader className="pb-2 border-b">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <CalendarIcon className="h-5 w-5 text-blue-900" />
+              {editingEvent ? "Editar evento" : "Nuevo evento"}
             </DialogTitle>
+            {selectedDate && (
+              <DialogDescription className="text-sm text-slate-600 capitalize">
+                {selectedDate.toLocaleDateString("es-AR", {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                })}
+              </DialogDescription>
+            )}
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="title">Título *</Label>
-              <Input
-                id="title"
-                placeholder="Título del evento"
-                value={newEvent.title}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, title: e.target.value })
-                }
-              />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (editingEvent) handleUpdateEvent();
+              else handleCreateEvent();
+            }}
+          >
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2 space-y-2">
+                  <Label htmlFor="title">
+                    Título <span className="text-red-600">*</span>
+                  </Label>
+                  <Input
+                    id="title"
+                    autoFocus
+                    placeholder="Ej: Reunión con cliente"
+                    value={newEvent.title}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, title: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="time">
+                    Hora <span className="text-red-600">*</span>
+                  </Label>
+                  <Input
+                    id="time"
+                    type="time"
+                    value={newEvent.time}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, time: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Descripción</Label>
+                <Textarea
+                  id="description"
+                  placeholder="Detalles, participantes, lugar, etc. (opcional)"
+                  value={newEvent.description}
+                  onChange={(e) =>
+                    setNewEvent({ ...newEvent, description: e.target.value })
+                  }
+                  rows={4}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="time">Hora *</Label>
-              <Input
-                id="time"
-                type="time"
-                value={newEvent.time}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, time: e.target.value })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Descripción</Label>
-              <Textarea
-                id="description"
-                placeholder="Descripción del evento (opcional)"
-                value={newEvent.description}
-                onChange={(e) =>
-                  setNewEvent({ ...newEvent, description: e.target.value })
-                }
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCloseModal}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={editingEvent ? handleUpdateEvent : handleCreateEvent}
-              className="bg-blue-900 hover:bg-blue-800"
-            >
-              {editingEvent ? "Actualizar" : "Crear"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseModal}
+                disabled={isSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-blue-900 hover:bg-blue-800"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {editingEvent ? "Guardando..." : "Creando..."}
+                  </>
+                ) : editingEvent ? (
+                  "Guardar cambios"
+                ) : (
+                  "Crear evento"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
