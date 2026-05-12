@@ -156,22 +156,6 @@ export default function ComprasPage() {
     [purchases]
   );
 
-  const { totalMes, cantidadMes } = useMemo(() => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    let total = 0;
-    let count = 0;
-    banderasPurchases.forEach((p: any) => {
-      const d = parsePurchaseDate(p.date);
-      if (d && d.getFullYear() === year && d.getMonth() === month) {
-        total += Number(p.amount) || 0;
-        count += 1;
-      }
-    });
-    return { totalMes: total, cantidadMes: count };
-  }, [banderasPurchases]);
-
   const filteredPurchases = useMemo(() => {
     return banderasPurchases.filter((purchase: any) => {
       const searchNormalized = normalizeText(searchTerm);
@@ -203,6 +187,34 @@ export default function ComprasPage() {
       return matchesSearch && matchesDateRange && matchesProvider;
     });
   }, [banderasPurchases, searchTerm, dateRange, selectedProvider]);
+
+  const hasActiveFilters =
+    Boolean(searchTerm) ||
+    Boolean(dateRange?.from) ||
+    selectedProvider !== "all";
+
+  const { totalMes, cantidadMes } = useMemo(() => {
+    if (hasActiveFilters) {
+      const total = filteredPurchases.reduce(
+        (acc: number, p: any) => acc + (Number(p.amount) || 0),
+        0
+      );
+      return { totalMes: total, cantidadMes: filteredPurchases.length };
+    }
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    let total = 0;
+    let count = 0;
+    banderasPurchases.forEach((p: any) => {
+      const d = parsePurchaseDate(p.date);
+      if (d && d.getFullYear() === year && d.getMonth() === month) {
+        total += Number(p.amount) || 0;
+        count += 1;
+      }
+    });
+    return { totalMes: total, cantidadMes: count };
+  }, [hasActiveFilters, filteredPurchases, banderasPurchases]);
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -299,11 +311,6 @@ export default function ComprasPage() {
     setCurrentPage(1);
   };
 
-  const hasActiveFilters =
-    Boolean(searchTerm) ||
-    Boolean(dateRange?.from) ||
-    selectedProvider !== "all";
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -331,7 +338,7 @@ export default function ComprasPage() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-medium text-muted-foreground">
-                Total del mes
+                {hasActiveFilters ? "Total filtrado" : "Total del mes"}
               </span>
               <div className="h-9 w-9 rounded-lg bg-emerald-50 flex items-center justify-center">
                 <DollarSign className="h-4 w-4 text-emerald-600" />
@@ -346,7 +353,7 @@ export default function ComprasPage() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-medium text-muted-foreground">
-                Compras del mes
+                {hasActiveFilters ? "Compras filtradas" : "Compras del mes"}
               </span>
               <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center">
                 <ShoppingCart className="h-4 w-4 text-blue-600" />
