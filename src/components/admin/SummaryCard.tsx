@@ -1,20 +1,26 @@
 "use client";
 
+import * as React from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface SummaryCardProps {
+interface SummaryCardOwnProps {
   title: string;
-  value: string;
+  value: React.ReactNode;
   subtitle?: string;
   icon: LucideIcon;
   /** Color del fondo del icono y del título destacado. */
   variant?: "blue" | "green" | "red" | "slate" | "amber";
+  href?: string;
 }
 
+type SummaryCardProps = SummaryCardOwnProps &
+  Omit<React.HTMLAttributes<HTMLDivElement>, keyof SummaryCardOwnProps>;
+
 const VARIANT_STYLES: Record<
-  NonNullable<SummaryCardProps["variant"]>,
+  NonNullable<SummaryCardOwnProps["variant"]>,
   { card: string; icon: string; value: string }
 > = {
   blue: {
@@ -44,32 +50,52 @@ const VARIANT_STYLES: Record<
   },
 };
 
-export function SummaryCard({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  variant = "blue",
-}: SummaryCardProps) {
-  const styles = VARIANT_STYLES[variant];
-  return (
-    <Card className={cn("border", styles.card)}>
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={cn("p-3 rounded-full text-white", styles.icon)}>
-              <Icon className="h-6 w-6" />
+export const SummaryCard = React.forwardRef<HTMLDivElement, SummaryCardProps>(
+  function SummaryCard(
+    { title, value, subtitle, icon: Icon, variant = "blue", href, className, onClick, ...rest },
+    ref,
+  ) {
+    const styles = VARIANT_STYLES[variant];
+    const interactive = Boolean(onClick || href || rest.role === "button");
+
+    const classes = cn(
+      "border",
+      styles.card,
+      interactive && "cursor-pointer hover:shadow-md transition-all",
+      className,
+    );
+
+    const card = (
+      <Card ref={ref} className={cn("overflow-hidden", classes)} onClick={onClick} {...rest}>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className={cn("shrink-0 p-3 rounded-full text-white", styles.icon)}>
+                <Icon className="h-6 w-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-slate-600 font-medium truncate">{title}</p>
+                <div className={cn("text-xl font-bold break-words", styles.value)}>
+                  {value}
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-slate-600 font-medium">{title}</p>
-              <p className={cn("text-2xl font-bold", styles.value)}>{value}</p>
-            </div>
+            {subtitle && (
+              <div className="shrink-0 text-right text-sm text-slate-600">{subtitle}</div>
+            )}
           </div>
-          {subtitle && (
-            <div className="text-right text-sm text-slate-600">{subtitle}</div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+        </CardContent>
+      </Card>
+    );
+
+    if (href) {
+      return (
+        <Link href={href} className="block">
+          {card}
+        </Link>
+      );
+    }
+
+    return card;
+  },
+);
