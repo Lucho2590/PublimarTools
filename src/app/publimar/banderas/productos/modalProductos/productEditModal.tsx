@@ -750,6 +750,7 @@ export default function ProductEditModal({
                         type="number"
                         min="0"
                         value={variant.stock}
+                        onWheel={(e) => e.currentTarget.blur()}
                         onChange={(e) => {
                           const newVariants = [...formData.variants];
                           newVariants[index] = {
