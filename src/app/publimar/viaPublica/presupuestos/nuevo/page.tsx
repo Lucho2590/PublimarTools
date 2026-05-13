@@ -1,7 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useUser, useFirestoreCollectionData } from "reactfire";
 import { collection, addDoc, serverTimestamp, Timestamp, query, where, orderBy, Query, CollectionReference } from "firebase/firestore";
@@ -237,16 +237,83 @@ export default function NuevoPresupuestoPage() {
     return addDays(fechaInicio, dias - 1);
   };
 
-  // Cargar clientes de vía pública
+  // Cargar clientes de vía pública y banderas
   const clientsCollection = collection(firestore, collections.CLIENTS);
-  const clientsQuery = query(
+  const viaPublicaQuery = query(
     clientsCollection,
     where("section", "==", EClientSection.VIA_PUBLICA),
     orderBy("name")
   );
-  const { data: clients } = useFirestoreCollectionData<TClient>(clientsQuery as Query<TClient>, {
-    idField: "id",
-  });
+  const { data: viaPublicaClients } = useFirestoreCollectionData<TClient>(
+    viaPublicaQuery as Query<TClient>,
+    { idField: "id" }
+  );
+  const banderasQuery = query(
+    clientsCollection,
+    where("section", "==", EClientSection.BANDERAS),
+    orderBy("name")
+  );
+  const { data: banderasClients } = useFirestoreCollectionData<TClient>(
+    banderasQuery as Query<TClient>,
+    { idField: "id" }
+  );
+
+  const [includeBanderas, setIncludeBanderas] = useState(false);
+  const [clienteInput, setClienteInput] = useState("");
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false);
+  const [highlightedClientIndex, setHighlightedClientIndex] = useState(-1);
+  const clienteInputRef = useRef<HTMLInputElement>(null);
+
+  const clients = includeBanderas
+    ? [...(viaPublicaClients ?? []), ...(banderasClients ?? [])]
+    : viaPublicaClients ?? [];
+
+  const filteredClients = clienteInput.trim()
+    ? clients.filter((c) =>
+        c.name.toLowerCase().includes(clienteInput.toLowerCase())
+      )
+    : clients;
+
+  const handleClienteInputChange = (value: string) => {
+    setClienteInput(value);
+    setShowClienteDropdown(true);
+    setHighlightedClientIndex(-1);
+    if (formData.clientId) {
+      const current = clients.find((c) => c.id === formData.clientId);
+      if (!current || current.name !== value) {
+        setFormData((prev) => ({ ...prev, clientId: "" }));
+      }
+    }
+  };
+
+  const handleSelectClient = (client: TClient) => {
+    setFormData((prev) => ({ ...prev, clientId: client.id }));
+    setClienteInput(client.name);
+    setShowClienteDropdown(false);
+    setHighlightedClientIndex(-1);
+    clienteInputRef.current?.blur();
+  };
+
+  const handleClienteKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setShowClienteDropdown(true);
+      setHighlightedClientIndex((prev) =>
+        Math.min(prev + 1, filteredClients.length - 1)
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedClientIndex((prev) => Math.max(prev - 1, 0));
+    } else if (e.key === "Enter") {
+      if (highlightedClientIndex >= 0 && filteredClients[highlightedClientIndex]) {
+        e.preventDefault();
+        handleSelectClient(filteredClients[highlightedClientIndex]);
+      }
+    } else if (e.key === "Escape") {
+      setShowClienteDropdown(false);
+      setHighlightedClientIndex(-1);
+    }
+  };
 
   // Cargar dispositivos
   const devicesCollection = collection(firestore, "devices");
@@ -891,22 +958,105 @@ export default function NuevoPresupuestoPage() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="clientId">Cliente</Label>
-          <Select
-            value={formData.clientId}
-            onValueChange={(value) => setFormData((prev) => ({ ...prev, clientId: value }))}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Seleccionar cliente" />
-            </SelectTrigger>
-            <SelectContent>
-              {clients?.map((client) => (
-                <SelectItem key={client.id} value={client.id}>
-                  {client.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="clientId">Cliente</Label>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-600">Incluir Banderas</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={includeBanderas}
+                onClick={() => setIncludeBanderas((v) => !v)}
+                className={cn(
+                  "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                  includeBanderas ? "bg-blue-900" : "bg-slate-300"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                    includeBanderas ? "translate-x-4" : "translate-x-0.5"
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+          <div style={{ position: "relative" }}>
+            <Input
+              id="clientId"
+              ref={clienteInputRef}
+              placeholder="Buscar o escribir cliente..."
+              value={clienteInput}
+              onChange={(e) => handleClienteInputChange(e.target.value)}
+              onKeyDown={handleClienteKeyDown}
+              onFocus={() => {
+                setShowClienteDropdown(true);
+                setHighlightedClientIndex(-1);
+              }}
+              onBlur={() =>
+                setTimeout(() => {
+                  setShowClienteDropdown(false);
+                  setHighlightedClientIndex(-1);
+                }, 150)
+              }
+              autoComplete="off"
+            />
+            {showClienteDropdown && filteredClients.length > 0 && (
+              <ul
+                style={{
+                  position: "absolute",
+                  zIndex: 10,
+                  background: "white",
+                  border: "1px solid #e5e7eb",
+                  padding: 6,
+                  borderRadius: 6,
+                  width: "100%",
+                  maxHeight: 220,
+                  overflowY: "auto",
+                  marginTop: 2,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+                }}
+              >
+                {filteredClients.map((c, index) => (
+                  <li
+                    key={c.id}
+                    style={{
+                      padding: 8,
+                      borderRadius: 6,
+                      cursor: "pointer",
+                      backgroundColor:
+                        index === highlightedClientIndex
+                          ? "#f1f5f9"
+                          : "transparent",
+                      transition: "background-color 0.15s ease",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                    onMouseEnter={() => setHighlightedClientIndex(index)}
+                    onMouseDown={() => handleSelectClient(c)}
+                  >
+                    <span>{c.name}</span>
+                    {includeBanderas && (
+                      <span
+                        className={cn(
+                          "text-xs px-2 py-0.5 rounded-full shrink-0",
+                          c.section === EClientSection.BANDERAS
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-blue-100 text-blue-800"
+                        )}
+                      >
+                        {c.section === EClientSection.BANDERAS
+                          ? "Banderas"
+                          : "Vía Pública"}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
       <div className="space-y-2">
