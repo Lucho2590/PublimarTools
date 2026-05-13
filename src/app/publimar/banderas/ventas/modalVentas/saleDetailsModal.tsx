@@ -26,6 +26,7 @@ import {
   TReturn,
   TReturnItem,
   TExchangeItem,
+  TSaleFormaPago,
 } from "@/types/sale";
 import collections from "@/lib/collections";
 import { useState, useEffect, useRef } from "react";
@@ -123,6 +124,7 @@ export function SaleDetailsModal({
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedBank, setSelectedBank] = useState<string>("");
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [formasPago, setFormasPago] = useState<TSaleFormaPago[]>([]);
   const { accounts: allAccounts } = useAccounts({ includeArchived: true });
   const [total, setTotal] = useState(0);
   const [subtotal, setSubtotal] = useState(0);
@@ -269,6 +271,23 @@ export function SaleDetailsModal({
         setSelectedAccountId(typedSale.accountId);
       } else {
         setSelectedAccountId("");
+      }
+
+      // Cargar formas de pago: si existen usarlas; si no, derivar una sola desde campos legacy
+      if (typedSale?.formasPago && typedSale.formasPago.length > 0) {
+        setFormasPago(typedSale.formasPago);
+      } else if (typedSale?.paymentMethod) {
+        setFormasPago([
+          {
+            id: `fp-legacy-${Date.now()}`,
+            method: typedSale.paymentMethod,
+            amount: typedSale.total || 0,
+            accountId: typedSale.accountId || null,
+            bank: typedSale.bank || null,
+          },
+        ]);
+      } else {
+        setFormasPago([]);
       }
 
       // Inicializar fecha editable
@@ -558,6 +577,30 @@ export function SaleDetailsModal({
   const handleDeleteFactura = (id: string) => {
     setFacturas((prev) => prev.filter((f) => f.id !== id));
     toast.success("Factura eliminada correctamente");
+  };
+
+  // Handlers de formas de pago
+  const addFormaPago = () => {
+    setFormasPago((prev) => [
+      ...prev,
+      {
+        id: `fp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        method: EPaymentMethod.CASH,
+        amount: 0,
+        accountId: "",
+        bank: "",
+      },
+    ]);
+  };
+
+  const removeFormaPago = (id: string) => {
+    setFormasPago((prev) => (prev.length > 1 ? prev.filter((fp) => fp.id !== id) : prev));
+  };
+
+  const updateFormaPago = (id: string, patch: Partial<TSaleFormaPago>) => {
+    setFormasPago((prev) =>
+      prev.map((fp) => (fp.id === id ? { ...fp, ...patch } : fp))
+    );
   };
 
   // Funciones para manejar el cliente
@@ -1174,13 +1217,38 @@ export function SaleDetailsModal({
 
       // Registrar fecha de actualización
       updateData.updatedAt = serverTimestamp() as unknown as Date;
-      if (paymentMethod) {
+
+      // Normalizar y derivar formas de pago para retrocompatibilidad
+      const formasPagoValidas: TSaleFormaPago[] = formasPago
+        .filter((fp) => fp.amount > 0)
+        .map((fp) => ({
+          id: fp.id,
+          method: fp.method,
+          amount: redondearTotal(fp.amount),
+          accountId: fp.accountId || null,
+          bank: fp.method === EPaymentMethod.TRANSFER ? fp.bank || null : null,
+        }));
+
+      updateData.formasPago = formasPagoValidas;
+
+      if (formasPagoValidas.length > 0) {
+        const derivedFp =
+          formasPagoValidas.length === 1
+            ? formasPagoValidas[0]
+            : formasPagoValidas.reduce((a, b) => (a.amount > b.amount ? a : b));
+        updateData.paymentMethod = derivedFp.method;
+        updateData.bank =
+          derivedFp.method === EPaymentMethod.TRANSFER
+            ? formasPagoValidas.find((fp) => fp.method === EPaymentMethod.TRANSFER)?.bank || null
+            : null;
+        updateData.accountId =
+          formasPagoValidas.find((fp) => !!fp.accountId)?.accountId || null;
+      } else if (paymentMethod) {
         updateData.paymentMethod = paymentMethod;
-        if (paymentMethod === EPaymentMethod.TRANSFER && selectedBank) {
-          updateData.bank = selectedBank;
-        }
+        updateData.bank =
+          paymentMethod === EPaymentMethod.TRANSFER && selectedBank ? selectedBank : null;
+        updateData.accountId = selectedAccountId || null;
       }
-      updateData.accountId = selectedAccountId || null;
       if (isInvoiced !== null) {
         updateData.isInvoiced = isInvoiced;
         if (isInvoiced && invoiceNumber) {
@@ -1251,7 +1319,7 @@ export function SaleDetailsModal({
       );
 
       const watched = [
-        "clientId","clientName","total","subtotal","paymentMethod","bank",
+        "clientId","clientName","total","subtotal","paymentMethod","bank","formasPago",
         "isInvoiced","invoiceNumber","discountPercentage","applyIVA","createdAt",
       ];
       const changes = buildChanges(typedSale ?? null, updateData as any, watched);
@@ -1605,59 +1673,147 @@ export function SaleDetailsModal({
                       )}
 
                       {isEditing ? (
-                        <div>
-                          <label className="text-sm font-medium">
-                            Método de Pago
-                          </label>
-                          <Select
-                            value={paymentMethod || ""}
-                            onValueChange={(value) =>
-                              setPaymentMethod(value as EPaymentMethod)
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar método de pago" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Object.values(EPaymentMethod).map((method) => (
-                                <SelectItem key={method} value={method}>
-                                  {formatPaymentMethod(method)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium">
+                              Formas de Pago
+                            </label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={addFormaPago}
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Agregar
+                            </Button>
+                          </div>
+                          {formasPago.map((fp, idx) => (
+                            <div
+                              key={fp.id}
+                              className="border rounded-md p-2 bg-white space-y-2"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-500">
+                                  Pago {idx + 1}
+                                </span>
+                                {formasPago.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => removeFormaPago(fp.id)}
+                                    className="text-red-500 hover:text-red-700 h-7 w-7"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <Label className="text-xs">Método</Label>
+                                  <Select
+                                    value={fp.method}
+                                    onValueChange={(value) =>
+                                      updateFormaPago(fp.id, {
+                                        method: value as EPaymentMethod,
+                                      })
+                                    }
+                                  >
+                                    <SelectTrigger className="h-9">
+                                      <SelectValue placeholder="Método" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {Object.values(EPaymentMethod).map((method) => (
+                                        <SelectItem key={method} value={method}>
+                                          {formatPaymentMethod(method)}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Monto</Label>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={fp.amount || ""}
+                                    onChange={(e) =>
+                                      updateFormaPago(fp.id, {
+                                        amount: parseFloat(e.target.value) || 0,
+                                      })
+                                    }
+                                    placeholder="0.00"
+                                    className="h-9"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <Label className="text-xs">Cuenta (opcional)</Label>
+                                <AccountSelect
+                                  value={fp.accountId || ""}
+                                  onChange={(value) =>
+                                    updateFormaPago(fp.id, { accountId: value })
+                                  }
+                                  placeholder="Sin cuenta"
+                                />
+                              </div>
+                            </div>
+                          ))}
+                          {(() => {
+                            const sumaFormas = formasPago.reduce(
+                              (s, fp) => s + (fp.amount || 0),
+                              0,
+                            );
+                            const diferencia = redondearTotal(total - sumaFormas);
+                            const cuadra = Math.abs(diferencia) < 0.01;
+                            return (
+                              <div className="flex items-center justify-between text-xs px-1">
+                                <span className="text-gray-600">
+                                  Suma: {formatearPrecio(sumaFormas)} | Total:{" "}
+                                  {formatearPrecio(total)}
+                                </span>
+                                <span
+                                  className={
+                                    cuadra
+                                      ? "text-green-600 font-medium"
+                                      : "text-red-600 font-medium"
+                                  }
+                                >
+                                  {cuadra
+                                    ? "OK"
+                                    : `Dif: ${formatearPrecio(diferencia)}`}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                       ) : (
-                        <p>
-                          <span className="font-medium">Método de Pago:</span>{" "}
-                          {formatPaymentMethod(typedSale?.paymentMethod)}
-                        </p>
-                      )}
-
-                      {isEditing && (
-                        <div>
-                          <label className="text-sm font-medium">
-                            Cuenta destino
-                          </label>
-                          <AccountSelect
-                            value={selectedAccountId}
-                            onChange={setSelectedAccountId}
-                            placeholder="Seleccionar cuenta (opcional)"
-                          />
+                        <div className="space-y-1">
+                          <p className="font-medium">Formas de Pago:</p>
+                          {formasPago.length > 0 ? (
+                            <ul className="text-sm space-y-0.5 pl-2">
+                              {formasPago.map((fp) => {
+                                const acc = fp.accountId
+                                  ? allAccounts.find((a) => a.id === fp.accountId)?.name
+                                  : null;
+                                return (
+                                  <li key={fp.id}>
+                                    {formatPaymentMethod(fp.method)} —{" "}
+                                    {formatearPrecio(fp.amount)}
+                                    {acc ? ` (${acc})` : ""}
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : (
+                            <p className="text-sm text-gray-500 pl-2">
+                              {formatPaymentMethod(typedSale?.paymentMethod)}
+                            </p>
+                          )}
                         </div>
                       )}
-
-                      {!isEditing &&
-                        (typedSale?.accountId || typedSale?.bank) && (
-                          <p>
-                            <span className="font-medium">Cuenta:</span>{" "}
-                            {typedSale?.accountId
-                              ? allAccounts.find(
-                                  (a) => a.id === typedSale.accountId,
-                                )?.name || "-"
-                              : typedSale?.bank}
-                          </p>
-                        )}
                       {!isEditing && typedSale?.clientName && (
                         <p>
                           <span className="font-medium">Cliente:</span>{" "}
