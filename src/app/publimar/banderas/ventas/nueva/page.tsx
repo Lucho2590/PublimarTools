@@ -49,7 +49,9 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
-import { EPaymentMethod, ESaleDepartment, TFactura } from "@/types/sale";
+import { EPaymentMethod, ESaleDepartment, TFactura, TSaleFormaPago } from "@/types/sale";
+import { useQuotes } from "@/hooks/useQuotes";
+import { EQuoteStatus, TQuote } from "@/types/quote";
 import { formatearPrecio, redondearADecena, redondearTotal, formatDateString } from "@/lib/utils";
 import { useClients } from "@/hooks/useClients";
 import { EClientSection } from "@/types/client";
@@ -94,6 +96,9 @@ export default function NuevaVentaPage() {
     createClient
   } = useClients({ section: EClientSection.BANDERAS });
 
+  // Hook de presupuestos para importar
+  const { quotes } = useQuotes();
+
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
@@ -104,11 +109,15 @@ export default function NuevaVentaPage() {
   const [selectedQuantities, setSelectedQuantities] = useState<
     Record<string, number>
   >({});
-  const [paymentMethod, setPaymentMethod] = useState<EPaymentMethod>(
-    EPaymentMethod.CASH
-  );
-  const [bank, setBank] = useState<string>("");
-  const [accountId, setAccountId] = useState<string>("");
+  const [formasPago, setFormasPago] = useState<TSaleFormaPago[]>([
+    {
+      id: `fp-${Date.now()}`,
+      method: EPaymentMethod.CASH,
+      amount: 0,
+      accountId: "",
+      bank: "",
+    },
+  ]);
   const [isInvoiced, setIsInvoiced] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -156,6 +165,11 @@ export default function NuevaVentaPage() {
   const dropdownClientRef = useRef<HTMLUListElement>(null);
   const [isClientExpanded, setIsClientExpanded] = useState(false);
 
+  // Estados para importar presupuestos del cliente
+  const [clientQuotes, setClientQuotes] = useState<TQuote[]>([]);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [showQuoteSelector, setShowQuoteSelector] = useState(false);
+
   // Cálculos simples sin useMemo para evitar problemas
   const subtotal = items.reduce((sum, item) => sum + item.total, 0);
   const taxRate = 21; // IVA
@@ -190,9 +204,15 @@ export default function NuevaVentaPage() {
 
   const limpiarFormulario = () => {
     setItems([]);
-    setPaymentMethod(EPaymentMethod.CASH);
-    setBank("");
-    setAccountId("");
+    setFormasPago([
+      {
+        id: `fp-${Date.now()}`,
+        method: EPaymentMethod.CASH,
+        amount: 0,
+        accountId: "",
+        bank: "",
+      },
+    ]);
     setIsInvoiced(false);
     setInvoiceNumber("");
     setSearchTerm("");
@@ -230,6 +250,93 @@ export default function NuevaVentaPage() {
       // Expandir la card para mostrar los datos precargados
       setIsClientExpanded(true);
     }
+
+    // Filtrar presupuestos del cliente seleccionado (CONFIRMED o SENT)
+    const filteredQuotes = quotes.filter(
+      (q) =>
+        q.client?.id === clientId &&
+        (q.status === EQuoteStatus.CONFIRMED || q.status === EQuoteStatus.SENT)
+    );
+    setClientQuotes(filteredQuotes);
+    setSelectedQuoteId(null);
+    setShowQuoteSelector(false);
+  };
+
+  // Importar items de un presupuesto
+  const handleImportQuoteItems = (quoteId: string) => {
+    const quote = clientQuotes.find((q) => q.id === quoteId);
+    if (!quote?.items) return;
+
+    const importedItems: SaleItem[] = quote.items.map((item: any, index: number) => {
+      const isManualItem =
+        item.isManual ||
+        (typeof item.productId === "string" && item.productId.startsWith("manual-"));
+
+      const productId = item.product?.id || item.productId || `manual-${Date.now()}-${index}`;
+      const variantId = item.variant?.id || item.variantId || `manual-variant-${Date.now()}-${index}`;
+      const productName = item.product?.name || item.productName || "";
+      const variantName = item.variant?.size || item.variantName || "";
+
+      const product: any = item.product ?? {
+        id: productId,
+        name: productName,
+        description: item.description || "",
+        variants: [],
+      };
+      const variant: any = item.variant ?? {
+        id: variantId,
+        size: variantName,
+        stock: 0,
+        price: item.unitPrice,
+      };
+
+      const quantity = item.quantity || 1;
+      const unitPrice = item.unitPrice || 0;
+      const lineTotal =
+        typeof item.subtotal === "number"
+          ? item.subtotal
+          : quantity * unitPrice;
+
+      return {
+        id: `imported_${Date.now()}_${index}`,
+        product: isManualItem
+          ? { ...product, id: productId.startsWith("manual-") ? productId : `manual-${productId}` }
+          : product,
+        variant,
+        quantity,
+        unitPrice,
+        total: redondearTotal(lineTotal),
+      };
+    });
+
+    setItems(importedItems);
+    setSelectedQuoteId(quoteId);
+    setShowQuoteSelector(false);
+    toast.success(`Items importados del presupuesto ${quote.number}`);
+  };
+
+  // Handlers de formas de pago
+  const addFormaPago = () => {
+    setFormasPago((prev) => [
+      ...prev,
+      {
+        id: `fp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        method: EPaymentMethod.CASH,
+        amount: 0,
+        accountId: "",
+        bank: "",
+      },
+    ]);
+  };
+
+  const removeFormaPago = (id: string) => {
+    setFormasPago((prev) => (prev.length > 1 ? prev.filter((fp) => fp.id !== id) : prev));
+  };
+
+  const updateFormaPago = (id: string, patch: Partial<TSaleFormaPago>) => {
+    setFormasPago((prev) =>
+      prev.map((fp) => (fp.id === id ? { ...fp, ...patch } : fp))
+    );
   };
 
   const handleClientInputChange = (value: string) => {
@@ -697,6 +804,33 @@ export default function NuevaVentaPage() {
         clientData.cuit = cuit;
       }
 
+      // Normalizar formas de pago (sólo las que tengan monto > 0)
+      const formasPagoValidas: TSaleFormaPago[] = formasPago
+        .filter((fp) => fp.amount > 0)
+        .map((fp) => ({
+          id: fp.id,
+          method: fp.method,
+          amount: redondearTotal(fp.amount),
+          accountId: fp.accountId || null,
+          bank: fp.method === EPaymentMethod.TRANSFER ? fp.bank || null : null,
+        }));
+
+      // Método de pago derivado para retrocompatibilidad
+      const derivedPaymentMethod =
+        formasPagoValidas.length === 0
+          ? formasPago[0]?.method || EPaymentMethod.CASH
+          : formasPagoValidas.length === 1
+            ? formasPagoValidas[0].method
+            : formasPagoValidas.reduce((a, b) => (a.amount > b.amount ? a : b)).method;
+
+      const derivedBank =
+        derivedPaymentMethod === EPaymentMethod.TRANSFER
+          ? formasPagoValidas.find((fp) => fp.method === EPaymentMethod.TRANSFER)?.bank || null
+          : null;
+
+      const primaryAccountId =
+        formasPagoValidas.find((fp) => !!fp.accountId)?.accountId || null;
+
       const saleData = {
         number: new Date().getTime().toString(),
         items: items.map((item) => ({
@@ -720,9 +854,10 @@ export default function NuevaVentaPage() {
         discountPercentage,
         discountAmount: redondearTotal(currentDiscountAmount),
         manualDiscount: redondearTotal(manualDiscount),
-        paymentMethod,
-        bank: paymentMethod === EPaymentMethod.TRANSFER ? bank : null,
-        accountId: accountId || null,
+        paymentMethod: derivedPaymentMethod,
+        bank: derivedBank,
+        accountId: primaryAccountId,
+        formasPago: formasPagoValidas,
         invoiceNumber: isInvoiced ? invoiceNumber : null,
         facturas: facturas.length > 0 ? facturas : [],
         // Datos del cliente (solo se incluyen si tienen valor)
@@ -736,26 +871,30 @@ export default function NuevaVentaPage() {
       const correlationId = generateCorrelationId();
       const saleNumber = saleData.number;
 
-      // Si se eligió cuenta, registrar movimiento de ingreso
-      if (accountId) {
-        try {
-          const acc = allAccounts.find((a) => a.id === accountId);
-          await registerAccountMovement(firestore, {
-            accountId,
-            type: EMovementType.INCOME,
-            amount: redondearTotal(currentTotal),
-            description: `Venta #${saleData.number}${
-              clienteInput ? ` - ${clienteInput}` : ""
-            }${acc ? ` (${acc.name})` : ""}`,
-            date: new Date(),
-            sourceType: "sale",
-            sourceId: saleDocRef.id,
-            createdBy: userRole || "",
-          });
-        } catch (err) {
-          console.error("Error al registrar movimiento de cuenta:", err);
-        }
-      }
+      // Registrar un movimiento de ingreso por cada forma de pago con cuenta
+      await Promise.all(
+        formasPagoValidas
+          .filter((fp) => !!fp.accountId)
+          .map(async (fp) => {
+            try {
+              const acc = allAccounts.find((a) => a.id === fp.accountId);
+              await registerAccountMovement(firestore, {
+                accountId: fp.accountId as string,
+                type: EMovementType.INCOME,
+                amount: redondearTotal(fp.amount),
+                description: `Venta #${saleData.number}${
+                  clienteInput ? ` - ${clienteInput}` : ""
+                } (${fp.method}${acc ? ` → ${acc.name}` : ""})`,
+                date: new Date(),
+                sourceType: "sale",
+                sourceId: saleDocRef.id,
+                createdBy: userRole || "",
+              });
+            } catch (err) {
+              console.error("Error al registrar movimiento de cuenta:", err);
+            }
+          })
+      );
 
       const stockEventPayloads: Array<{
         productId: string;
@@ -841,7 +980,8 @@ export default function NuevaVentaPage() {
         ]),
         metadata: {
           total: currentTotal,
-          paymentMethod,
+          paymentMethod: derivedPaymentMethod,
+          formasPago: formasPagoValidas,
           itemsCount: items.length,
           stockDeltas: stockEventPayloads.map((p) => ({
             productId: p.productId,
@@ -995,6 +1135,50 @@ export default function NuevaVentaPage() {
                 />
               </div>
             </div>
+
+            {/* Selector de presupuestos del cliente */}
+            {cliente && clientQuotes.length > 0 && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-blue-700">
+                    Este cliente tiene {clientQuotes.length} presupuesto(s) disponible(s)
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowQuoteSelector(!showQuoteSelector)}
+                  >
+                    <FileText className="w-4 h-4 mr-1" />
+                    Importar presupuesto
+                  </Button>
+                </div>
+
+                {showQuoteSelector && (
+                  <div className="mt-2 space-y-2">
+                    {clientQuotes.map((quote) => (
+                      <div
+                        key={quote.id}
+                        className={`flex items-center justify-between p-2 bg-white rounded border cursor-pointer hover:bg-gray-50 ${
+                          selectedQuoteId === quote.id ? "border-blue-500" : ""
+                        }`}
+                        onClick={() => handleImportQuoteItems(quote.id)}
+                      >
+                        <div>
+                          <span className="font-medium">{quote.number}</span>
+                          <span className="text-sm text-gray-500 ml-2">
+                            {formatearPrecio(quote.total)}
+                          </span>
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {quote.items?.length || 0} items
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
@@ -1730,62 +1914,118 @@ export default function NuevaVentaPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="paymentMethod">Método de Pago</Label>
-                  <Select
-                    value={paymentMethod}
-                    onValueChange={(value) =>
-                      setPaymentMethod(value as EPaymentMethod)
-                    }
+              {/* Múltiples formas de pago */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Formas de Pago</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addFormaPago}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar método de pago" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={EPaymentMethod.CASH}>
-                        Efectivo
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.CREDIT_CARD}>
-                        Tarjeta de Crédito
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.DEBIT_CARD}>
-                        Tarjeta de Débito
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.TRANSFER}>
-                        Transferencia
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.MERCADOPAGO}>
-                        MercadoPago
-                      </SelectItem>
-                      <SelectItem value={EPaymentMethod.CHECK}>
-                        Cheque
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    <Plus className="h-4 w-4 mr-1" />
+                    Agregar forma de pago
+                  </Button>
                 </div>
 
-                {paymentMethod !== EPaymentMethod.CASH && (
-                  <div className="space-y-2">
-                    <Label>Cuenta destino (opcional)</Label>
-                    <AccountSelect
-                      value={accountId}
-                      onChange={setAccountId}
-                      placeholder="Seleccionar cuenta"
-                    />
+                {formasPago.map((fp) => (
+                  <div
+                    key={fp.id}
+                    className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end border rounded-md p-3 bg-slate-50"
+                  >
+                    <div className="md:col-span-4 space-y-1">
+                      <Label className="text-xs">Método</Label>
+                      <Select
+                        value={fp.method}
+                        onValueChange={(value) =>
+                          updateFormaPago(fp.id, { method: value as EPaymentMethod })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Método" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={EPaymentMethod.CASH}>Efectivo</SelectItem>
+                          <SelectItem value={EPaymentMethod.CREDIT_CARD}>Tarjeta de Crédito</SelectItem>
+                          <SelectItem value={EPaymentMethod.DEBIT_CARD}>Tarjeta de Débito</SelectItem>
+                          <SelectItem value={EPaymentMethod.TRANSFER}>Transferencia</SelectItem>
+                          <SelectItem value={EPaymentMethod.MERCADOPAGO}>MercadoPago</SelectItem>
+                          <SelectItem value={EPaymentMethod.CHECK}>Cheque</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="md:col-span-3 space-y-1">
+                      <Label className="text-xs">Monto</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={fp.amount || ""}
+                        onChange={(e) =>
+                          updateFormaPago(fp.id, {
+                            amount: parseFloat(e.target.value) || 0,
+                          })
+                        }
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="md:col-span-4 space-y-1">
+                      <Label className="text-xs">
+                        {fp.method === EPaymentMethod.CASH ? "Caja / cuenta" : "Cuenta destino"} (opcional)
+                      </Label>
+                      <AccountSelect
+                        value={fp.accountId || ""}
+                        onChange={(value) => updateFormaPago(fp.id, { accountId: value })}
+                        placeholder={
+                          fp.method === EPaymentMethod.CASH
+                            ? "Ej: Efectivo Banderas"
+                            : "Seleccionar cuenta"
+                        }
+                      />
+                    </div>
+                    <div className="md:col-span-1 flex justify-end">
+                      {formasPago.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeFormaPago(fp.id)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                )}
+                ))}
+
+                {(() => {
+                  const sumaFormas = formasPago.reduce((s, fp) => s + (fp.amount || 0), 0);
+                  const diferencia = redondearTotal(total - sumaFormas);
+                  const cuadra = Math.abs(diferencia) < 0.01;
+                  return (
+                    <div className="flex items-center justify-between text-sm px-1">
+                      <span className="text-gray-600">
+                        Suma formas de pago: {formatearPrecio(sumaFormas)}
+                        <span className="mx-2 text-gray-400">|</span>
+                        Total de la venta: {formatearPrecio(total)}
+                      </span>
+                      <span
+                        className={
+                          cuadra
+                            ? "text-green-600 font-medium"
+                            : "text-red-600 font-medium"
+                        }
+                      >
+                        {cuadra
+                          ? "OK"
+                          : `Diferencia: ${formatearPrecio(diferencia)}`}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
-              {paymentMethod === EPaymentMethod.CASH && (
-                <div className="space-y-2">
-                  <Label>Caja / cuenta (opcional)</Label>
-                  <AccountSelect
-                    value={accountId}
-                    onChange={setAccountId}
-                    placeholder="Ej: Efectivo Banderas"
-                  />
-                </div>
-              )}
 
               {isInvoiced && (
                 <div className="space-y-2">

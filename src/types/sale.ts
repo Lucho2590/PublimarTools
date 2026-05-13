@@ -22,6 +22,14 @@ export type TFactura = {
   monto?: number;
 }
 
+export type TSaleFormaPago = {
+  id: string;
+  method: EPaymentMethod;
+  amount: number;
+  accountId?: string | null;
+  bank?: string | null;
+}
+
 export interface TSaleItem {
   isManual?: boolean;
   description: string;
@@ -88,6 +96,8 @@ export interface TSale {
   discountAmount?: number;
   manualDiscount?: number;
   paymentMethod: EPaymentMethod;
+  // Sistema de múltiples formas de pago (nuevo)
+  formasPago?: TSaleFormaPago[];
   department?: ESaleDepartment; // Departamento al que pertenece la venta
   // Sistema de facturación (antiguo - mantener para compatibilidad)
   isInvoiced: boolean;
