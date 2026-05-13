@@ -44,7 +44,12 @@ import {
   FileText,
   ChevronDown,
   Edit,
+  Wallet,
+  Loader2,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
+import { applyCreditNoteToDocument } from "@/lib/creditNotes";
 import { formatearPrecio, formatDate, formatDateString, extractIdFromSlug } from "@/lib/utils";
 import { toast } from "sonner";
 import { EOrderStatus, TPaymentHistory, TFactura } from "@/types/order";
@@ -137,6 +142,13 @@ export default function OrderDetailsPage({
   const [pendingSaveData, setPendingSaveData] = useState<any>(null);
   const [clicked, setClicked] = useState(false);
 
+  // Notas de crédito disponibles para aplicar a esta orden
+  const orderClientId =
+    (order?.clientId as string | undefined) || (order as any)?.client?.id;
+  const { notes: availableCreditNotes, total: availableCredit } =
+    useClientAvailableCredit(orderClientId);
+  const [applyingNoteId, setApplyingNoteId] = useState<string | null>(null);
+
 
   // ============================================
   // FUNCIONES HELPER PARA PAGOS (Solución Híbrida)
@@ -186,6 +198,46 @@ export default function OrderDetailsPage({
    */
   const getRemainingBalance = (order: any, total: number): number => {
     return total - getTotalPaid(order);
+  };
+
+  /**
+   * Aplica una nota de crédito al saldo pendiente de la orden actual.
+   */
+  const handleApplyCreditNote = async (noteId: string) => {
+    if (!order || !user?.uid) return;
+    const orderTotal = Number((order as any).total) || total;
+    if (orderTotal <= 0) {
+      toast.error("La orden no tiene total definido");
+      return;
+    }
+    if (getRemainingBalance(order, orderTotal) <= 0) {
+      toast.error("La orden ya está totalmente cubierta");
+      return;
+    }
+    setApplyingNoteId(noteId);
+    try {
+      const result = await applyCreditNoteToDocument(firestore, {
+        noteId,
+        documentId: orderId,
+        documentType: "order",
+        documentNumber: order.number,
+        documentTotal: orderTotal,
+        appliedBy: user.uid,
+      });
+      toast.success(
+        `Nota aplicada: ${formatearPrecio(result.appliedAmount)}` +
+          (result.forfeitedAmount > 0
+            ? ` (sobrante perdido: ${formatearPrecio(result.forfeitedAmount)})`
+            : ""),
+      );
+    } catch (err) {
+      console.error("Error al aplicar nota de crédito:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Error al aplicar la nota de crédito",
+      );
+    } finally {
+      setApplyingNoteId(null);
+    }
   };
 
   /**
@@ -1869,6 +1921,69 @@ export default function OrderDetailsPage({
                 </div>
               </div>
 
+              {/* Notas de crédito disponibles del cliente */}
+              {availableCredit > 0 &&
+                getRemainingBalance(order, total) > 0 && (
+                  <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-3">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <Wallet className="h-4 w-4 text-amber-800" />
+                      <span className="font-semibold text-amber-900 text-sm">
+                        Saldo a favor del cliente:{" "}
+                        {formatearPrecio(availableCredit)}
+                      </span>
+                      <Badge className="bg-amber-200 text-amber-900 hover:bg-amber-200">
+                        {availableCreditNotes.length} nota
+                        {availableCreditNotes.length === 1 ? "" : "s"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-amber-900 mb-2">
+                      La nota se usa completa. Si supera el saldo pendiente, el
+                      sobrante se pierde.
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {availableCreditNotes.map((n) => {
+                        const remaining = getRemainingBalance(order, total);
+                        const willForfeit = n.amount > remaining;
+                        return (
+                          <div
+                            key={n.id}
+                            className="flex items-center justify-between gap-2 rounded bg-white border border-amber-200 px-2 py-2"
+                          >
+                            <div className="text-sm">
+                              <span className="font-medium">{n.number}</span>{" "}
+                              <span className="font-semibold">
+                                {formatearPrecio(n.amount)}
+                              </span>
+                              {n.reason && (
+                                <span className="block text-xs text-slate-500">
+                                  {n.reason}
+                                </span>
+                              )}
+                              {willForfeit && (
+                                <span className="block text-xs text-amber-700">
+                                  Sobrante perdido:{" "}
+                                  {formatearPrecio(n.amount - remaining)}
+                                </span>
+                              )}
+                            </div>
+                            <Button
+                              size="sm"
+                              disabled={applyingNoteId === n.id}
+                              onClick={() => handleApplyCreditNote(n.id)}
+                            >
+                              {applyingNoteId === n.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                "Aplicar"
+                              )}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
               {/* Controles de edición */}
               <div className="space-y-4 border-t pt-4">
                 {/* Campos de descuento */}
@@ -2225,6 +2340,8 @@ export default function OrderDetailsPage({
                                   ? "Mercado Pago"
                                   : payment.method === EPaymentMethod.CHECK
                                   ? "Cheque"
+                                  : payment.method === EPaymentMethod.CREDIT_NOTE
+                                  ? "Nota de crédito"
                                   : "Otro"}
                               </TableCell>
                               <TableCell className="text-sm text-gray-600">

@@ -36,9 +36,13 @@ import { Label } from "@/components/ui/label";
 import collections from "@/lib/collections";
 import { EBillingStatus, TBilling, TBillingPaymentMethod, TPaymentRecord } from "@/types/billing";
 import { EPaymentMethod } from "@/types/sale";
-import { ArrowLeft, Plus, Edit2, Trash2, User, FileText, CreditCard, DollarSign, Calendar, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Edit2, Trash2, User, FileText, CreditCard, DollarSign, Calendar, Check, Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useUser } from "reactfire";
+import { Badge } from "@/components/ui/badge";
+import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
+import { applyCreditNoteToDocument } from "@/lib/creditNotes";
+import { formatearPrecio } from "@/lib/utils";
 
 export default function FacturacionDetailPage() {
   const params = useParams();
@@ -68,6 +72,44 @@ export default function FacturacionDetailPage() {
   const { status, data: billing } = useFirestoreDocData(billingRef, {
     idField: "id",
   }) as { status: string; data: TBilling };
+
+  // Notas de crédito disponibles del cliente
+  const clientId = billing?.client?.id;
+  const { notes: availableNotes, total: availableCredit } =
+    useClientAvailableCredit(clientId);
+  const [applyingNoteId, setApplyingNoteId] = useState<string | null>(null);
+
+  const handleApplyCreditNote = async (noteId: string) => {
+    if (!billing || !user?.uid) return;
+    if (billing.status === EBillingStatus.PAID) {
+      toast.error("La facturación ya está totalmente pagada");
+      return;
+    }
+    setApplyingNoteId(noteId);
+    try {
+      const result = await applyCreditNoteToDocument(firestore, {
+        noteId,
+        documentId: billingId,
+        documentType: "billing",
+        documentNumber: billing.number,
+        documentTotal: billing.totalAmount,
+        appliedBy: user.uid,
+      });
+      toast.success(
+        `Nota aplicada: ${formatearPrecio(result.appliedAmount)}` +
+          (result.forfeitedAmount > 0
+            ? ` (sobrante perdido: ${formatearPrecio(result.forfeitedAmount)})`
+            : ""),
+      );
+    } catch (err) {
+      console.error("Error al aplicar nota de crédito:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Error al aplicar la nota de crédito",
+      );
+    } finally {
+      setApplyingNoteId(null);
+    }
+  };
 
   // Calcular porcentaje de progreso
   const progressPercent = useMemo(() => {
@@ -107,13 +149,14 @@ export default function FacturacionDetailPage() {
   };
 
   const getPaymentMethodLabel = (method: EPaymentMethod) => {
-    const labels = {
+    const labels: Record<EPaymentMethod, string> = {
       [EPaymentMethod.CASH]: "Efectivo",
       [EPaymentMethod.CREDIT_CARD]: "Tarjeta de Crédito",
       [EPaymentMethod.DEBIT_CARD]: "Tarjeta de Débito",
       [EPaymentMethod.TRANSFER]: "Transferencia",
       [EPaymentMethod.MERCADOPAGO]: "MercadoPago",
       [EPaymentMethod.CHECK]: "Cheque",
+      [EPaymentMethod.CREDIT_NOTE]: "Nota de crédito",
     };
     return labels[method] || method;
   };
@@ -547,6 +590,58 @@ export default function FacturacionDetailPage() {
                   <span className="font-bold text-red-600">{formatCurrency(billing.balance)}</span>
                 </div>
               </div>
+
+              {billing.status !== EBillingStatus.PAID && availableCredit > 0 && (
+                <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Wallet className="h-4 w-4 text-amber-800" />
+                    <span className="font-semibold text-amber-900 text-sm">
+                      Saldo a favor del cliente: {formatearPrecio(availableCredit)}
+                    </span>
+                    <Badge className="bg-amber-200 text-amber-900 hover:bg-amber-200">
+                      {availableNotes.length} nota{availableNotes.length === 1 ? "" : "s"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-amber-900 mb-2">
+                    La nota se usa completa. Si supera el saldo pendiente, el sobrante se pierde.
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {availableNotes.map((n) => {
+                      const willForfeit = n.amount > billing.balance;
+                      return (
+                        <div
+                          key={n.id}
+                          className="flex items-center justify-between gap-2 rounded bg-white border border-amber-200 px-2 py-2"
+                        >
+                          <div className="text-sm">
+                            <span className="font-medium">{n.number}</span>{" "}
+                            <span className="font-semibold">
+                              {formatearPrecio(n.amount)}
+                            </span>
+                            {willForfeit && (
+                              <span className="block text-xs text-amber-700">
+                                Sobrante perdido:{" "}
+                                {formatearPrecio(n.amount - billing.balance)}
+                              </span>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            disabled={applyingNoteId === n.id}
+                            onClick={() => handleApplyCreditNote(n.id)}
+                          >
+                            {applyingNoteId === n.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              "Aplicar"
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {billing.status !== EBillingStatus.PAID && (
                 <Button

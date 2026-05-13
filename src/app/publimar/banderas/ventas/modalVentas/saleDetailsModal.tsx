@@ -1,5 +1,5 @@
 "use client";
-import { useFirestore, useFirestoreDocData } from "reactfire";
+import { useFirestore, useFirestoreDocData, useUser } from "reactfire";
 import {
   doc,
   updateDoc,
@@ -88,6 +88,8 @@ import {
 } from "@/types/auditLog";
 import { AccountSelect } from "@/components/admin/AccountSelect";
 import { useAccounts } from "@/hooks/useAccounts";
+import { createCreditNote } from "@/lib/creditNotes";
+import { ECreditNoteOriginType, TCreditNoteItem } from "@/types/creditNote";
 
 const BANCOS = ["Galicia", "Frances"];
 
@@ -105,6 +107,7 @@ export function SaleDetailsModal({
   onSuccess,
 }: SaleDetailsModalProps) {
   const firestore = useFirestore();
+  const { data: currentUser } = useUser();
   const { logEvent } = useAuditLog();
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -174,6 +177,7 @@ export function SaleDetailsModal({
   const [returnItems, setReturnItems] = useState<{ [key: number]: number }>({}); // {itemIndex: quantity}
   const [returnReason, setReturnReason] = useState("");
   const [returnToStock, setReturnToStock] = useState(true);
+  const [refundAsCreditNote, setRefundAsCreditNote] = useState(false);
 
   // Estados para cambios
   const [isExchangeMode, setIsExchangeMode] = useState(false);
@@ -1031,10 +1035,59 @@ export function SaleDetailsModal({
           : "Devolución procesada exitosamente",
       );
 
+      // Generar nota de crédito si corresponde (solo devolución pura, no cambio)
+      if (
+        !isExchangeMode &&
+        refundAsCreditNote &&
+        totalRefund > 0 &&
+        typedSale.clientId
+      ) {
+        try {
+          const ncItems: TCreditNoteItem[] = returnItemsArray.map((ri) => ({
+            productId: ri.productId,
+            variantId: ri.variantId,
+            productName: ri.productName,
+            variantName: ri.variantName,
+            quantity: ri.quantityReturned,
+            unitPrice:
+              ri.quantityReturned > 0
+                ? ri.refundAmount / ri.quantityReturned
+                : 0,
+            subtotal: ri.refundAmount,
+          }));
+          const noteId = await createCreditNote(firestore, {
+            clientId: typedSale.clientId,
+            clientName: typedSale.clientName ?? "",
+            amount: totalRefund,
+            reason: returnReason,
+            originType: ECreditNoteOriginType.RETURN,
+            originDocument: {
+              id: saleId!,
+              type: "sale",
+              number: typedSale.number,
+            },
+            items: ncItems,
+            createdBy: currentUser?.uid ?? "",
+          });
+          toast.success(
+            `Nota de crédito generada por ${formatearPrecio(totalRefund)}`,
+          );
+          console.log("Credit note created:", noteId);
+        } catch (err) {
+          console.error("Error al generar nota de crédito:", err);
+          toast.error(
+            err instanceof Error
+              ? `Devolución registrada, pero falló la NC: ${err.message}`
+              : "Devolución registrada, pero falló la nota de crédito",
+          );
+        }
+      }
+
       // Limpiar estados
       setReturnItems({});
       setReturnReason("");
       setReturnToStock(true);
+      setRefundAsCreditNote(false);
       setIsExchangeMode(false);
       setExchangeItems([]);
       setShowReturnDialog(false);
@@ -2587,6 +2640,7 @@ export function SaleDetailsModal({
             setReturnItems({});
             setReturnReason("");
             setReturnToStock(true);
+            setRefundAsCreditNote(false);
             setIsExchangeMode(false);
             setExchangeItems([]);
             setShowExchangeManualDialog(false);
@@ -2976,6 +3030,33 @@ export function SaleDetailsModal({
                             {formatearPrecio(totalReturn)}
                           </span>
                         </div>
+                        {totalReturn > 0 && typedSale.clientId && (
+                          <div className="flex items-start gap-2 mt-3 p-3 rounded-md bg-amber-50 border border-amber-200">
+                            <Checkbox
+                              id="refundAsCreditNote"
+                              checked={refundAsCreditNote}
+                              onCheckedChange={(checked) =>
+                                setRefundAsCreditNote(checked as boolean)
+                              }
+                            />
+                            <Label
+                              htmlFor="refundAsCreditNote"
+                              className="cursor-pointer text-sm leading-relaxed"
+                            >
+                              <span className="font-medium block">
+                                Emitir nota de crédito en vez de reembolso en efectivo
+                              </span>
+                              <span className="text-xs text-amber-900">
+                                Se generará una NC por {formatearPrecio(totalReturn)} a favor de {typedSale.clientName ?? "este cliente"}. Podrá usarse en una próxima orden o facturación.
+                              </span>
+                            </Label>
+                          </div>
+                        )}
+                        {totalReturn > 0 && !typedSale.clientId && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            Para emitir una nota de crédito, la venta debe estar asociada a un cliente registrado.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2991,6 +3072,7 @@ export function SaleDetailsModal({
                 setReturnItems({});
                 setReturnReason("");
                 setReturnToStock(true);
+                setRefundAsCreditNote(false);
                 setIsExchangeMode(false);
                 setExchangeItems([]);
               }}

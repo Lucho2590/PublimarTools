@@ -12,6 +12,7 @@ export type TMovementSource =
   | "billing"
   | "providerPayment"
   | "operationalExpense"
+  | "creditNote"
   | "manual";
 
 export interface TAccountMovement {

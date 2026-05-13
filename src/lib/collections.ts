@@ -34,6 +34,7 @@ const collections = {
   ACCOUNTS: "accounts",
   ACCOUNT_MOVEMENTS: "accountMovements",
   OPERATIONAL_EXPENSES: "operationalExpenses",
+  CREDIT_NOTES: "creditNotes",
 } as const;
 
 export default collections;

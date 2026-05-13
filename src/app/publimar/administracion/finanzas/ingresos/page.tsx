@@ -41,6 +41,7 @@ const PAYMENT_METHOD_LABELS: Record<EPaymentMethod, string> = {
   [EPaymentMethod.TRANSFER]: "Transferencia",
   [EPaymentMethod.MERCADOPAGO]: "MercadoPago",
   [EPaymentMethod.CHECK]: "Cheque",
+  [EPaymentMethod.CREDIT_NOTE]: "Nota de crédito",
 };
 
 const DEPT_LABELS: Record<ESaleDepartment, string> = {

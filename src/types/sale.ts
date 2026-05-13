@@ -7,6 +7,7 @@ export enum EPaymentMethod {
   TRANSFER = "transfer",
   MERCADOPAGO = "mercadopago",
   CHECK = "cheque",
+  CREDIT_NOTE = "credit_note",
 }
 
 export enum ESaleDepartment {
