@@ -49,6 +49,13 @@ const SECTIONS: AdminSection[] = [
     icon: CreditCard,
   },
   {
+    title: "Notas de Crédito",
+    description:
+      "Saldos a favor de clientes por devoluciones o acuerdos. Se aplican al crear órdenes de trabajo o facturaciones.",
+    href: "/publimar/administracion/notas-credito",
+    icon: Receipt,
+  },
+  {
     title: "Gastos Operativos",
     description:
       "Sueldos, alquiler, servicios e impuestos no asociados a una compra de proveedor.",

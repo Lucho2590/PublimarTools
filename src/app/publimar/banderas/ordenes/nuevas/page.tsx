@@ -64,6 +64,8 @@ import { useClients } from "@/hooks/useClients";
 import { useQuotes } from "@/hooks/useQuotes";
 import { EClientStatus, EClientSection } from "@/types/client";
 import { EQuoteStatus, TQuote } from "@/types/quote";
+import { ClientCreditBanner } from "@/components/admin/ClientCreditBanner";
+import { applyCreditNoteToDocument } from "@/lib/creditNotes";
 
 export default function NuevasOrdenesPage() {
   const router = useRouter();
@@ -94,6 +96,9 @@ export default function NuevasOrdenesPage() {
     productsCollection,
     { idField: "id" },
   );
+
+  // Estado: nota de crédito seleccionada (a aplicar tras crear la orden)
+  const [selectedCreditNoteId, setSelectedCreditNoteId] = useState<string | null>(null);
 
   // Estados para los campos principales
   const [cliente, setCliente] = useState("");
@@ -610,6 +615,33 @@ export default function NuevasOrdenesPage() {
       console.log("🔧 Datos limpios para crear orden:", cleanOrderData);
 
       const orderId = await createOrder(cleanOrderData as any);
+
+      if (selectedCreditNoteId && user?.uid) {
+        try {
+          const result = await applyCreditNoteToDocument(firestore, {
+            noteId: selectedCreditNoteId,
+            documentId: orderId,
+            documentType: "order",
+            documentNumber: cleanOrderData.number,
+            documentTotal: redondearTotal(total),
+            appliedBy: user.uid,
+          });
+          toast.success(
+            `Nota de crédito aplicada: ${formatearPrecio(result.appliedAmount)}` +
+              (result.forfeitedAmount > 0
+                ? ` (sobrante perdido: ${formatearPrecio(result.forfeitedAmount)})`
+                : ""),
+          );
+        } catch (err) {
+          console.error("Error al aplicar nota de crédito:", err);
+          toast.error(
+            err instanceof Error
+              ? `Orden creada, pero falló la aplicación de la NC: ${err.message}`
+              : "Orden creada, pero falló la aplicación de la NC",
+          );
+        }
+      }
+
       toast.success(`Orden creada exitosamente con ID: ${orderId}`);
       router.push("/publimar/banderas/ordenes");
     } catch (error) {
@@ -961,6 +993,33 @@ export default function NuevasOrdenesPage() {
       const cleanOrderData = cleanData(orderData);
 
       const orderId = await createOrder(cleanOrderData as any);
+
+      if (selectedCreditNoteId && user?.uid) {
+        try {
+          const result = await applyCreditNoteToDocument(firestore, {
+            noteId: selectedCreditNoteId,
+            documentId: orderId,
+            documentType: "order",
+            documentNumber: cleanOrderData.number,
+            documentTotal: redondearTotal(total),
+            appliedBy: user.uid,
+          });
+          toast.success(
+            `Nota de crédito aplicada: ${formatearPrecio(result.appliedAmount)}` +
+              (result.forfeitedAmount > 0
+                ? ` (sobrante perdido: ${formatearPrecio(result.forfeitedAmount)})`
+                : ""),
+          );
+        } catch (err) {
+          console.error("Error al aplicar nota de crédito:", err);
+          toast.error(
+            err instanceof Error
+              ? `Orden creada, pero falló la aplicación de la NC: ${err.message}`
+              : "Orden creada, pero falló la aplicación de la NC",
+          );
+        }
+      }
+
       toast.success(`Orden creada exitosamente con ID: ${orderId}`);
       router.push("/publimar/banderas/ordenes");
     } catch (error) {
@@ -1914,6 +1973,18 @@ export default function NuevasOrdenesPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Saldo a favor del cliente (nota de crédito) */}
+        {cliente && (
+          <div className="mb-6">
+            <ClientCreditBanner
+              clientId={cliente}
+              documentTotal={redondearTotal(total)}
+              selectedNoteId={selectedCreditNoteId}
+              onSelect={setSelectedCreditNoteId}
+            />
+          </div>
+        )}
 
         {/* Información de facturación */}
         <Card className="mb-6">

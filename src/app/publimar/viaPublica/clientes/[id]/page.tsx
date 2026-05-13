@@ -18,8 +18,9 @@ import { EClientType, TClient, TClientContact } from "@/types/client";
 import { formatDate, formatearPrecio, extractIdFromSlug, generateSlug } from "@/lib/utils";
 import { EOrderStatus } from "@/types/order";
 import { EPaymentMethod } from "@/types/sale";
-import { EyeIcon } from "lucide-react";
+import { EyeIcon, Wallet } from "lucide-react";
 import { SaleDetailsModal } from "../../../banderas/ventas/modalVentas/saleDetailsModal";
+import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
 
 export default function ClienteDetallePage({
   params,
@@ -80,6 +81,9 @@ export default function ClienteDetallePage({
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
 
+  const { total: availableCredit, notes: availableCreditNotes } =
+    useClientAvailableCredit(clientId);
+
   // Función para abrir el modal de venta
   const handleViewSale = (saleId: string) => {
     setSelectedSaleId(saleId);
@@ -126,6 +130,30 @@ export default function ClienteDetallePage({
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Detalle del Cliente: {typedClient.name}</h1>
       </div>
+
+      {availableCredit > 0 && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-amber-800" />
+                <div>
+                  <p className="text-sm text-amber-900">Saldo a favor en notas de crédito</p>
+                  <p className="text-xl font-bold text-amber-900">
+                    {formatearPrecio(availableCredit)}
+                  </p>
+                </div>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/publimar/administracion/notas-credito?clientId=${clientId}`}>
+                  Ver {availableCreditNotes.length} nota
+                  {availableCreditNotes.length === 1 ? "" : "s"}
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="info" className="space-y-4">
         <TabsList>

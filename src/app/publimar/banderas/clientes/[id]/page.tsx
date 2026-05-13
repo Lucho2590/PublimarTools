@@ -68,6 +68,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { SaleDetailsModal } from "../../ventas/modalVentas/saleDetailsModal";
+import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
+import { Wallet } from "lucide-react";
 
 const taxConditionInfo: Record<
   EClientTaxCondition,
@@ -150,6 +152,9 @@ export default function ClienteDetallePage({
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const { total: availableCredit, notes: availableCreditNotes } =
+    useClientAvailableCredit(clientId);
 
   const handleViewSale = (saleId: string) => {
     setSelectedSaleId(saleId);
@@ -301,6 +306,32 @@ export default function ClienteDetallePage({
           </Button>
         </div>
       </div>
+
+      {availableCredit > 0 && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-5 w-5 text-amber-800" />
+                <div>
+                  <p className="text-sm text-amber-900">Saldo a favor en notas de crédito</p>
+                  <p className="text-xl font-bold text-amber-900">
+                    {formatearPrecio(availableCredit)}
+                  </p>
+                </div>
+              </div>
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  href={`/publimar/administracion/notas-credito?clientId=${clientId}`}
+                >
+                  Ver {availableCreditNotes.length} nota
+                  {availableCreditNotes.length === 1 ? "" : "s"}
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="info" className="space-y-4">
         <TabsList>

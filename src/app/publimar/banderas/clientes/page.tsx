@@ -40,8 +40,10 @@ import {
   Loader2,
   Search,
 } from "lucide-react";
-import { cn, generateSlug } from "@/lib/utils";
+import { cn, formatearPrecio, generateSlug } from "@/lib/utils";
 import { formatCuit } from "@/lib/cuit";
+import { useAvailableCreditByClient } from "@/hooks/useCreditNotes";
+import { Wallet } from "lucide-react";
 
 const taxConditionInfo: Record<
   EClientTaxCondition,
@@ -123,6 +125,8 @@ export default function ClientesPage() {
       }).length,
     };
   }, [clients]);
+
+  const { byClient: creditByClient } = useAvailableCreditByClient();
 
   const filteredClients = useMemo(() => {
     return clients?.filter((client) => {
@@ -344,6 +348,12 @@ export default function ClientesPage() {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
+                        {creditByClient.get(client.id) ? (
+                          <span className="px-2 py-0.5 rounded-md text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
+                            <Wallet className="h-3 w-3" />
+                            {formatearPrecio(creditByClient.get(client.id) || 0)}
+                          </span>
+                        ) : null}
                         {client.cuit && (
                           <span className="text-xs text-muted-foreground font-mono tabular-nums">
                             {formatCuit(client.cuit)}
