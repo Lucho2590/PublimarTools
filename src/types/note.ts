@@ -1,6 +1,7 @@
 export enum ENoteSection {
   BANDERAS = "banderas",
   VIA_PUBLICA = "viaPublica",
+  ADMINISTRACION = "administracion",
 }
 
 export type TNote = {

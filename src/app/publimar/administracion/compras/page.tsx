@@ -519,9 +519,9 @@ export default function ComprasAdminPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:justify-between sm:items-center">
         <h1 className="text-2xl font-bold">Compras</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             asChild
             variant="outline"
@@ -847,19 +847,16 @@ export default function ComprasAdminPage() {
       {/* Card con total de compras filtradas */}
       <Card className="mb-6 bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-900 p-3 rounded-full">
-                <DollarSign className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600 font-medium">Total de Compras Filtradas</p>
-                <p className="text-3xl font-bold text-blue-900">{formatearPrecio(totalFiltered)}</p>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-900 p-3 rounded-full">
+              <DollarSign className="h-6 w-6 text-white" />
             </div>
-            <div className="text-right">
-              <p className="text-sm text-slate-600">Cantidad de compras</p>
-              <p className="text-2xl font-semibold text-slate-900">{filteredPurchases?.length || 0}</p>
+            <div>
+              <p className="text-sm text-slate-600 font-medium">Total de Compras Filtradas</p>
+              <p className="text-3xl font-bold text-blue-900">{formatearPrecio(totalFiltered)}</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {filteredPurchases?.length || 0} compras
+              </p>
             </div>
           </div>
         </CardContent>

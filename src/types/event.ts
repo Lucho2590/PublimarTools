@@ -1,6 +1,7 @@
 export enum EEventSection {
   BANDERAS = "banderas",
   VIA_PUBLICA = "viaPublica",
+  ADMINISTRACION = "administracion",
 }
 
 export type TEvent = {
