@@ -28,6 +28,12 @@ import collections from "@/lib/collections";
 import { ENoteSection, TNote } from "@/types/note";
 import { toast } from "sonner";
 
+const SECTION_LABELS: Record<ENoteSection, string> = {
+  [ENoteSection.BANDERAS]: "Banderas",
+  [ENoteSection.VIA_PUBLICA]: "Vía Pública",
+  [ENoteSection.ADMINISTRACION]: "Administración",
+};
+
 interface UserNotesProps {
   userId: string;
   userName: string;
@@ -138,7 +144,7 @@ export default function UserNotes({ userId, userName, section }: UserNotesProps)
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <StickyNote className="h-5 w-5" />
-            Mis Notas - {section === ENoteSection.BANDERAS ? "Banderas" : "Vía Pública"}
+            Mis Notas - {SECTION_LABELS[section]}
           </DialogTitle>
         </DialogHeader>
 
