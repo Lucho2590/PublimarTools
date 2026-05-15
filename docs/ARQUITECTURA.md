@@ -535,7 +535,7 @@ const expensiveValue = useMemo(() => {
 ### Build Process
 
 ```bash
-npm run build
+pnpm build
 ```
 
 1. TypeScript compilation
@@ -557,7 +557,7 @@ git push origin main
 ### Deploy a Firebase
 
 ```bash
-npm run deploy
+pnpm deploy
 ```
 
 - Build + Firebase hosting deploy

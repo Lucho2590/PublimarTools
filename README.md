@@ -51,7 +51,7 @@ La documentación completa está organizada en la carpeta `docs/`:
 ### Prerrequisitos
 
 - Node.js 18+
-- npm o yarn
+- pnpm 9+
 - Cuenta de Firebase
 
 ### Instalación
@@ -62,14 +62,14 @@ git clone https://github.com/Lucho2590/PublimarTools.git
 
 # Instalar dependencias
 cd publimarTools
-npm install
+pnpm install
 
 # Configurar variables de entorno
 cp .env.example .env.local
 # Editar .env.local con tus credenciales de Firebase
 
 # Ejecutar en desarrollo
-npm run dev
+pnpm dev
 ```
 
 El proyecto estará disponible en `http://localhost:3000`
@@ -91,10 +91,10 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=
 ## 📦 Scripts Disponibles
 
 ```bash
-npm run dev          # Desarrollo
-npm run build        # Build para producción
-npm run start        # Ejecutar build de producción
-npm run lint         # Linting con ESLint
+pnpm dev             # Desarrollo
+pnpm build           # Build para producción
+pnpm start           # Ejecutar build de producción
+pnpm lint            # Linting con ESLint
 ```
 
 ## 🔐 Autenticación

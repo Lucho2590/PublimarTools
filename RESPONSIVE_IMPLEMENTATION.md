@@ -1122,7 +1122,7 @@ marker.bindPopup(`
 
 ```bash
 # Lighthouse CI (opcional)
-npm install -g @lhci/cli
+pnpm add -g @lhci/cli
 lhci autorun --collect.url=http://localhost:3000/publimar
 ```
 
@@ -1285,7 +1285,7 @@ git tag backup-before-responsive
 
 3. **Instalar dependencias (si falta algo):**
 ```bash
-npm install
+pnpm install
 # Verificar que Sheet esté en components/ui/sheet.tsx
 ```
 
@@ -1361,7 +1361,7 @@ git checkout backup-before-responsive
 #### 1. Sheet no se importa correctamente
 ```bash
 # Verificar instalación
-npx shadcn@latest add sheet
+pnpm dlx shadcn@latest add sheet
 
 # Verificar ruta
 # Debe existir: /src/components/ui/sheet.tsx
