@@ -26,6 +26,8 @@ import collections from "@/lib/collections";
 import { toast } from "sonner";
 import { es } from "date-fns/locale";
 import { sendEventToN8n } from "@/lib/n8nWebhook";
+import { getEfemeride, isEfemeride } from "@/lib/efemerides";
+import { Flag } from "lucide-react";
 
 interface CalendarAgendaProps {
   events: TEvent[];
@@ -63,6 +65,11 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
     const dateB = b.date?.toDate ? b.date.toDate() : new Date(b.date);
     return dateA.getTime() - dateB.getTime();
   });
+
+  // Efeméride patria del día seleccionado (aplica a todos los usuarios)
+  const efemerideForSelectedDate = selectedDate
+    ? getEfemeride(selectedDate)
+    : undefined;
 
   // Obtener días con eventos para marcar en el calendario
   const daysWithEvents = activeEvents.map((event) => {
@@ -211,10 +218,12 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
 
   const modifiers = {
     hasEvent: daysWithEvents,
+    efemeride: (date: Date) => isEfemeride(date),
   };
 
   const modifiersClassNames = {
     hasEvent: 'relative after:content-[""] after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-1.5 after:h-1.5 after:bg-blue-900 after:rounded-full',
+    efemeride: 'relative font-semibold text-sky-700 before:content-[""] before:absolute before:top-1 before:left-1/2 before:-translate-x-1/2 before:w-1.5 before:h-1.5 before:bg-sky-500 before:rounded-full',
   };
 
   return (
@@ -267,6 +276,24 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
         </CardHeader>
         <CardContent>
           <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2">
+            {efemerideForSelectedDate && (
+              <div className="border-l-4 border-l-sky-500 bg-sky-50 p-3 rounded-r-md">
+                <div className="flex items-center gap-2 mb-1">
+                  <Flag className="h-3.5 w-3.5 text-sky-600 flex-shrink-0" />
+                  <span className="text-xs font-medium text-sky-700">
+                    Efeméride patria
+                  </span>
+                </div>
+                <h4 className="font-semibold text-sm text-slate-900 break-words">
+                  {efemerideForSelectedDate.title}
+                </h4>
+                {efemerideForSelectedDate.description && (
+                  <p className="text-xs text-slate-600 break-words mt-1">
+                    {efemerideForSelectedDate.description}
+                  </p>
+                )}
+              </div>
+            )}
             {eventsForSelectedDate && eventsForSelectedDate.length > 0 ? (
               eventsForSelectedDate.map((event) => {
                 const eventDate = event.date?.toDate ? event.date.toDate() : new Date(event.date);
@@ -324,15 +351,17 @@ export default function CalendarAgenda({ events, currentUserId, currentUserName,
                 );
               })
             ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Clock className="h-10 w-10 text-slate-300 mb-3" />
-                <p className="text-slate-500 text-sm font-medium">
-                  No hay eventos
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Haz clic en "Nuevo" para agregar uno
-                </p>
-              </div>
+              !efemerideForSelectedDate && (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <Clock className="h-10 w-10 text-slate-300 mb-3" />
+                  <p className="text-slate-500 text-sm font-medium">
+                    No hay eventos
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Haz clic en "Nuevo" para agregar uno
+                  </p>
+                </div>
+              )
             )}
           </div>
         </CardContent>
