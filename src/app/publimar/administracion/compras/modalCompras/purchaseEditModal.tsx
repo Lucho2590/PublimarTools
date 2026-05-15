@@ -233,11 +233,15 @@ export default function PurchaseEditModal({
     try {
       const beforeData = purchase as TPurchase | undefined;
       const purchaseRef = doc(firestore, 'purchases', purchaseId);
-      await updateDoc(purchaseRef, {
+      const updateData: Record<string, any> = {
         ...formData,
         amount: Number(formData.amount),
         updatedAt: new Date(),
+      };
+      Object.keys(updateData).forEach((key) => {
+        if (updateData[key] === undefined) delete updateData[key];
       });
+      await updateDoc(purchaseRef, updateData);
 
       // Manejar factura
       if (facturaFile) {
