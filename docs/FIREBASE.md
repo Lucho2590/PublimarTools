@@ -782,7 +782,7 @@ service cloud.firestore {
 
 ```bash
 # Instalar Firebase CLI
-npm install -g firebase-tools
+pnpm add -g firebase-tools
 
 # Login
 firebase login
@@ -1064,10 +1064,10 @@ const uploadProductImage = async (
 
 ```bash
 # Instalar dependencias
-npm install
+pnpm install
 
 # Build del proyecto
-npm run build
+pnpm build
 
 # Deploy a Firebase Hosting
 firebase deploy --only hosting
@@ -1103,16 +1103,22 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          node-version: '18'
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: npm run build
+        run: pnpm build
         env:
           NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           # ... otras variables

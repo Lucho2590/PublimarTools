@@ -200,7 +200,7 @@ Cuando decodificás el token, contiene:
 
 Instalar en n8n (si usás self-hosted):
 ```bash
-npm install firebase-admin
+pnpm add firebase-admin
 ```
 
 Código en nodo "Code":

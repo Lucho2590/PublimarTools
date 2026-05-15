@@ -1,14 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run build:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm dlx shadcn@latest add sheet)",
+      "Bash(pnpm dlx tsc:*)",
+      "Bash(pnpm tsc:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(cat:*)",
-      "Bash(npm install:*)",
-      "Bash(npx shadcn@latest add sheet)",
-      "Bash(npx tsc:*)",
       "Bash(grep:*)",
       "Bash(find:*)",
       "Bash(head:*)"

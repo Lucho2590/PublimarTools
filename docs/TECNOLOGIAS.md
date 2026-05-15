@@ -253,14 +253,14 @@ const buttonVariants = cva("base-styles", {
 
 ## 📦 Gestor de Paquetes
 
-### npm
-- **Versión mínima requerida**: 8+
+### pnpm
+- **Versión**: 9.x (declarada en `packageManager`)
 - **Scripts disponibles**:
-  - `npm run dev` - Desarrollo
-  - `npm run build` - Build producción
-  - `npm run start` - Servidor producción
-  - `npm run lint` - Linting
-  - `npm run deploy` - Deploy a Firebase
+  - `pnpm dev` - Desarrollo
+  - `pnpm build` - Build producción
+  - `pnpm start` - Servidor producción
+  - `pnpm lint` - Linting
+  - `pnpm deploy` - Deploy a Firebase
 
 ## 🚀 Deploy & Hosting
 
@@ -272,7 +272,7 @@ const buttonVariants = cva("base-styles", {
   - Optimizaciones automáticas
 
 ### Firebase Hosting (Alternativo)
-- **Comando**: `npm run deploy`
+- **Comando**: `pnpm deploy`
 - **Características**:
   - CDN global
   - SSL gratuito
@@ -300,13 +300,13 @@ Para mantener las dependencias actualizadas:
 
 ```bash
 # Ver paquetes desactualizados
-npm outdated
+pnpm outdated
 
 # Actualizar dependencias menores
-npm update
+pnpm update
 
 # Actualizar a versiones mayores (con precaución)
-npm install <package>@latest
+pnpm add <package>@latest
 ```
 
 ## ⚠️ Notas Importantes

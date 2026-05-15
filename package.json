@@ -2,12 +2,13 @@
   "name": "publimartools",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "deploy": "npm run build && firebase deploy --only hosting"
+    "deploy": "pnpm build && firebase deploy --only hosting"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",

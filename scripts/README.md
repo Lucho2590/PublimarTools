@@ -16,8 +16,8 @@ Este script agrega el campo `department` con valor `"banderas"` a todas las vent
 
 2. **Instalar dependencias** (si no las tienes)
    ```bash
-   npm install firebase-admin
-   npm install -D ts-node @types/node
+   pnpm add firebase-admin
+   pnpm add -D ts-node @types/node
    ```
 
 ### Cómo Ejecutar
@@ -26,7 +26,7 @@ Este script agrega el campo `department` con valor `"banderas"` a todas las vent
 
 2. Ejecuta el script:
    ```bash
-   npx ts-node scripts/migrateSalesDepartment.ts
+   pnpm dlx ts-node scripts/migrateSalesDepartment.ts
    ```
 
 3. El script te mostrará el progreso en tiempo real:
@@ -64,4 +64,4 @@ Después de ejecutar el script, puedes verificar en Firebase Console que las ven
    - Solución: Verifica que la cuenta de servicio tenga permisos de lectura/escritura en Firestore
 
 3. **Error: ts-node not found**
-   - Solución: Instala ts-node: `npm install -D ts-node`
+   - Solución: Instala ts-node: `pnpm add -D ts-node`

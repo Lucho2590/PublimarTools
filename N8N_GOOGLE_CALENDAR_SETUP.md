@@ -28,9 +28,9 @@ docker run -it --rm \
 
 Luego accedé a `http://localhost:5678`
 
-### Opción C: npm (Para desarrollo local)
+### Opción C: pnpm (Para desarrollo local)
 ```bash
-npm install n8n -g
+pnpm add -g n8n
 n8n start
 ```
 
@@ -226,7 +226,7 @@ Como necesitamos el ID de Google Calendar para actualizar o borrar, primero hay 
 
 4. Reiniciá tu servidor de desarrollo:
    ```bash
-   npm run dev
+   pnpm dev
    ```
 
 ---
