@@ -1,4 +1,5 @@
 import { TClient } from "./client";
+import { EAccountType } from "./account";
 
 export enum EPaymentMethod {
   CASH = "cash",
@@ -9,6 +10,20 @@ export enum EPaymentMethod {
   CHECK = "cheque",
   CREDIT_NOTE = "credit_note",
 }
+
+/**
+ * Tipos de cuenta permitidos como destino para cada forma de pago.
+ * `[]` significa sin restricción.
+ */
+export const PAYMENT_METHOD_ACCOUNT_TYPES: Record<EPaymentMethod, EAccountType[]> = {
+  [EPaymentMethod.CASH]: [EAccountType.CASH],
+  [EPaymentMethod.CREDIT_CARD]: [EAccountType.BANK],
+  [EPaymentMethod.DEBIT_CARD]: [EAccountType.BANK],
+  [EPaymentMethod.TRANSFER]: [EAccountType.BANK],
+  [EPaymentMethod.MERCADOPAGO]: [EAccountType.DIGITAL_WALLET],
+  [EPaymentMethod.CHECK]: [EAccountType.BANK],
+  [EPaymentMethod.CREDIT_NOTE]: [],
+};
 
 export const PAYMENT_METHOD_LABELS: Record<EPaymentMethod, string> = {
   [EPaymentMethod.CASH]: "Efectivo",
