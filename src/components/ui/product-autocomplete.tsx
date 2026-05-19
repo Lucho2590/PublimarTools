@@ -46,13 +46,14 @@ export function ProductAutocomplete({
 
   const filteredOptions = React.useMemo(() => {
     if (!inputValue) return options;
+    if (selectedOption && inputValue === selectedOption.label) return options;
     const search = inputValue.toLowerCase();
     return options.filter(
       (opt) =>
         opt.label.toLowerCase().includes(search) ||
         opt.sublabel?.toLowerCase().includes(search)
     );
-  }, [options, inputValue]);
+  }, [options, inputValue, selectedOption]);
 
   const handleSelect = (opt: AutocompleteOption) => {
     if (opt.disabled) return;

@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { CuitInput } from "@/components/cuit-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -49,7 +50,7 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
-import { EPaymentMethod, ESaleDepartment, TFactura, TSaleFormaPago } from "@/types/sale";
+import { EPaymentMethod, ESaleDepartment, PAYMENT_METHOD_ACCOUNT_TYPES, TFactura, TSaleFormaPago } from "@/types/sale";
 import { useQuotes } from "@/hooks/useQuotes";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { formatearPrecio, redondearADecena, redondearTotal, formatDateString } from "@/lib/utils";
@@ -1994,17 +1995,12 @@ export default function NuevaVentaPage() {
                     </div>
                     <div className="md:col-span-3 space-y-1">
                       <Label className="text-xs">Monto</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={fp.amount || ""}
-                        onChange={(e) =>
-                          updateFormaPago(fp.id, {
-                            amount: parseFloat(e.target.value) || 0,
-                          })
+                      <MoneyInput
+                        value={fp.amount || 0}
+                        onValueChange={(amount) =>
+                          updateFormaPago(fp.id, { amount })
                         }
-                        placeholder="0.00"
+                        placeholder="0"
                       />
                     </div>
                     <div className="md:col-span-4 space-y-1">
@@ -2014,6 +2010,15 @@ export default function NuevaVentaPage() {
                       <AccountSelect
                         value={fp.accountId || ""}
                         onChange={(value) => updateFormaPago(fp.id, { accountId: value })}
+                        allowedTypes={
+                          PAYMENT_METHOD_ACCOUNT_TYPES[fp.method]?.length
+                            ? PAYMENT_METHOD_ACCOUNT_TYPES[fp.method]
+                            : undefined
+                        }
+                        disabled={
+                          fp.method === EPaymentMethod.CREDIT_CARD ||
+                          fp.method === EPaymentMethod.DEBIT_CARD
+                        }
                         placeholder={
                           fp.method === EPaymentMethod.CASH
                             ? "Ej: Efectivo Banderas"
