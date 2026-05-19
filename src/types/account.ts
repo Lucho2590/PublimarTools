@@ -14,11 +14,14 @@ export enum EAccountDepartment {
   BANDERAS = "banderas",
   VIA_PUBLICA = "via_publica",
   ADMINISTRACION = "administracion",
+  PERSONAL = "personal",
 }
 
 export interface TAccount {
   id?: string;
   name: string;
+  /** Número simbólico elegido a mano para referenciar la cuenta. */
+  referenceNumber?: string;
   type: EAccountType;
   bankName?: string;
   accountNumber?: string;
@@ -46,4 +49,5 @@ export const ACCOUNT_DEPARTMENT_LABELS: Record<EAccountDepartment, string> = {
   [EAccountDepartment.BANDERAS]: "Banderas",
   [EAccountDepartment.VIA_PUBLICA]: "Vía Pública",
   [EAccountDepartment.ADMINISTRACION]: "Administración",
+  [EAccountDepartment.PERSONAL]: "Personal",
 };

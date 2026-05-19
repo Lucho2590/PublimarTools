@@ -61,6 +61,19 @@ import collections from "@/lib/collections";
 import { TProduct, TProductVariant } from "@/types/product";
 import { TClient } from "@/types/client";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AccountSelect } from "@/components/admin/AccountSelect";
+import {
+  registerAccountMovement,
+  reverseAccountMovement,
+} from "@/lib/accountMovements";
+import { EMovementType } from "@/types/accountMovement";
+import { useAccounts } from "@/hooks/useAccounts";
+import {
+  usePaymentAccountDefaults,
+  getDefaultAccountId,
+} from "@/hooks/usePaymentAccountDefaults";
+import { useAuth } from "@/contexts/AuthContext";
+import { isAdminOrAbove } from "@/lib/permissions";
 
 export default function OrderDetailsPage({
   params,
@@ -70,6 +83,10 @@ export default function OrderDetailsPage({
   const router = useRouter();
   const { data: user } = useUser();
   const firestore = useFirestore();
+  const { userRole } = useAuth();
+  const { accounts: allAccounts } = useAccounts({ includeArchived: true });
+  const { defaults: paymentDefaults } = usePaymentAccountDefaults();
+  const canEditPayments = isAdminOrAbove(userRole);
 
   // Extraer el ID real del slug
   const orderId = extractIdFromSlug(params.id);
@@ -100,7 +117,25 @@ export default function OrderDetailsPage({
     EPaymentMethod.CASH
   );
   const [banco, setBanco] = useState<string>("");
+  const [cuentaPago, setCuentaPago] = useState<string>("");
   const [loadingPago, setLoadingPago] = useState(false);
+
+  // Estados para editar / eliminar pagos (solo SUPERUSER y ADMIN)
+  const [pagoEditando, setPagoEditando] = useState<{
+    index: number;
+    payment: TPaymentHistory;
+  } | null>(null);
+  const [editForm, setEditForm] = useState<{
+    amount: string;
+    method: EPaymentMethod;
+    banco: string;
+    accountId: string;
+  }>({ amount: "", method: EPaymentMethod.CASH, banco: "", accountId: "" });
+  const [pagoEliminar, setPagoEliminar] = useState<{
+    index: number;
+    payment: TPaymentHistory;
+  } | null>(null);
+  const [savingPagoEdit, setSavingPagoEdit] = useState(false);
 
   // Estados para item manual
   const [showManualItemDialog, setShowManualItemDialog] = useState(false);
@@ -574,6 +609,9 @@ export default function OrderDetailsPage({
 
   // Función para convertir orden a venta
   const convertOrderToSale = async (orderData: any) => {
+    // NOTA: esta función NO registra movimientos de cuenta a propósito.
+    // Los cobros de la orden ya impactaron las cuentas al registrarse cada
+    // pago (handlePagoParcial). Registrar movimientos acá duplicaría el ingreso.
     try {
       // Transformar items de orden a items de venta
       const saleItems = orderData.items.map((item: any) => ({
@@ -900,12 +938,42 @@ export default function OrderDetailsPage({
         paymentNotes = `${paymentNotes} - Mercado Pago`;
       }
       
+      const pagoId = `pago-${Date.now()}`;
+
+      // Si se eligió una cuenta, registrar el ingreso en esa cuenta.
+      // Sin cuenta seleccionada no se genera movimiento (igual que en ventas).
+      let accountMovementId: string | null = null;
+      if (cuentaPago) {
+        try {
+          const acc = allAccounts.find((a) => a.id === cuentaPago);
+          accountMovementId = await registerAccountMovement(firestore, {
+            accountId: cuentaPago,
+            type: EMovementType.INCOME,
+            amount: montoPago,
+            description: `Pago orden #${order.number}${
+              order.clientName ? ` - ${order.clientName}` : ""
+            } (${metodoPago}${banco ? ` ${banco}` : ""}${
+              acc ? ` → ${acc.name}` : ""
+            })`,
+            date: new Date(),
+            sourceType: "order",
+            sourceId: order.id,
+            createdBy: userRole || user?.uid || "",
+          });
+        } catch (err) {
+          console.error("Error al registrar movimiento de cuenta:", err);
+        }
+      }
+
       const nuevoPago: TPaymentHistory = {
+        id: pagoId,
         amount: montoPago,
         date: new Date(),
         type: tipoPago,
         method: metodoPago,
         notes: paymentNotes,
+        accountId: cuentaPago || null,
+        accountMovementId,
       };
 
       const historialActual = order.paymentHistory || [];
@@ -917,12 +985,13 @@ export default function OrderDetailsPage({
       });
 
       toast.success(
-        tipoPago === "seña" 
-          ? "Seña registrada correctamente" 
+        tipoPago === "seña"
+          ? "Seña registrada correctamente"
           : "Pago registrado correctamente"
       );
       setPagoParcial("");
       setBanco("");
+      setCuentaPago("");
       setMetodoPago(EPaymentMethod.CASH);
     } catch (error) {
       console.error("Error al registrar pago:", error);
@@ -934,6 +1003,164 @@ export default function OrderDetailsPage({
 
 
   const BANCOS = ["Galicia", "Frances"];
+
+  // ============================================
+  // EDITAR / ELIMINAR PAGOS (solo SUPERUSER y ADMIN)
+  // ============================================
+
+  const buildPaymentNotes = (
+    type: string,
+    method: EPaymentMethod,
+    bancoSel: string,
+  ): string => {
+    let notes = type === "seña" ? "Seña/Anticipo" : "Pago parcial";
+    if (method === EPaymentMethod.TRANSFER) {
+      notes = `${notes} - Transferencia${bancoSel ? ` - ${bancoSel}` : ""}`;
+    } else if (method === EPaymentMethod.MERCADOPAGO) {
+      notes = `${notes} - Mercado Pago`;
+    }
+    return notes;
+  };
+
+  // Recalcula el balance de la orden a partir de un paymentHistory dado
+  // (considera también el downPayment legacy).
+  const computeBalanceFromHistory = (history: TPaymentHistory[]): number => {
+    const downPaymentAmount = Number((order as any)?.downPayment) || 0;
+    const historyAmount = history.reduce(
+      (sum, p) => sum + Number(p.amount || 0),
+      0,
+    );
+    return total - downPaymentAmount - historyAmount;
+  };
+
+  const abrirEdicionPago = (index: number, payment: TPaymentHistory) => {
+    setPagoEditando({ index, payment });
+    setEditForm({
+      amount: String(payment.amount ?? ""),
+      method: payment.method,
+      banco:
+        payment.method === EPaymentMethod.TRANSFER
+          ? ((order as any)?.bank as string) || ""
+          : "",
+      accountId: payment.accountId || "",
+    });
+  };
+
+  const handleGuardarEdicionPago = async () => {
+    if (!order || !pagoEditando) return;
+    if (!canEditPayments) {
+      toast.error("No tenés permisos para editar pagos");
+      return;
+    }
+    const monto = Number(editForm.amount);
+    if (!monto || isNaN(monto) || monto <= 0) {
+      toast.error("Ingresá un monto válido");
+      return;
+    }
+    if (editForm.method === EPaymentMethod.TRANSFER && !editForm.banco) {
+      toast.error("Debes seleccionar un banco");
+      return;
+    }
+    setSavingPagoEdit(true);
+    try {
+      const { index, payment } = pagoEditando;
+
+      // Revertir el movimiento anterior si lo había
+      if (payment.accountMovementId) {
+        try {
+          await reverseAccountMovement(firestore, payment.accountMovementId);
+        } catch (err) {
+          console.error("Error al revertir movimiento anterior:", err);
+        }
+      }
+
+      // Registrar el nuevo movimiento si se eligió cuenta
+      let accountMovementId: string | null = null;
+      if (editForm.accountId) {
+        try {
+          const acc = allAccounts.find((a) => a.id === editForm.accountId);
+          accountMovementId = await registerAccountMovement(firestore, {
+            accountId: editForm.accountId,
+            type: EMovementType.INCOME,
+            amount: monto,
+            description: `Pago orden #${order.number}${
+              order.clientName ? ` - ${order.clientName}` : ""
+            } (${editForm.method}${
+              editForm.banco ? ` ${editForm.banco}` : ""
+            }${acc ? ` → ${acc.name}` : ""}) [editado]`,
+            date: payment.date ? new Date(payment.date) : new Date(),
+            sourceType: "order",
+            sourceId: order.id,
+            createdBy: userRole || user?.uid || "",
+          });
+        } catch (err) {
+          console.error("Error al registrar movimiento de cuenta:", err);
+        }
+      }
+
+      const historial = [...(order.paymentHistory || [])];
+      historial[index] = {
+        ...payment,
+        amount: monto,
+        method: editForm.method,
+        notes: buildPaymentNotes(payment.type, editForm.method, editForm.banco),
+        accountId: editForm.accountId || null,
+        accountMovementId,
+      };
+
+      await updateDoc(doc(firestore, collections.ORDERS, order.id), {
+        paymentHistory: historial,
+        balance: computeBalanceFromHistory(historial),
+        updatedAt: new Date(),
+      });
+
+      toast.success("Pago actualizado correctamente");
+      setPagoEditando(null);
+    } catch (error) {
+      console.error("Error al editar el pago:", error);
+      toast.error("Error al editar el pago");
+    } finally {
+      setSavingPagoEdit(false);
+    }
+  };
+
+  const handleEliminarPago = async () => {
+    if (!order || !pagoEliminar) return;
+    if (!canEditPayments) {
+      toast.error("No tenés permisos para eliminar pagos");
+      return;
+    }
+    setSavingPagoEdit(true);
+    try {
+      const { index, payment } = pagoEliminar;
+
+      if (payment.accountMovementId) {
+        try {
+          await reverseAccountMovement(firestore, payment.accountMovementId);
+        } catch (err) {
+          console.error("Error al revertir movimiento:", err);
+        }
+      }
+
+      const historial = (order.paymentHistory || []).filter(
+        (_: TPaymentHistory, i: number) => i !== index,
+      );
+
+      await updateDoc(doc(firestore, collections.ORDERS, order.id), {
+        paymentHistory: historial,
+        balance: computeBalanceFromHistory(historial),
+        updatedAt: new Date(),
+      });
+
+      toast.success("Pago eliminado correctamente");
+      setPagoEliminar(null);
+    } catch (error) {
+      console.error("Error al eliminar el pago:", error);
+      toast.error("Error al eliminar el pago");
+    } finally {
+      setSavingPagoEdit(false);
+    }
+  };
 
   // Manejar item manual
   const handleAddManualItem = () => {
@@ -2220,9 +2447,16 @@ export default function OrderDetailsPage({
                           <Label>Método de pago</Label>
                           <Select
                             value={metodoPago}
-                            onValueChange={(value) =>
-                              setMetodoPago(value as EPaymentMethod)
-                            }
+                            onValueChange={(value) => {
+                              setMetodoPago(value as EPaymentMethod);
+                              setCuentaPago(
+                                getDefaultAccountId(
+                                  paymentDefaults,
+                                  "sales",
+                                  value as EPaymentMethod,
+                                ),
+                              );
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -2267,6 +2501,21 @@ export default function OrderDetailsPage({
                           </div>
                         )}
                       </div>
+                      <div>
+                        <Label>Cuenta (opcional)</Label>
+                        <AccountSelect
+                          value={cuentaPago}
+                          onChange={(value) => setCuentaPago(value)}
+                          placeholder={
+                            metodoPago === EPaymentMethod.CASH
+                              ? "Ej: Efectivo Banderas"
+                              : "Seleccionar cuenta"
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Si seleccionás una cuenta, el cobro impacta su saldo.
+                        </p>
+                      </div>
                       <div className="col-span-1">
                       <Button
                         onClick={() => handlePagoParcial(
@@ -2303,11 +2552,23 @@ export default function OrderDetailsPage({
                           <TableHead>Monto</TableHead>
                           <TableHead>Método</TableHead>
                           <TableHead>Notas</TableHead>
+                          {canEditPayments && (
+                            <TableHead className="text-right">Acciones</TableHead>
+                          )}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {getConsolidatedPayments(order).map(
-                          (payment: TPaymentHistory, index: number) => (
+                          (payment: TPaymentHistory, index: number) => {
+                            const legacyOffset =
+                              (order as any)?.downPayment &&
+                              (order as any).downPayment > 0
+                                ? 1
+                                : 0;
+                            const historyIndex = index - legacyOffset;
+                            const isEditable =
+                              canEditPayments && historyIndex >= 0;
+                            return (
                             <TableRow key={index}>
                               <TableCell className="text-sm">
                                 {formatDate(payment.date == undefined ? order.createdAt : payment.date)}
@@ -2347,8 +2608,53 @@ export default function OrderDetailsPage({
                               <TableCell className="text-sm text-gray-600">
                                 {payment.notes || "-"}
                               </TableCell>
+                              {canEditPayments && (
+                                <TableCell className="text-right">
+                                  {isEditable ? (
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        title="Editar pago"
+                                        onClick={() =>
+                                          abrirEdicionPago(
+                                            historyIndex,
+                                            (order.paymentHistory || [])[
+                                              historyIndex
+                                            ],
+                                          )
+                                        }
+                                      >
+                                        <Edit className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        title="Eliminar pago"
+                                        className="text-red-600 hover:text-red-700"
+                                        onClick={() =>
+                                          setPagoEliminar({
+                                            index: historyIndex,
+                                            payment:
+                                              (order.paymentHistory || [])[
+                                                historyIndex
+                                              ],
+                                          })
+                                        }
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">
+                                      —
+                                    </span>
+                                  )}
+                                </TableCell>
+                              )}
                             </TableRow>
-                          )
+                            );
+                          }
                         )}
                       </TableBody>
                     </Table>
@@ -2359,6 +2665,162 @@ export default function OrderDetailsPage({
           </Card>
         </div>
       </div>
+
+      {/* Dialog para editar un pago (solo SUPERUSER y ADMIN) */}
+      <Dialog
+        open={!!pagoEditando}
+        onOpenChange={(open) => !open && setPagoEditando(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar pago</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label>Monto</Label>
+              <Input
+                type="number"
+                min="0"
+                step="10.00"
+                value={editForm.amount}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, amount: e.target.value }))
+                }
+              />
+            </div>
+            <div>
+              <Label>Método de pago</Label>
+              <Select
+                value={editForm.method}
+                onValueChange={(value) =>
+                  setEditForm((f) => ({
+                    ...f,
+                    method: value as EPaymentMethod,
+                    banco:
+                      (value as EPaymentMethod) === EPaymentMethod.TRANSFER
+                        ? f.banco
+                        : "",
+                    accountId: getDefaultAccountId(
+                      paymentDefaults,
+                      "sales",
+                      value as EPaymentMethod,
+                    ),
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={EPaymentMethod.CASH}>Efectivo</SelectItem>
+                  <SelectItem value={EPaymentMethod.CREDIT_CARD}>
+                    Tarjeta de crédito
+                  </SelectItem>
+                  <SelectItem value={EPaymentMethod.DEBIT_CARD}>
+                    Tarjeta de débito
+                  </SelectItem>
+                  <SelectItem value={EPaymentMethod.TRANSFER}>
+                    Transferencia
+                  </SelectItem>
+                  <SelectItem value={EPaymentMethod.MERCADOPAGO}>
+                    Mercado Pago
+                  </SelectItem>
+                  <SelectItem value={EPaymentMethod.CHECK}>Cheque</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {editForm.method === EPaymentMethod.TRANSFER && (
+              <div>
+                <Label>Banco</Label>
+                <Select
+                  value={editForm.banco}
+                  onValueChange={(value) =>
+                    setEditForm((f) => ({ ...f, banco: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar banco" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BANCOS.map((b: string) => (
+                      <SelectItem key={b} value={b}>
+                        {b}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label>Cuenta (opcional)</Label>
+              <AccountSelect
+                value={editForm.accountId}
+                onChange={(value) =>
+                  setEditForm((f) => ({ ...f, accountId: value }))
+                }
+                placeholder="Seleccionar cuenta"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Al guardar se revierte el movimiento anterior y se registra el
+                nuevo según la cuenta seleccionada.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPagoEditando(null)}
+              disabled={savingPagoEdit}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleGuardarEdicionPago}
+              disabled={savingPagoEdit}
+            >
+              {savingPagoEdit ? "Guardando..." : "Guardar cambios"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmación para eliminar un pago */}
+      <Dialog
+        open={!!pagoEliminar}
+        onOpenChange={(open) => !open && setPagoEliminar(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Eliminar pago</DialogTitle>
+          </DialogHeader>
+          <div className="py-3 text-sm text-gray-600">
+            ¿Seguro que querés eliminar este pago de{" "}
+            <strong>
+              {pagoEliminar
+                ? formatearPrecio(pagoEliminar.payment.amount)
+                : ""}
+            </strong>
+            ? Si tenía un movimiento de cuenta asociado, se revertirá del saldo
+            de la cuenta. Esta acción no se puede deshacer.
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPagoEliminar(null)}
+              disabled={savingPagoEdit}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleEliminarPago}
+              disabled={savingPagoEdit}
+            >
+              {savingPagoEdit ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de confirmación para convertir a venta */}
       <Dialog open={showConvertDialog} onOpenChange={setShowConvertDialog}>

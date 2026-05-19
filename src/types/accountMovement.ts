@@ -8,6 +8,7 @@ export enum EMovementType {
 
 export type TMovementSource =
   | "sale"
+  | "order"
   | "purchase"
   | "billing"
   | "providerPayment"

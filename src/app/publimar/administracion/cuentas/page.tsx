@@ -24,7 +24,11 @@ import {
 import { SummaryCard } from "@/components/admin/SummaryCard";
 import { TablePagination } from "@/components/admin/TablePagination";
 import { AccountFormModal } from "./modal/AccountFormModal";
+import { PaymentDefaultsModal } from "./modal/PaymentDefaultsModal";
+import { TransferModal } from "./modal/TransferModal";
 import { useAccounts } from "@/hooks/useAccounts";
+import { useAuth } from "@/contexts/AuthContext";
+import { isAdminOrAbove } from "@/lib/permissions";
 import { formatearPrecio } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -35,6 +39,9 @@ import {
   Archive,
   RotateCcw,
   Eye,
+  Settings,
+  Copy,
+  ArrowLeftRight,
 } from "lucide-react";
 import {
   TAccount,
@@ -54,6 +61,10 @@ export default function CuentasPage() {
     EAccountStatus.ACTIVE,
   );
   const [modalOpen, setModalOpen] = useState(false);
+  const [defaultsModalOpen, setDefaultsModalOpen] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const { userRole } = useAuth();
+  const canConfigure = isAdminOrAbove(userRole);
   const [editing, setEditing] = useState<TAccount | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -66,7 +77,7 @@ export default function CuentasPage() {
       if (statusFilter !== "all" && a.status !== statusFilter) return false;
       if (typeFilter !== "all" && a.type !== typeFilter) return false;
       if (term) {
-        const hay = `${a.name} ${a.bankName ?? ""} ${a.holder ?? ""}`;
+        const hay = `${a.referenceNumber ?? ""} ${a.name} ${a.bankName ?? ""} ${a.holder ?? ""}`;
         if (!norm(hay).includes(term)) return false;
       }
       return true;
@@ -103,6 +114,24 @@ export default function CuentasPage() {
     }
   };
 
+  const handleCopyData = async (a: TAccount) => {
+    const lines: string[] = [];
+    lines.push(
+      `Cuenta: ${a.name}${a.referenceNumber ? ` (N° ${a.referenceNumber})` : ""}`,
+    );
+    if (a.bankName) lines.push(`Banco: ${a.bankName}`);
+    if (a.holder) lines.push(`Titular: ${a.holder}`);
+    if (a.accountNumber) lines.push(`CBU / N° Cuenta: ${a.accountNumber}`);
+    if (a.alias) lines.push(`Alias / CVU: ${a.alias}`);
+    const text = lines.join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Datos copiados al portapapeles");
+    } catch {
+      toast.error("No se pudieron copiar los datos");
+    }
+  };
+
   const handleRestore = async (a: TAccount) => {
     if (!a.id) return;
     try {
@@ -123,6 +152,20 @@ export default function CuentasPage() {
               <ArrowLeft className="h-4 w-4 mr-1" /> Volver
             </Link>
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => setTransferModalOpen(true)}
+          >
+            <ArrowLeftRight className="h-4 w-4 mr-1" /> Transferir
+          </Button>
+          {canConfigure && (
+            <Button
+              variant="outline"
+              onClick={() => setDefaultsModalOpen(true)}
+            >
+              <Settings className="h-4 w-4 mr-1" /> Cuentas por forma de pago
+            </Button>
+          )}
           <Button
             onClick={() => {
               setEditing(null);
@@ -216,6 +259,7 @@ export default function CuentasPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>N° Ref</TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Banco</TableHead>
@@ -229,7 +273,7 @@ export default function CuentasPage() {
                   {filtered.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={7}
+                        colSpan={8}
                         className="text-center py-6 text-slate-500"
                       >
                         No hay cuentas que coincidan con los filtros.
@@ -238,7 +282,10 @@ export default function CuentasPage() {
                   ) : (
                     pageItems.map((a) => (
                       <TableRow key={a.id}>
-                        <TableCell className="font-medium">{a.name}</TableCell>
+                        <TableCell className="font-medium">
+                          {a.referenceNumber || "-"}
+                        </TableCell>
+                        <TableCell>{a.name}</TableCell>
                         <TableCell>{ACCOUNT_TYPE_LABELS[a.type]}</TableCell>
                         <TableCell>{a.bankName || "-"}</TableCell>
                         <TableCell>
@@ -267,6 +314,14 @@ export default function CuentasPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Copiar datos de la cuenta"
+                              onClick={() => handleCopyData(a)}
+                            >
+                              <Copy className="h-4 w-4" />
+                            </Button>
                             <Button
                               asChild
                               variant="ghost"
@@ -333,6 +388,18 @@ export default function CuentasPage() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         account={editing}
+      />
+
+      {canConfigure && (
+        <PaymentDefaultsModal
+          open={defaultsModalOpen}
+          onOpenChange={setDefaultsModalOpen}
+        />
+      )}
+
+      <TransferModal
+        open={transferModalOpen}
+        onOpenChange={setTransferModalOpen}
       />
     </div>
   );

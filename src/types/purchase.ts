@@ -13,6 +13,18 @@ export enum EPurchasePaymentMethod {
   ECHEQ = "echeq",
 }
 
+export const PURCHASE_PAYMENT_METHOD_LABELS: Record<
+  EPurchasePaymentMethod,
+  string
+> = {
+  [EPurchasePaymentMethod.EFECTIVO]: "Efectivo",
+  [EPurchasePaymentMethod.TARJETA]: "Tarjeta",
+  [EPurchasePaymentMethod.TRANSFERENCIA]: "Transferencia",
+  [EPurchasePaymentMethod.CUENTA_CORRIENTE]: "Cuenta corriente",
+  [EPurchasePaymentMethod.CHEQUE]: "Cheque",
+  [EPurchasePaymentMethod.ECHEQ]: "E-Cheq",
+};
+
 export interface TPurchase {
   id?: string;
   providerId: string;

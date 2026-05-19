@@ -89,6 +89,10 @@ import {
 } from "@/types/auditLog";
 import { AccountSelect } from "@/components/admin/AccountSelect";
 import { useAccounts } from "@/hooks/useAccounts";
+import {
+  usePaymentAccountDefaults,
+  getDefaultAccountId,
+} from "@/hooks/usePaymentAccountDefaults";
 import { createCreditNote } from "@/lib/creditNotes";
 import { ECreditNoteOriginType, TCreditNoteItem } from "@/types/creditNote";
 
@@ -129,6 +133,7 @@ export function SaleDetailsModal({
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [formasPago, setFormasPago] = useState<TSaleFormaPago[]>([]);
   const { accounts: allAccounts } = useAccounts({ includeArchived: true });
+  const { defaults: paymentDefaults } = usePaymentAccountDefaults();
   const [total, setTotal] = useState(0);
   const [subtotal, setSubtotal] = useState(0);
   const [taxAmount, setTaxAmount] = useState(0);
@@ -603,7 +608,20 @@ export function SaleDetailsModal({
 
   const updateFormaPago = (id: string, patch: Partial<TSaleFormaPago>) => {
     setFormasPago((prev) =>
-      prev.map((fp) => (fp.id === id ? { ...fp, ...patch } : fp))
+      prev.map((fp) => {
+        if (fp.id !== id) return fp;
+        const next = { ...fp, ...patch };
+        // Al cambiar el método, precargar la cuenta por defecto configurada
+        // (salvo que el patch traiga una cuenta elegida explícitamente).
+        if (patch.method !== undefined && patch.accountId === undefined) {
+          next.accountId = getDefaultAccountId(
+            paymentDefaults,
+            "sales",
+            patch.method,
+          );
+        }
+        return next;
+      })
     );
   };
 

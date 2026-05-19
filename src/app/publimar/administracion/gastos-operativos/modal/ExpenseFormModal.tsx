@@ -32,6 +32,10 @@ import {
   EXPENSE_CATEGORY_LABELS,
 } from "@/types/operationalExpense";
 import { EPurchaseDepartment, EPurchasePaymentMethod } from "@/types/purchase";
+import {
+  usePaymentAccountDefaults,
+  getDefaultAccountId,
+} from "@/hooks/usePaymentAccountDefaults";
 import { EMovementType } from "@/types/accountMovement";
 
 interface ExpenseFormModalProps {
@@ -79,6 +83,7 @@ export function ExpenseFormModal({
   onSuccess,
 }: ExpenseFormModalProps) {
   const firestore = useFirestore();
+  const { defaults: paymentDefaults } = usePaymentAccountDefaults();
   const { user, userData } = useAuth();
   const { createExpense, updateExpense } = useOperationalExpenses();
   const [form, setForm] = useState(EMPTY);
@@ -260,9 +265,18 @@ export function ExpenseFormModal({
               <Label className="mb-1 block">Forma de pago *</Label>
               <Select
                 value={form.paymentMethod}
-                onValueChange={(v) =>
-                  update("paymentMethod", v as EPurchasePaymentMethod)
-                }
+                onValueChange={(v) => {
+                  const method = v as EPurchasePaymentMethod;
+                  setForm((prev) => ({
+                    ...prev,
+                    paymentMethod: method,
+                    accountId: getDefaultAccountId(
+                      paymentDefaults,
+                      "purchases",
+                      method,
+                    ),
+                  }));
+                }}
               >
                 <SelectTrigger>
                   <SelectValue />
