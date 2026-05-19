@@ -33,11 +33,14 @@ export type TFactura = {
 
 
 export type TPaymentHistory = {
+  id?: string; // identificador estable del pago (para editar/eliminar)
   amount: number;
   date?: Date;
   type: string;
   method: EPaymentMethod;
   notes?: string;
+  accountId?: string | null; // cuenta donde impactó el cobro
+  accountMovementId?: string | null; // id del movimiento de cuenta generado (para revertir)
 };
 
 export type TOrder = {

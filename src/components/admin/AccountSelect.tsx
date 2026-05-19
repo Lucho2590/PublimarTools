@@ -1,12 +1,10 @@
 "use client";
 
+import { useMemo } from "react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ProductAutocomplete,
+  type AutocompleteOption,
+} from "@/components/ui/product-autocomplete";
 import { useAccounts } from "@/hooks/useAccounts";
 import {
   EAccountType,
@@ -24,14 +22,14 @@ interface AccountSelectProps {
   department?: EAccountDepartment;
   className?: string;
   disabled?: boolean;
-  /** Si true, muestra el tipo entre paréntesis. */
+  /** Si true, muestra el tipo en el sublabel. */
   showType?: boolean;
 }
 
 export function AccountSelect({
   value,
   onChange,
-  placeholder = "Seleccionar cuenta",
+  placeholder = "Buscar cuenta por nombre o N°",
   allowedTypes,
   department,
   className,
@@ -40,34 +38,34 @@ export function AccountSelect({
 }: AccountSelectProps) {
   const { accounts, loading } = useAccounts();
 
-  const filtered = accounts.filter((a) => {
-    if (allowedTypes && !allowedTypes.includes(a.type)) return false;
-    if (department && a.department && a.department !== department) return false;
-    return true;
-  });
+  const options = useMemo<AutocompleteOption[]>(() => {
+    return accounts
+      .filter((a) => {
+        if (allowedTypes && !allowedTypes.includes(a.type)) return false;
+        if (department && a.department && a.department !== department)
+          return false;
+        return true;
+      })
+      .map((a) => {
+        const parts: string[] = [];
+        if (a.referenceNumber) parts.push(`N° ${a.referenceNumber}`);
+        if (showType) parts.push(ACCOUNT_TYPE_LABELS[a.type]);
+        return {
+          id: a.id!,
+          label: a.name,
+          sublabel: parts.length ? parts.join(" · ") : undefined,
+        };
+      });
+  }, [accounts, allowedTypes, department, showType]);
 
   return (
-    <Select
-      value={value ?? undefined}
-      onValueChange={onChange}
+    <ProductAutocomplete
+      options={options}
+      value={value ?? ""}
+      onChange={onChange}
+      placeholder={loading ? "Cargando…" : placeholder}
       disabled={disabled || loading}
-    >
-      <SelectTrigger className={className}>
-        <SelectValue placeholder={loading ? "Cargando…" : placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        {filtered.length === 0 && (
-          <SelectItem value="__none__" disabled>
-            No hay cuentas disponibles
-          </SelectItem>
-        )}
-        {filtered.map((a) => (
-          <SelectItem key={a.id} value={a.id!}>
-            {a.name}
-            {showType ? ` (${ACCOUNT_TYPE_LABELS[a.type]})` : ""}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      className={className}
+    />
   );
 }

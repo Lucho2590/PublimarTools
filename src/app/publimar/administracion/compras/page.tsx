@@ -27,6 +27,10 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { TPurchase, EPurchaseDepartment, EPurchasePaymentMethod } from "@/types/purchase";
+import {
+  usePaymentAccountDefaults,
+  getDefaultAccountId,
+} from "@/hooks/usePaymentAccountDefaults";
 import { EUserRole } from "@/types/user";
 import { isAdminOrAbove } from "@/lib/permissions";
 import { formatearPrecio } from "@/lib/utils";
@@ -70,6 +74,7 @@ const formatDate = (timestamp: any) => {
 export default function ComprasAdminPage() {
   const firestore = useFirestore();
   const { userRole } = useAuth();
+  const { defaults: paymentDefaults } = usePaymentAccountDefaults();
   const { logEvent } = useAuditLog();
   const [form, setForm] = useState<Partial<TPurchase>>({
     date: new Date().toISOString().split("T")[0]
@@ -692,7 +697,21 @@ export default function ComprasAdminPage() {
                   <Label htmlFor="paymentMethod">Forma de Pago</Label>
                   <Select
                     value={form.paymentMethod || ""}
-                    onValueChange={(value) => setForm({ ...form, paymentMethod: value as EPurchasePaymentMethod })}
+                    onValueChange={(value) => {
+                      const method = value as EPurchasePaymentMethod;
+                      setForm({
+                        ...form,
+                        paymentMethod: method,
+                        accountId:
+                          method === EPurchasePaymentMethod.CUENTA_CORRIENTE
+                            ? null
+                            : getDefaultAccountId(
+                                paymentDefaults,
+                                "purchases",
+                                method,
+                              ) || null,
+                      });
+                    }}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Seleccionar forma de pago" />

@@ -72,6 +72,10 @@ import { registerAccountMovement } from "@/lib/accountMovements";
 import { EMovementType } from "@/types/accountMovement";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounts } from "@/hooks/useAccounts";
+import {
+  usePaymentAccountDefaults,
+  getDefaultAccountId,
+} from "@/hooks/usePaymentAccountDefaults";
 
 interface SaleItem {
   id: string;
@@ -88,6 +92,7 @@ export default function NuevaVentaPage() {
   const { logEvent } = useAuditLog();
   const { userRole } = useAuth();
   const { accounts: allAccounts } = useAccounts({ includeArchived: true });
+  const { defaults: paymentDefaults } = usePaymentAccountDefaults();
 
   // Hook de clientes - Solo clientes de la sección "banderas"
   const {
@@ -118,6 +123,7 @@ export default function NuevaVentaPage() {
       bank: "",
     },
   ]);
+  const defaultsAppliedRef = useRef(false);
   const [isInvoiced, setIsInvoiced] = useState(false);
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -335,9 +341,40 @@ export default function NuevaVentaPage() {
 
   const updateFormaPago = (id: string, patch: Partial<TSaleFormaPago>) => {
     setFormasPago((prev) =>
-      prev.map((fp) => (fp.id === id ? { ...fp, ...patch } : fp))
+      prev.map((fp) => {
+        if (fp.id !== id) return fp;
+        const next = { ...fp, ...patch };
+        // Al cambiar el método, precargar la cuenta por defecto configurada
+        // (salvo que el patch ya traiga una cuenta elegida explícitamente).
+        if (patch.method !== undefined && patch.accountId === undefined) {
+          next.accountId = getDefaultAccountId(
+            paymentDefaults,
+            "sales",
+            patch.method,
+          );
+        }
+        return next;
+      })
     );
   };
+
+  // Precargar la cuenta por defecto en la forma de pago inicial (una sola vez,
+  // cuando ya cargó la configuración y el usuario no eligió cuenta todavía).
+  useEffect(() => {
+    if (defaultsAppliedRef.current) return;
+    if (!paymentDefaults?.sales) return;
+    setFormasPago((prev) => {
+      if (prev.length !== 1 || prev[0].accountId) return prev;
+      const def = getDefaultAccountId(
+        paymentDefaults,
+        "sales",
+        prev[0].method,
+      );
+      if (!def) return prev;
+      defaultsAppliedRef.current = true;
+      return [{ ...prev[0], accountId: def }];
+    });
+  }, [paymentDefaults]);
 
   const handleClientInputChange = (value: string) => {
     setClienteInput(value);

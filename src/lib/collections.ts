@@ -35,6 +35,7 @@ const collections = {
   ACCOUNT_MOVEMENTS: "accountMovements",
   OPERATIONAL_EXPENSES: "operationalExpenses",
   CREDIT_NOTES: "creditNotes",
+  PAYMENT_ACCOUNT_DEFAULTS: "paymentAccountDefaults",
 } as const;
 
 export default collections;

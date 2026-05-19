@@ -10,6 +10,16 @@ export enum EPaymentMethod {
   CREDIT_NOTE = "credit_note",
 }
 
+export const PAYMENT_METHOD_LABELS: Record<EPaymentMethod, string> = {
+  [EPaymentMethod.CASH]: "Efectivo",
+  [EPaymentMethod.CREDIT_CARD]: "Tarjeta crédito",
+  [EPaymentMethod.DEBIT_CARD]: "Tarjeta débito",
+  [EPaymentMethod.TRANSFER]: "Transferencia",
+  [EPaymentMethod.MERCADOPAGO]: "MercadoPago",
+  [EPaymentMethod.CHECK]: "Cheque",
+  [EPaymentMethod.CREDIT_NOTE]: "Nota de crédito",
+};
+
 export enum ESaleDepartment {
   BANDERAS = "banderas",
   VIA_PUBLICA = "via_publica",

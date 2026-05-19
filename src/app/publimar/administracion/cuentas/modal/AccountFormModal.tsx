@@ -41,6 +41,7 @@ interface AccountFormModalProps {
 
 const EMPTY_FORM: Omit<TAccount, "id" | "createdAt" | "updatedAt" | "createdBy"> = {
   name: "",
+  referenceNumber: "",
   type: EAccountType.BANK,
   bankName: "",
   accountNumber: "",
@@ -71,6 +72,7 @@ export function AccountFormModal({
     if (account) {
       setForm({
         name: account.name ?? "",
+        referenceNumber: account.referenceNumber ?? "",
         type: account.type ?? EAccountType.BANK,
         bankName: account.bankName ?? "",
         accountNumber: account.accountNumber ?? "",
@@ -171,7 +173,15 @@ export function AccountFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <Label className="mb-1 block">N° de referencia</Label>
+              <Input
+                value={form.referenceNumber ?? ""}
+                onChange={(e) => update("referenceNumber", e.target.value)}
+                placeholder="Ej: 1, 01, A-3…"
+              />
+            </div>
             <div>
               <Label className="mb-1 block">Banco / Proveedor</Label>
               <Input
