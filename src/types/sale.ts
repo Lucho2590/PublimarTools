@@ -89,6 +89,16 @@ export interface TExchangeItem {
   total: number;
 }
 
+export type TReturnPayment = {
+  method: EPaymentMethod;       // Forma de pago utilizada
+  amount: number;               // Siempre positivo
+  accountId?: string | null;    // Cuenta destino/origen del movimiento
+  creditNoteId?: string | null; // Si se generó NC en su lugar
+};
+
+// Alias retrocompatible
+export type TReturnDifferencePayment = TReturnPayment;
+
 export interface TReturn {
   id: string;
   date: Date;
@@ -103,6 +113,10 @@ export interface TReturn {
   exchangeItems?: TExchangeItem[];  // Items nuevos que se lleva el cliente
   exchangeTotal?: number;      // Total de los items nuevos
   priceDifference?: number;    // Diferencia: + cliente debe, - se le devuelve
+  // Forma de pago de la diferencia del cambio
+  differencePayment?: TReturnPayment;
+  // Forma de pago de la devolución pura (efectivo/transferencia/NC)
+  refundPayment?: TReturnPayment;
 }
 
 export interface TSale {
