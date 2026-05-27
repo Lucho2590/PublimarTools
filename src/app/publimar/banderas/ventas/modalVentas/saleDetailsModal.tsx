@@ -27,6 +27,9 @@ import {
   TReturnItem,
   TExchangeItem,
   TSaleFormaPago,
+  TReturnPayment,
+  PAYMENT_METHOD_ACCOUNT_TYPES,
+  PAYMENT_METHOD_LABELS,
 } from "@/types/sale";
 import collections from "@/lib/collections";
 import { useState, useEffect, useRef } from "react";
@@ -95,6 +98,8 @@ import {
 } from "@/hooks/usePaymentAccountDefaults";
 import { createCreditNote } from "@/lib/creditNotes";
 import { ECreditNoteOriginType, TCreditNoteItem } from "@/types/creditNote";
+import { registerAccountMovement } from "@/lib/accountMovements";
+import { EMovementType } from "@/types/accountMovement";
 
 const BANCOS = ["Galicia", "Frances"];
 
@@ -184,11 +189,20 @@ export function SaleDetailsModal({
   const [returnItems, setReturnItems] = useState<{ [key: number]: number }>({}); // {itemIndex: quantity}
   const [returnReason, setReturnReason] = useState("");
   const [returnToStock, setReturnToStock] = useState(true);
-  const [refundAsCreditNote, setRefundAsCreditNote] = useState(false);
+  // Forma de pago de la devolución pura
+  const [refundPaymentMethod, setRefundPaymentMethod] = useState<EPaymentMethod>(
+    EPaymentMethod.CASH,
+  );
+  const [refundPaymentAccountId, setRefundPaymentAccountId] = useState<string>("");
 
   // Estados para cambios
   const [isExchangeMode, setIsExchangeMode] = useState(false);
   const [exchangeItems, setExchangeItems] = useState<TExchangeItem[]>([]);
+  // Forma de pago de la diferencia en un cambio
+  const [differencePaymentMethod, setDifferencePaymentMethod] =
+    useState<EPaymentMethod>(EPaymentMethod.CASH);
+  const [differencePaymentAccountId, setDifferencePaymentAccountId] =
+    useState<string>("");
   const [exchangeProductId, setExchangeProductId] = useState("");
   const [exchangeVariantId, setExchangeVariantId] = useState("");
   const [exchangeQuantity, setExchangeQuantity] = useState(1);
@@ -200,6 +214,36 @@ export function SaleDetailsModal({
     quantity: 1,
     unitPrice: 0,
   });
+
+  // Precargar cuenta default cuando se abre el modal de devolución/cambio o
+  // cuando llegan los defaults del admin.
+  useEffect(() => {
+    if (!showReturnDialog) return;
+    if (!paymentDefaults?.sales) return;
+    if (
+      !refundPaymentAccountId &&
+      refundPaymentMethod !== EPaymentMethod.CREDIT_NOTE
+    ) {
+      const def = getDefaultAccountId(
+        paymentDefaults,
+        "sales",
+        refundPaymentMethod,
+      );
+      if (def) setRefundPaymentAccountId(def);
+    }
+    if (
+      !differencePaymentAccountId &&
+      differencePaymentMethod !== EPaymentMethod.CREDIT_NOTE
+    ) {
+      const def = getDefaultAccountId(
+        paymentDefaults,
+        "sales",
+        differencePaymentMethod,
+      );
+      if (def) setDifferencePaymentAccountId(def);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showReturnDialog, paymentDefaults]);
 
   // Estados para el dialog de cliente
   const [showClientDialog, setShowClientDialog] = useState(false);
@@ -910,6 +954,83 @@ export function SaleDetailsModal({
       return;
     }
 
+    // Validar forma de pago de la diferencia (cambios con diferencia != 0)
+    if (isExchangeMode) {
+      const saleSubtotalCheck = typedSale.subtotal || 0;
+      const saleTotalCheck = typedSale.total || 0;
+      const discountRatioCheck =
+        saleSubtotalCheck > 0 ? saleTotalCheck / saleSubtotalCheck : 1;
+      const grossReturnCheck = selectedItems.reduce((sum, [indexStr, qty]) => {
+        const item = typedSale.items[parseInt(indexStr)];
+        if (!item) return sum;
+        return sum + (item.total / item.quantity) * qty;
+      }, 0);
+      const totalReturnCheck = redondearTotal(
+        grossReturnCheck * discountRatioCheck,
+      );
+      const totalExchangeCheck = exchangeItems.reduce(
+        (sum, item) => sum + item.total,
+        0,
+      );
+      const diffCheck = totalExchangeCheck - totalReturnCheck;
+      if (diffCheck !== 0) {
+        const requiresAccount =
+          differencePaymentMethod !== EPaymentMethod.CREDIT_NOTE &&
+          differencePaymentMethod !== EPaymentMethod.CREDIT_CARD &&
+          differencePaymentMethod !== EPaymentMethod.DEBIT_CARD;
+        if (requiresAccount && !differencePaymentAccountId) {
+          toast.error(
+            "Debe seleccionar una cuenta para la diferencia del cambio",
+          );
+          return;
+        }
+        if (
+          differencePaymentMethod === EPaymentMethod.CREDIT_NOTE &&
+          (diffCheck > 0 || !typedSale.clientId)
+        ) {
+          toast.error(
+            "La nota de crédito solo se puede usar para devolver al cliente y requiere un cliente registrado",
+          );
+          return;
+        }
+      }
+    }
+
+    // Validar forma de pago de la devolución pura
+    if (!isExchangeMode) {
+      const saleSubtotalR = typedSale.subtotal || 0;
+      const saleTotalR = typedSale.total || 0;
+      const discountRatioR =
+        saleSubtotalR > 0 ? saleTotalR / saleSubtotalR : 1;
+      const grossReturnR = selectedItems.reduce((sum, [indexStr, qty]) => {
+        const item = typedSale.items[parseInt(indexStr)];
+        if (!item) return sum;
+        return sum + (item.total / item.quantity) * qty;
+      }, 0);
+      const totalRefundR = redondearTotal(grossReturnR * discountRatioR);
+      if (totalRefundR > 0) {
+        const requiresAccountR =
+          refundPaymentMethod !== EPaymentMethod.CREDIT_NOTE &&
+          refundPaymentMethod !== EPaymentMethod.CREDIT_CARD &&
+          refundPaymentMethod !== EPaymentMethod.DEBIT_CARD;
+        if (requiresAccountR && !refundPaymentAccountId) {
+          toast.error(
+            "Debe seleccionar una cuenta para la devolución",
+          );
+          return;
+        }
+        if (
+          refundPaymentMethod === EPaymentMethod.CREDIT_NOTE &&
+          !typedSale.clientId
+        ) {
+          toast.error(
+            "Para emitir una nota de crédito la venta debe tener un cliente registrado",
+          );
+          return;
+        }
+      }
+    }
+
     setIsLoading(true);
     try {
       // Crear items de devolución
@@ -1050,6 +1171,28 @@ export function SaleDetailsModal({
         }
       }
 
+      // Forma de pago de la diferencia (solo para cambios con diferencia != 0)
+      let differencePayment: TReturnPayment | undefined = undefined;
+      if (isExchangeMode && priceDifference !== 0) {
+        differencePayment = {
+          method: differencePaymentMethod,
+          amount: Math.abs(priceDifference),
+          accountId: differencePaymentAccountId || null,
+          creditNoteId: null,
+        };
+      }
+
+      // Forma de pago de la devolución pura (no cambio)
+      let refundPayment: TReturnPayment | undefined = undefined;
+      if (!isExchangeMode && totalRefund > 0) {
+        refundPayment = {
+          method: refundPaymentMethod,
+          amount: totalRefund,
+          accountId: refundPaymentAccountId || null,
+          creditNoteId: null,
+        };
+      }
+
       // Crear objeto de devolución/cambio
       const newReturn: TReturn = {
         id: `${isExchangeMode ? "exchange" : "return"}-${Date.now()}`,
@@ -1064,6 +1207,8 @@ export function SaleDetailsModal({
         exchangeItems: isExchangeMode ? exchangeItems : [],
         exchangeTotal: isExchangeMode ? exchangeTotal : 0,
         priceDifference: isExchangeMode ? priceDifference : 0,
+        ...(differencePayment ? { differencePayment } : {}),
+        ...(refundPayment ? { refundPayment } : {}),
       };
 
       // Actualizar totales de la venta
@@ -1096,50 +1241,152 @@ export function SaleDetailsModal({
           : "Devolución procesada exitosamente",
       );
 
-      // Generar nota de crédito si corresponde (solo devolución pura, no cambio)
-      if (
-        !isExchangeMode &&
-        refundAsCreditNote &&
-        totalRefund > 0 &&
-        typedSale.clientId
-      ) {
+      // Registrar movimiento / NC por la diferencia del cambio
+      if (isExchangeMode && differencePayment) {
+        const isRefundToClient = priceDifference < 0; // se le devuelve al cliente
+        const diffAmount = differencePayment.amount;
+        const saleNum = typedSale.number;
         try {
-          const ncItems: TCreditNoteItem[] = returnItemsArray.map((ri) => ({
-            productId: ri.productId,
-            variantId: ri.variantId,
-            productName: ri.productName,
-            variantName: ri.variantName,
-            quantity: ri.quantityReturned,
-            unitPrice:
-              ri.quantityReturned > 0
-                ? ri.refundAmount / ri.quantityReturned
-                : 0,
-            subtotal: ri.refundAmount,
-          }));
-          const noteId = await createCreditNote(firestore, {
-            clientId: typedSale.clientId,
-            clientName: typedSale.clientName ?? "",
-            amount: totalRefund,
-            reason: returnReason,
-            originType: ECreditNoteOriginType.RETURN,
-            originDocument: {
-              id: saleId!,
-              type: "sale",
-              number: typedSale.number,
-            },
-            items: ncItems,
-            createdBy: currentUser?.uid ?? "",
-          });
-          toast.success(
-            `Nota de crédito generada por ${formatearPrecio(totalRefund)}`,
-          );
-          console.log("Credit note created:", noteId);
+          if (differencePayment.method === EPaymentMethod.CREDIT_NOTE) {
+            // NC para devolver la diferencia al cliente
+            if (typedSale.clientId) {
+              const noteId = await createCreditNote(firestore, {
+                clientId: typedSale.clientId,
+                clientName: typedSale.clientName ?? "",
+                amount: diffAmount,
+                reason: `Diferencia de cambio - Venta #${saleNum}`,
+                originType: ECreditNoteOriginType.RETURN,
+                originDocument: {
+                  id: saleId!,
+                  type: "sale",
+                  number: saleNum,
+                },
+                items: [],
+                createdBy: currentUser?.uid ?? "",
+              });
+              // Persistir el id de la NC en el return recién agregado
+              await updateDoc(saleRef, {
+                returns: updatedReturns.map((r) =>
+                  r.id === newReturn.id && r.differencePayment
+                    ? {
+                        ...r,
+                        differencePayment: {
+                          ...r.differencePayment,
+                          creditNoteId: noteId,
+                        },
+                      }
+                    : r,
+                ),
+                updatedAt: serverTimestamp(),
+              });
+              toast.success(
+                `Nota de crédito generada por ${formatearPrecio(diffAmount)}`,
+              );
+            }
+          } else if (differencePayment.accountId) {
+            // Movimiento de cuenta por la diferencia
+            const acc = allAccounts.find(
+              (a) => a.id === differencePayment!.accountId,
+            );
+            await registerAccountMovement(firestore, {
+              accountId: differencePayment.accountId,
+              type: isRefundToClient
+                ? EMovementType.EXPENSE
+                : EMovementType.INCOME,
+              amount: redondearTotal(diffAmount),
+              description: `Diferencia cambio - Venta #${saleNum}${
+                typedSale.clientName ? ` - ${typedSale.clientName}` : ""
+              } (${differencePayment.method}${acc ? ` → ${acc.name}` : ""})`,
+              date: new Date(),
+              sourceType: "sale",
+              sourceId: saleId!,
+              createdBy: currentUser?.uid ?? "",
+            });
+          }
         } catch (err) {
-          console.error("Error al generar nota de crédito:", err);
+          console.error(
+            "Error al registrar movimiento/NC de la diferencia del cambio:",
+            err,
+          );
           toast.error(
-            err instanceof Error
-              ? `Devolución registrada, pero falló la NC: ${err.message}`
-              : "Devolución registrada, pero falló la nota de crédito",
+            "Cambio registrado, pero falló el movimiento de la diferencia",
+          );
+        }
+      }
+
+      // Registrar movimiento / NC por la devolución pura
+      if (!isExchangeMode && refundPayment) {
+        try {
+          if (refundPayment.method === EPaymentMethod.CREDIT_NOTE) {
+            if (typedSale.clientId) {
+              const ncItems: TCreditNoteItem[] = returnItemsArray.map((ri) => ({
+                productId: ri.productId,
+                variantId: ri.variantId,
+                productName: ri.productName,
+                variantName: ri.variantName,
+                quantity: ri.quantityReturned,
+                unitPrice:
+                  ri.quantityReturned > 0
+                    ? ri.refundAmount / ri.quantityReturned
+                    : 0,
+                subtotal: ri.refundAmount,
+              }));
+              const noteId = await createCreditNote(firestore, {
+                clientId: typedSale.clientId,
+                clientName: typedSale.clientName ?? "",
+                amount: totalRefund,
+                reason: returnReason,
+                originType: ECreditNoteOriginType.RETURN,
+                originDocument: {
+                  id: saleId!,
+                  type: "sale",
+                  number: typedSale.number,
+                },
+                items: ncItems,
+                createdBy: currentUser?.uid ?? "",
+              });
+              await updateDoc(saleRef, {
+                returns: updatedReturns.map((r) =>
+                  r.id === newReturn.id && r.refundPayment
+                    ? {
+                        ...r,
+                        refundPayment: {
+                          ...r.refundPayment,
+                          creditNoteId: noteId,
+                        },
+                      }
+                    : r,
+                ),
+                updatedAt: serverTimestamp(),
+              });
+              toast.success(
+                `Nota de crédito generada por ${formatearPrecio(totalRefund)}`,
+              );
+            }
+          } else if (refundPayment.accountId) {
+            const acc = allAccounts.find(
+              (a) => a.id === refundPayment!.accountId,
+            );
+            await registerAccountMovement(firestore, {
+              accountId: refundPayment.accountId,
+              type: EMovementType.EXPENSE,
+              amount: redondearTotal(totalRefund),
+              description: `Devolución - Venta #${typedSale.number}${
+                typedSale.clientName ? ` - ${typedSale.clientName}` : ""
+              } (${refundPayment.method}${acc ? ` → ${acc.name}` : ""})`,
+              date: new Date(),
+              sourceType: "sale",
+              sourceId: saleId!,
+              createdBy: currentUser?.uid ?? "",
+            });
+          }
+        } catch (err) {
+          console.error(
+            "Error al registrar movimiento/NC de la devolución:",
+            err,
+          );
+          toast.error(
+            "Devolución registrada, pero falló el movimiento de cuenta/NC",
           );
         }
       }
@@ -1148,9 +1395,12 @@ export function SaleDetailsModal({
       setReturnItems({});
       setReturnReason("");
       setReturnToStock(true);
-      setRefundAsCreditNote(false);
+      setRefundPaymentMethod(EPaymentMethod.CASH);
+      setRefundPaymentAccountId("");
       setIsExchangeMode(false);
       setExchangeItems([]);
+      setDifferencePaymentMethod(EPaymentMethod.CASH);
+      setDifferencePaymentAccountId("");
       setShowReturnDialog(false);
 
       onSuccess();
@@ -2478,6 +2728,31 @@ export function SaleDetailsModal({
                           </ul>
                         </div>
 
+                        {/* Forma de pago de la devolución pura */}
+                        {!returnItem.isExchange &&
+                          returnItem.refundPayment &&
+                          (() => {
+                            const rp = returnItem.refundPayment;
+                            const acc = allAccounts.find(
+                              (a) => a.id === rp.accountId,
+                            );
+                            const isNC =
+                              rp.method === EPaymentMethod.CREDIT_NOTE ||
+                              !!rp.creditNoteId;
+                            return (
+                              <div className="flex justify-between text-xs text-gray-600 mt-2 border-t pt-2">
+                                <span>Forma de pago:</span>
+                                <span>
+                                  {isNC
+                                    ? "Nota de crédito emitida"
+                                    : `${PAYMENT_METHOD_LABELS[rp.method]}${
+                                        acc ? ` → ${acc.name}` : ""
+                                      }`}
+                                </span>
+                              </div>
+                            );
+                          })()}
+
                         {/* Items de cambio (solo si es un cambio) */}
                         {returnItem.isExchange &&
                           returnItem.exchangeItems &&
@@ -2541,6 +2816,21 @@ export function SaleDetailsModal({
                                     : "Sin diferencia"}
                               </span>
                             </div>
+                            {returnItem.differencePayment && (() => {
+                              const dp = returnItem.differencePayment;
+                              const acc = allAccounts.find(
+                                (a) => a.id === dp.accountId,
+                              );
+                              return (
+                                <div className="flex justify-between text-xs text-gray-600 mt-1">
+                                  <span>Forma de pago:</span>
+                                  <span>
+                                    {PAYMENT_METHOD_LABELS[dp.method]}
+                                    {acc ? ` → ${acc.name}` : ""}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -2814,9 +3104,12 @@ export function SaleDetailsModal({
             setReturnItems({});
             setReturnReason("");
             setReturnToStock(true);
-            setRefundAsCreditNote(false);
+            setRefundPaymentMethod(EPaymentMethod.CASH);
+            setRefundPaymentAccountId("");
             setIsExchangeMode(false);
             setExchangeItems([]);
+            setDifferencePaymentMethod(EPaymentMethod.CASH);
+            setDifferencePaymentAccountId("");
             setShowExchangeManualDialog(false);
             setExchangeManualItem({ productName: "", variantName: "", quantity: 1, unitPrice: 0 });
           }
@@ -3193,6 +3486,127 @@ export function SaleDetailsModal({
                             </span>
                           </div>
                         </div>
+
+                        {/* Forma de pago de la diferencia */}
+                        {difference !== 0 && (() => {
+                          const isRefund = difference < 0;
+                          const allowCreditNote =
+                            isRefund && !!typedSale.clientId;
+                          const methodOptions: EPaymentMethod[] = [
+                            EPaymentMethod.CASH,
+                            EPaymentMethod.CREDIT_CARD,
+                            EPaymentMethod.DEBIT_CARD,
+                            EPaymentMethod.TRANSFER,
+                            EPaymentMethod.MERCADOPAGO,
+                            EPaymentMethod.CHECK,
+                            ...(allowCreditNote
+                              ? [EPaymentMethod.CREDIT_NOTE]
+                              : []),
+                          ];
+                          const isCreditNote =
+                            differencePaymentMethod === EPaymentMethod.CREDIT_NOTE;
+                          const accountDisabled =
+                            differencePaymentMethod === EPaymentMethod.CREDIT_CARD ||
+                            differencePaymentMethod === EPaymentMethod.DEBIT_CARD ||
+                            isCreditNote;
+                          const allowedTypes =
+                            PAYMENT_METHOD_ACCOUNT_TYPES[differencePaymentMethod]
+                              ?.length
+                              ? PAYMENT_METHOD_ACCOUNT_TYPES[differencePaymentMethod]
+                              : undefined;
+                          const autoAccount =
+                            accountDisabled && differencePaymentAccountId && !isCreditNote
+                              ? allAccounts.find(
+                                  (a) => a.id === differencePaymentAccountId,
+                                )
+                              : null;
+                          return (
+                            <div className="border-t pt-3 mt-2 space-y-2">
+                              <Label className="text-sm font-medium">
+                                {isRefund
+                                  ? "Cómo se devuelve la diferencia al cliente"
+                                  : "Cómo paga el cliente la diferencia"}
+                              </Label>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Método</Label>
+                                  <Select
+                                    value={differencePaymentMethod}
+                                    onValueChange={(value) => {
+                                      const newMethod = value as EPaymentMethod;
+                                      setDifferencePaymentMethod(newMethod);
+                                      if (
+                                        newMethod === EPaymentMethod.CREDIT_NOTE
+                                      ) {
+                                        setDifferencePaymentAccountId("");
+                                      } else {
+                                        const def = getDefaultAccountId(
+                                          paymentDefaults,
+                                          "sales",
+                                          newMethod,
+                                        );
+                                        setDifferencePaymentAccountId(def || "");
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Método" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {methodOptions.map((m) => (
+                                        <SelectItem key={m} value={m}>
+                                          {PAYMENT_METHOD_LABELS[m]}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">
+                                    {isCreditNote
+                                      ? "Cuenta"
+                                      : differencePaymentMethod ===
+                                          EPaymentMethod.CASH
+                                        ? "Caja / cuenta"
+                                        : "Cuenta"}
+                                  </Label>
+                                  <AccountSelect
+                                    value={differencePaymentAccountId}
+                                    onChange={(value) =>
+                                      setDifferencePaymentAccountId(value)
+                                    }
+                                    allowedTypes={allowedTypes}
+                                    disabled={accountDisabled}
+                                    placeholder={
+                                      isCreditNote
+                                        ? "No aplica"
+                                        : differencePaymentMethod ===
+                                            EPaymentMethod.CASH
+                                          ? "Ej: Efectivo Banderas"
+                                          : "Seleccionar cuenta"
+                                    }
+                                  />
+                                </div>
+                              </div>
+                              {autoAccount && (
+                                <p className="text-xs text-gray-600">
+                                  Se registrará en:{" "}
+                                  <strong>{autoAccount.name}</strong>
+                                  {autoAccount.referenceNumber
+                                    ? ` (N° ${autoAccount.referenceNumber})`
+                                    : ""}
+                                </p>
+                              )}
+                              {isCreditNote && (
+                                <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md p-2">
+                                  Se generará una NC por{" "}
+                                  {formatearPrecio(Math.abs(difference))} a favor
+                                  de {typedSale.clientName ?? "este cliente"}.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </>
                     )}
 
@@ -3204,33 +3618,130 @@ export function SaleDetailsModal({
                             {formatearPrecio(totalReturn)}
                           </span>
                         </div>
-                        {totalReturn > 0 && typedSale.clientId && (
-                          <div className="flex items-start gap-2 mt-3 p-3 rounded-md bg-amber-50 border border-amber-200">
-                            <Checkbox
-                              id="refundAsCreditNote"
-                              checked={refundAsCreditNote}
-                              onCheckedChange={(checked) =>
-                                setRefundAsCreditNote(checked as boolean)
-                              }
-                            />
-                            <Label
-                              htmlFor="refundAsCreditNote"
-                              className="cursor-pointer text-sm leading-relaxed"
-                            >
-                              <span className="font-medium block">
-                                Emitir nota de crédito en vez de reembolso en efectivo
-                              </span>
-                              <span className="text-xs text-amber-900">
-                                Se generará una NC por {formatearPrecio(totalReturn)} a favor de {typedSale.clientName ?? "este cliente"}. Podrá usarse en una próxima orden o facturación.
-                              </span>
-                            </Label>
-                          </div>
-                        )}
-                        {totalReturn > 0 && !typedSale.clientId && (
-                          <p className="mt-2 text-xs text-slate-500">
-                            Para emitir una nota de crédito, la venta debe estar asociada a un cliente registrado.
-                          </p>
-                        )}
+
+                        {totalReturn > 0 && (() => {
+                          const allowCreditNote = !!typedSale.clientId;
+                          const methodOptions: EPaymentMethod[] = [
+                            EPaymentMethod.CASH,
+                            EPaymentMethod.CREDIT_CARD,
+                            EPaymentMethod.DEBIT_CARD,
+                            EPaymentMethod.TRANSFER,
+                            EPaymentMethod.MERCADOPAGO,
+                            EPaymentMethod.CHECK,
+                            ...(allowCreditNote
+                              ? [EPaymentMethod.CREDIT_NOTE]
+                              : []),
+                          ];
+                          const isCreditNote =
+                            refundPaymentMethod === EPaymentMethod.CREDIT_NOTE;
+                          const accountDisabled =
+                            refundPaymentMethod === EPaymentMethod.CREDIT_CARD ||
+                            refundPaymentMethod === EPaymentMethod.DEBIT_CARD ||
+                            isCreditNote;
+                          const allowedTypes =
+                            PAYMENT_METHOD_ACCOUNT_TYPES[refundPaymentMethod]
+                              ?.length
+                              ? PAYMENT_METHOD_ACCOUNT_TYPES[refundPaymentMethod]
+                              : undefined;
+                          const autoAccount =
+                            accountDisabled && refundPaymentAccountId && !isCreditNote
+                              ? allAccounts.find(
+                                  (a) => a.id === refundPaymentAccountId,
+                                )
+                              : null;
+                          return (
+                            <div className="border-t pt-3 mt-3 space-y-2">
+                              <Label className="text-sm font-medium">
+                                Cómo se devuelve al cliente
+                              </Label>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <Label className="text-xs">Método</Label>
+                                  <Select
+                                    value={refundPaymentMethod}
+                                    onValueChange={(value) => {
+                                      const newMethod = value as EPaymentMethod;
+                                      setRefundPaymentMethod(newMethod);
+                                      if (
+                                        newMethod === EPaymentMethod.CREDIT_NOTE
+                                      ) {
+                                        setRefundPaymentAccountId("");
+                                      } else {
+                                        const def = getDefaultAccountId(
+                                          paymentDefaults,
+                                          "sales",
+                                          newMethod,
+                                        );
+                                        setRefundPaymentAccountId(def || "");
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Método" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {methodOptions.map((m) => (
+                                        <SelectItem key={m} value={m}>
+                                          {PAYMENT_METHOD_LABELS[m]}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-xs">
+                                    {isCreditNote
+                                      ? "Cuenta"
+                                      : refundPaymentMethod ===
+                                          EPaymentMethod.CASH
+                                        ? "Caja / cuenta"
+                                        : "Cuenta"}
+                                  </Label>
+                                  <AccountSelect
+                                    value={refundPaymentAccountId}
+                                    onChange={(value) =>
+                                      setRefundPaymentAccountId(value)
+                                    }
+                                    allowedTypes={allowedTypes}
+                                    disabled={accountDisabled}
+                                    placeholder={
+                                      isCreditNote
+                                        ? "No aplica"
+                                        : refundPaymentMethod ===
+                                            EPaymentMethod.CASH
+                                          ? "Ej: Efectivo Banderas"
+                                          : "Seleccionar cuenta"
+                                    }
+                                  />
+                                </div>
+                              </div>
+                              {autoAccount && (
+                                <p className="text-xs text-gray-600">
+                                  Se registrará en:{" "}
+                                  <strong>{autoAccount.name}</strong>
+                                  {autoAccount.referenceNumber
+                                    ? ` (N° ${autoAccount.referenceNumber})`
+                                    : ""}
+                                </p>
+                              )}
+                              {isCreditNote && (
+                                <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-md p-2">
+                                  Se generará una NC por{" "}
+                                  {formatearPrecio(totalReturn)} a favor de{" "}
+                                  {typedSale.clientName ?? "este cliente"}.
+                                  Podrá usarse en una próxima orden o
+                                  facturación.
+                                </p>
+                              )}
+                              {!allowCreditNote && (
+                                <p className="text-xs text-slate-500">
+                                  Sin cliente registrado: no se puede emitir
+                                  nota de crédito.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -3246,9 +3757,12 @@ export function SaleDetailsModal({
                 setReturnItems({});
                 setReturnReason("");
                 setReturnToStock(true);
-                setRefundAsCreditNote(false);
+                setRefundPaymentMethod(EPaymentMethod.CASH);
+                setRefundPaymentAccountId("");
                 setIsExchangeMode(false);
                 setExchangeItems([]);
+                setDifferencePaymentMethod(EPaymentMethod.CASH);
+                setDifferencePaymentAccountId("");
               }}
             >
               Cancelar
