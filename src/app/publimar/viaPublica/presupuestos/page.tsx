@@ -203,14 +203,26 @@ export default function PresupuestosViaPublicaPage() {
       // Cliente snapshot con datos completos
       client: clientData,
 
-      // Items snapshot
-      items: quoteData.items?.map((item: any) => ({
-        productName: item.productName || 'Sin nombre',
-        quantity: item.quantity || 1,
-        unitPrice: item.unitPrice || 0,
-        subtotal: item.subtotal || 0,
-        description: item.description || null,
-      })) || [],
+      // Items snapshot: aplanar quoteData.periodos[].items[] o usar quoteData.items[] legacy
+      items: (() => {
+        const flatFromPeriodos = Array.isArray(quoteData.periodos)
+          ? quoteData.periodos.flatMap((p: any) => (p.items || []).map((item: any) => ({
+              productName: item.productName || 'Sin nombre',
+              quantity: item.quantity || 1,
+              unitPrice: item.unitPrice || 0,
+              subtotal: item.subtotal || ((item.quantity || 0) * (item.unitPrice || 0)),
+              description: item.description || null,
+            })))
+          : null;
+        if (flatFromPeriodos && flatFromPeriodos.length > 0) return flatFromPeriodos;
+        return (quoteData.items || []).map((item: any) => ({
+          productName: item.productName || 'Sin nombre',
+          quantity: item.quantity || 1,
+          unitPrice: item.unitPrice || 0,
+          subtotal: item.subtotal || 0,
+          description: item.description || null,
+        }));
+      })(),
 
       // Formas de pago desde el presupuesto
       formasPago: quoteData.formasPago?.map((fp: any, index: number) => ({
@@ -359,52 +371,65 @@ export default function PresupuestosViaPublicaPage() {
 
       const quoteAny = quote as any;
       let finalY = yPosition;
-      const allItems = quote.items || [];
 
-      // Group items: by periodoGroupId, or by matching fechaSalida+dias, or individual
-      type ItemGroup = { fechaSalida: string; dias: number | null; items: any[] };
+      // Construir grupos para el PDF a partir de periodos[].items[] o fallback a items[] legacy
+      type ItemGroup = {
+        fechaSalida: string;
+        dias: number | null;
+        diasBonificados: number;
+        firstRawDate: any;
+        items: any[];
+      };
       const groups: ItemGroup[] = [];
-      const individualItems: any[] = [];
-      const processedGroupIds = new Set<string>();
-
-      allItems.forEach((item: any) => {
-        if (item.periodoGroupId) {
-          if (processedGroupIds.has(item.periodoGroupId)) return;
-          processedGroupIds.add(item.periodoGroupId);
-          const groupItems = allItems.filter((i: any) => i.periodoGroupId === item.periodoGroupId);
-          groups.push({
-            fechaSalida: formatDate(item.fechaSalida),
-            dias: item.dias || null,
-            items: groupItems,
-          });
-        } else {
-          individualItems.push(item);
-        }
-      });
-
-      // Also group individual items with the same fechaSalida+dias
-      const individualGroupMap = new Map<string, any[]>();
       const trueIndividuals: any[] = [];
-      individualItems.forEach((item: any) => {
-        const fechaStr = formatDate(item.fechaSalida);
-        const key = `${fechaStr}|${item.dias || ""}`;
-        if (fechaStr !== "-" && item.dias) {
-          if (!individualGroupMap.has(key)) individualGroupMap.set(key, []);
-          individualGroupMap.get(key)!.push(item);
-        } else {
-          trueIndividuals.push(item);
-        }
-      });
+      const periodosArr: any[] = Array.isArray(quoteAny.periodos) ? quoteAny.periodos : [];
 
-      // Merge individual items with same date into groups
-      individualGroupMap.forEach((items, key) => {
-        if (items.length > 1) {
-          const [fechaSalida, dias] = key.split("|");
-          groups.push({ fechaSalida, dias: dias ? Number(dias) : null, items });
-        } else {
-          trueIndividuals.push(items[0]);
-        }
-      });
+      if (periodosArr.length > 0) {
+        periodosArr.forEach((p: any) => {
+          const fechaStr = formatDate(p.fechaSalida);
+          const dias = Number(p.dias) || 0;
+          const diasBonif = Number(p.diasBonificados) || 0;
+          const items = Array.isArray(p.items) ? p.items : [];
+          if (items.length === 0) return;
+          if (fechaStr !== "-" && (dias + diasBonif) > 0) {
+            groups.push({
+              fechaSalida: fechaStr,
+              dias,
+              diasBonificados: diasBonif,
+              firstRawDate: p.fechaSalida,
+              items,
+            });
+          } else {
+            items.forEach((it: any) => trueIndividuals.push({ ...it, _periodo: p }));
+          }
+        });
+      } else {
+        // Fallback legacy: agrupar quote.items[] planos por (periodoGroupId|fechaSalida+dias)
+        const flatItems = Array.isArray(quote.items) ? quote.items : [];
+        const groupMap = new Map<string, ItemGroup>();
+        flatItems.forEach((it: any) => {
+          const fechaStr = formatDate(it.fechaSalida);
+          const dias = Number(it.dias) || 0;
+          if (!it.fechaSalida || dias <= 0) {
+            trueIndividuals.push(it);
+            return;
+          }
+          const key = it.periodoGroupId
+            ? `g:${it.periodoGroupId}`
+            : `f:${fechaStr}|d:${dias}`;
+          if (!groupMap.has(key)) {
+            groupMap.set(key, {
+              fechaSalida: fechaStr,
+              dias,
+              diasBonificados: 0,
+              firstRawDate: it.fechaSalida,
+              items: [],
+            });
+          }
+          groupMap.get(key)!.items.push(it);
+        });
+        groupMap.forEach((g) => groups.push(g));
+      }
 
       // Render grouped items (one table per group with date header)
       const tableStyles = {
@@ -426,15 +451,16 @@ export default function PresupuestosViaPublicaPage() {
         const fechaInicioStr = group.fechaSalida;
         let label = "";
         if (fechaInicioStr !== "-" && group.dias) {
-          // Calculate end date from first item
-          const firstItem = group.items[0];
-          const fechaFinStr = firstItem.fechaSalida ? (() => {
-            const d = firstItem.fechaSalida.toDate ? firstItem.fechaSalida.toDate() : new Date(firstItem.fechaSalida.seconds ? firstItem.fechaSalida.seconds * 1000 : firstItem.fechaSalida);
+          const totalDias = (group.dias || 0) + (group.diasBonificados || 0);
+          const fechaFinStr = group.firstRawDate ? (() => {
+            const raw = group.firstRawDate;
+            const d = raw.toDate ? raw.toDate() : new Date(raw.seconds ? raw.seconds * 1000 : raw);
             const end = new Date(d);
-            end.setDate(end.getDate() + (group.dias! - 1));
+            end.setDate(end.getDate() + (totalDias - 1));
             return end.toLocaleDateString('es-AR');
           })() : "-";
-          label = `${fechaInicioStr} a ${fechaFinStr} — ${group.dias} días`;
+          const bonifStr = group.diasBonificados > 0 ? ` (+${group.diasBonificados} bonif.)` : "";
+          label = `${fechaInicioStr} a ${fechaFinStr} — ${group.dias} días${bonifStr}`;
         } else if (group.dias) {
           label = `${group.dias} días`;
         } else if (fechaInicioStr !== "-") {
@@ -508,14 +534,19 @@ export default function PresupuestosViaPublicaPage() {
 
         const tableHeaders = ["Dispositivo", "Cant.", "Salida", "Días", "Precio", "Subtotal"];
         const productNames = trueIndividuals.map((i: any) => i.productName || "");
-        const tableData = trueIndividuals.map((item: any) => [
-          item.productName || "",
-          (item.quantity || 0).toString(),
-          formatDate(item.fechaSalida),
-          item.dias ? item.dias.toString() : "-",
-          formatearPrecio(item.unitPrice || 0),
-          formatearPrecio((item.quantity || 0) * (item.unitPrice || 0)),
-        ]);
+        const tableData = trueIndividuals.map((item: any) => {
+          const p = item._periodo;
+          const fechaStr = p ? formatDate(p.fechaSalida) : formatDate(item.fechaSalida);
+          const diasVal = p ? (p.dias || null) : (item.dias || null);
+          return [
+            item.productName || "",
+            (item.quantity || 0).toString(),
+            fechaStr,
+            diasVal ? diasVal.toString() : "-",
+            formatearPrecio(item.unitPrice || 0),
+            formatearPrecio((item.quantity || 0) * (item.unitPrice || 0)),
+          ];
+        });
 
         autoTable(pdf, {
           head: [tableHeaders],
@@ -561,10 +592,11 @@ export default function PresupuestosViaPublicaPage() {
         finalY = (pdf as any).lastAutoTable.finalY + 10;
       }
 
-      // Fallback: if no items were rendered (shouldn't happen but just in case)
-      if (groups.length === 0 && trueIndividuals.length === 0 && allItems.length > 0) {
+      // Fallback: ningún grupo y ningún item suelto fue renderizado — usar items[] crudos si existen
+      const rawItems = Array.isArray(quote.items) ? quote.items : [];
+      if (groups.length === 0 && trueIndividuals.length === 0 && rawItems.length > 0) {
         const tableHeaders = ["Dispositivo", "Cant.", "Precio", "Subtotal"];
-        const tableData = allItems.map((item: any) => [
+        const tableData = rawItems.map((item: any) => [
           item.productName || "",
           (item.quantity || 0).toString(),
           formatearPrecio(item.unitPrice || 0),
