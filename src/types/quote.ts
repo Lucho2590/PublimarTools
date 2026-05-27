@@ -31,13 +31,26 @@ export type TQuoteItem = {
   isManual?: boolean;        // true si es un item creado manualmente
 
   // Campos específicos para Vía Pública
-  periodo?: number;          // Período (meses)
+  periodo?: number;          // Período (meses) - legacy
   costo?: number;            // Costo del dispositivo
   precioVenta?: number;      // Precio de venta al cliente
   afiches?: number;          // Costo de afiches/impresión
-  fechaSalida?: any;         // Fecha de salida del dispositivo
-  dias?: number;             // Duración en días
-  periodoGroupId?: string;   // ID de grupo para agrupar dispositivos en un periodo compartido
+  /** @deprecated En Vía Pública usar TQuote.periodos[].fechaSalida */
+  fechaSalida?: any;
+  /** @deprecated En Vía Pública usar TQuote.periodos[].dias */
+  dias?: number;
+  /** @deprecated agrupación reemplazada por TQuote.periodos[] */
+  periodoGroupId?: string;
+};
+
+// Período de Vía Pública: agrupa los dispositivos que salen juntos en la misma fecha.
+export type TQuotePeriodo = {
+  id: string;
+  fechaSalida?: any;          // Timestamp Firestore | Date
+  dias?: number;              // días pagos
+  diasBonificados?: number;   // días regalados (extienden "Hasta" pero no el precio)
+  items: TQuoteItem[];        // dispositivos del período
+  notas?: string;
 };
 
 export type TQuoteComment = {
@@ -71,6 +84,7 @@ export type TQuote = {
   publicUrl?: string;
 
   // Campos específicos para Vía Pública
+  periodos?: TQuotePeriodo[];      // Períodos con dispositivos anidados (Vía Pública)
   fecha?: Date;                    // Fecha de inicio del servicio
   factura?: boolean;               // Si se emite factura
   tipoFactura?: 'A' | 'C';         // Tipo de factura

@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/table";
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Printer } from "lucide-react";
 import { toast } from "sonner";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, isWithinInterval, startOfWeek, endOfWeek } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday, addMonths, subMonths, isWithinInterval, startOfWeek, endOfWeek, addDays } from "date-fns";
 import { es } from "date-fns/locale";
 import collections from "@/lib/collections";
 import { EQuoteStatus } from "@/types/quote";
@@ -41,7 +41,7 @@ const COLORS = [
   { bg: "bg-cyan-500", text: "text-white", hover: "hover:bg-cyan-600" },
 ];
 
-// Tipo para período con datos del presupuesto
+// Tipo para salida en el calendario: una entrada por (presupuesto, período, dispositivo)
 interface PeriodoConPresupuesto {
   id: string;
   presupuestoId: string;
@@ -50,6 +50,7 @@ interface PeriodoConPresupuesto {
   fechaInicio: Date;
   fechaFin: Date;
   dias: number;
+  diasBonificados: number;
   notas?: string;
   dispositivos: Array<{
     productName: string;
@@ -92,34 +93,70 @@ export default function SalidasPage() {
     return null;
   };
 
-  // Procesar períodos de todos los presupuestos
+  // Procesar salidas: una fila por (presupuesto, período, dispositivo)
   const periodos: PeriodoConPresupuesto[] = useMemo(() => {
     if (!quotes) return [];
 
     const allPeriodos: PeriodoConPresupuesto[] = [];
 
     quotes.forEach((quote, quoteIndex) => {
-      if (!quote.periodos || !Array.isArray(quote.periodos)) return;
+      // Caso 1: estructura nueva — quote.periodos[].items[]
+      const periodosArr: any[] = Array.isArray(quote.periodos) ? quote.periodos : [];
 
-      quote.periodos.forEach((periodo: any, periodoIndex: number) => {
-        const fechaInicio = getDate(periodo.fechaInicio);
-        const fechaFin = getDate(periodo.fechaFin);
+      if (periodosArr.length > 0) {
+        periodosArr.forEach((periodo: any, periodoIndex: number) => {
+          const fechaInicio = getDate(periodo.fechaSalida ?? periodo.fechaInicio);
+          if (!fechaInicio) return;
+          const dias = Number(periodo.dias) || 0;
+          const diasBonif = Number(periodo.diasBonificados) || 0;
+          const totalDias = dias + diasBonif;
+          if (totalDias <= 0) return;
+          const fechaFin = addDays(fechaInicio, totalDias - 1);
 
-        if (!fechaInicio || !fechaFin) return;
+          const itemsArr: any[] = Array.isArray(periodo.items) ? periodo.items : [];
+          itemsArr.forEach((item: any, itemIndex: number) => {
+            allPeriodos.push({
+              id: `${quote.id}-${periodo.id || periodoIndex}-${item.id || itemIndex}`,
+              presupuestoId: quote.id,
+              presupuestoNumber: quote.number || 'S/N',
+              clientName: quote.client?.name || 'Sin cliente',
+              fechaInicio,
+              fechaFin,
+              dias,
+              diasBonificados: diasBonif,
+              notas: periodo.notas,
+              dispositivos: [{
+                productName: item.productName || 'Dispositivo',
+                quantity: Number(item.quantity) || 1,
+              }],
+              colorIndex: quoteIndex % COLORS.length,
+            });
+          });
+        });
+        return;
+      }
+
+      // Caso 2 (legacy): quote.items[] planos con fechaSalida/dias por dispositivo
+      const flatItems: any[] = Array.isArray(quote.items) ? quote.items : [];
+      flatItems.forEach((item: any, itemIndex: number) => {
+        const fechaInicio = getDate(item.fechaSalida);
+        const dias = Number(item.dias) || 0;
+        if (!fechaInicio || dias <= 0) return;
+        const fechaFin = addDays(fechaInicio, dias - 1);
 
         allPeriodos.push({
-          id: `${quote.id}-${periodoIndex}`,
+          id: `${quote.id}-legacy-${item.id || itemIndex}`,
           presupuestoId: quote.id,
           presupuestoNumber: quote.number || 'S/N',
           clientName: quote.client?.name || 'Sin cliente',
           fechaInicio,
           fechaFin,
-          dias: periodo.dias || 0,
-          notas: periodo.notas,
-          dispositivos: quote.items?.map((item: any) => ({
+          dias,
+          diasBonificados: 0,
+          dispositivos: [{
             productName: item.productName || 'Dispositivo',
-            quantity: item.quantity || 1,
-          })) || [],
+            quantity: Number(item.quantity) || 1,
+          }],
           colorIndex: quoteIndex % COLORS.length,
         });
       });
@@ -353,6 +390,9 @@ export default function SalidasPage() {
                         </TableCell>
                         <TableCell className="hidden sm:table-cell">
                           {periodo.dias}
+                          {periodo.diasBonificados > 0 && (
+                            <span className="ml-1 text-xs text-green-700">+{periodo.diasBonificados} bonif.</span>
+                          )}
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
                           <span className="text-sm text-slate-600">
@@ -418,7 +458,12 @@ export default function SalidasPage() {
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Duración</p>
-                  <p className="font-medium">{selectedPeriodo.dias} días</p>
+                  <p className="font-medium">
+                    {selectedPeriodo.dias} días
+                    {selectedPeriodo.diasBonificados > 0 && (
+                      <span className="ml-1 text-sm text-green-700">+ {selectedPeriodo.diasBonificados} bonif.</span>
+                    )}
+                  </p>
                 </div>
               </div>
 
