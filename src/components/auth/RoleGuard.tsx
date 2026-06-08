@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 export default function RoleGuard({ children }: { children: React.ReactNode }) {
-  const { userRole, loadingUserData, user } = useAuth();
+  const { userRole, userData, loadingUserData, user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -25,7 +25,7 @@ export default function RoleGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (canAccessRoute(userRole, normalizedPathname)) {
+  if (canAccessRoute(userRole, normalizedPathname, userData?.permissions)) {
     return <>{children}</>;
   }
 

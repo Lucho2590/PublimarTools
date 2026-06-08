@@ -12,12 +12,16 @@ import { useAuth } from "@/contexts/AuthContext";
 import { canAccessRoute } from "@/lib/permissions";
 import { EUserRole } from "@/types/user";
 
-function filterNavByRole(items: TNavItem[], role: EUserRole | null): TNavItem[] {
+function filterNavByRole(
+  items: TNavItem[],
+  role: EUserRole | null,
+  permissions: string[]
+): TNavItem[] {
   return items
-    .filter((item) => canAccessRoute(role, item.href))
+    .filter((item) => canAccessRoute(role, item.href, permissions))
     .map((item) =>
       item.subItems
-        ? { ...item, subItems: filterNavByRole(item.subItems, role) }
+        ? { ...item, subItems: filterNavByRole(item.subItems, role, permissions) }
         : item
     );
 }
@@ -44,8 +48,11 @@ export function SidebarContent({
   onLogout,
 }: SidebarContentProps) {
   const isOpen = isSidebarOpen || isMobile;
-  const { userRole } = useAuth();
-  const visibleNav = useMemo(() => filterNavByRole(navConfig, userRole), [userRole]);
+  const { userRole, userData } = useAuth();
+  const visibleNav = useMemo(
+    () => filterNavByRole(navConfig, userRole, userData?.permissions ?? []),
+    [userRole, userData?.permissions]
+  );
 
   return (
     <TooltipProvider>
