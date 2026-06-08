@@ -1,5 +1,6 @@
 import {
   TrendingUp,
+  BarChart3,
   Wallet,
   Truck,
   CreditCard,
@@ -31,6 +32,13 @@ export const GRANTABLE_MODULES: TGrantableModule[] = [
     href: "/publimar/administracion/finanzas",
     group: "Administración",
     icon: TrendingUp,
+  },
+  {
+    key: "admin-rentabilidad",
+    label: "Rentabilidad",
+    href: "/publimar/administracion/rentabilidad",
+    group: "Administración",
+    icon: BarChart3,
   },
   {
     key: "admin-cuentas",
