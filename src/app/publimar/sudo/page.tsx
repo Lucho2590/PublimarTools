@@ -29,6 +29,7 @@ import { Trash2, RotateCcw, RefreshCw, ChevronDown, ChevronRight } from "lucide-
 import collections from "@/lib/collections";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuditLogTab } from "./components/AuditLogTab";
+import { ImportMovementsTab } from "./components/ImportMovementsTab";
 import {
   HIDDEN_FIELDS,
   formatFieldName,
@@ -71,7 +72,9 @@ export default function SudoPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [topTab, setTopTab] = useState<"eliminados" | "audit">("eliminados");
+  const [topTab, setTopTab] = useState<"eliminados" | "audit" | "importar">(
+    "eliminados",
+  );
 
   const loadDeletedItems = async () => {
     setLoading(true);
@@ -237,6 +240,7 @@ export default function SudoPage() {
         <TabsList>
           <TabsTrigger value="eliminados">Eliminados</TabsTrigger>
           <TabsTrigger value="audit">Registro de actividad</TabsTrigger>
+          <TabsTrigger value="importar">Importar movimientos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="eliminados" className="mt-4">
@@ -410,6 +414,10 @@ export default function SudoPage() {
 
         <TabsContent value="audit" className="mt-4">
           <AuditLogTab />
+        </TabsContent>
+
+        <TabsContent value="importar" className="mt-4">
+          <ImportMovementsTab />
         </TabsContent>
       </Tabs>
     </div>
