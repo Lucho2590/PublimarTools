@@ -32,6 +32,8 @@ export enum EProductCategory {
     price: number | string;
     stock: number | string;
     sku?: string;
+    /** Costo unitario de la variante. Opcional: habilita el margen real en Rentabilidad. */
+    cost?: number;
   }
   
   export interface TProduct {
@@ -48,6 +50,8 @@ export enum EProductCategory {
     taxRate?: number; // Opcional para compatibilidad con productos existentes
     price: number | string;
     stock: number | string;
+    /** Costo unitario del producto. Opcional: habilita el margen real en Rentabilidad. */
+    cost?: number;
     category?: string;
     createdAt?: Date;
     updatedAt?: Date;

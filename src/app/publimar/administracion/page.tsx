@@ -12,6 +12,7 @@ import {
   Receipt,
   Users,
   CreditCard,
+  BarChart3,
   ArrowRight,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +37,13 @@ const SECTIONS: AdminSection[] = [
       "Ingresos, gastos y movimientos de cuentas en un solo lugar. Filtros por departamento, método y cuenta.",
     href: "/publimar/administracion/finanzas",
     icon: TrendingUp,
+  },
+  {
+    title: "Rentabilidad",
+    description:
+      "Ingresos vs gastos, márgenes por departamento, liquidez y proyección a futuro.",
+    href: "/publimar/administracion/rentabilidad",
+    icon: BarChart3,
   },
   {
     title: "Cuentas",

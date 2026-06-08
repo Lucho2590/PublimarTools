@@ -14,7 +14,8 @@ export type TMovementSource =
   | "providerPayment"
   | "operationalExpense"
   | "creditNote"
-  | "manual";
+  | "manual"
+  | "import";
 
 export interface TAccountMovement {
   id?: string;
@@ -26,6 +27,7 @@ export interface TAccountMovement {
   sourceType?: TMovementSource;
   sourceId?: string;
   counterpartyAccountId?: string; // para transferencias
+  importBatchId?: string; // agrupa los movimientos creados en una misma importación de Excel/CSV
   createdBy: string;
   createdAt?: Date;
 }
