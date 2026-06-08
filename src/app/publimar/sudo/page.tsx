@@ -30,6 +30,7 @@ import collections from "@/lib/collections";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuditLogTab } from "./components/AuditLogTab";
 import { PermissionsTab } from "./components/PermissionsTab";
+import { ImportMovementsTab } from "./components/ImportMovementsTab";
 import {
   HIDDEN_FIELDS,
   formatFieldName,
@@ -72,7 +73,9 @@ export default function SudoPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [topTab, setTopTab] = useState<"eliminados" | "audit" | "permisos">("eliminados");
+  const [topTab, setTopTab] = useState<
+    "eliminados" | "audit" | "permisos" | "importar"
+  >("eliminados");
 
   const loadDeletedItems = async () => {
     setLoading(true);
@@ -239,6 +242,7 @@ export default function SudoPage() {
           <TabsTrigger value="eliminados">Eliminados</TabsTrigger>
           <TabsTrigger value="audit">Registro de actividad</TabsTrigger>
           <TabsTrigger value="permisos">Permisos</TabsTrigger>
+          <TabsTrigger value="importar">Importar movimientos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="eliminados" className="mt-4">
@@ -416,6 +420,10 @@ export default function SudoPage() {
 
         <TabsContent value="permisos" className="mt-4">
           <PermissionsTab />
+        </TabsContent>
+
+        <TabsContent value="importar" className="mt-4">
+          <ImportMovementsTab />
         </TabsContent>
       </Tabs>
     </div>
