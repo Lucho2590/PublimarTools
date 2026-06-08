@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { canAccessRoute } from "@/lib/permissions";
 import collections from "@/lib/collections";
 import CalendarAgenda from "@/components/calendar/CalendarAgenda";
 import UserNotes from "@/components/notes/UserNotes";
@@ -89,10 +90,16 @@ const SECTIONS: AdminSection[] = [
 export default function AdministracionPage() {
   const firestore = useFirestore();
   const firebaseUser = useFirebaseAuth();
-  const { userData } = useAuth();
+  const { userData, userRole } = useAuth();
 
   const userName =
     userData?.displayName || firebaseUser.currentUser?.email || "Usuario";
+
+  // Mostrar solo las secciones a las que el usuario tiene acceso (por rol o
+  // por permisos puntuales habilitados desde Sudo).
+  const visibleSections = SECTIONS.filter((s) =>
+    canAccessRoute(userRole, s.href, userData?.permissions)
+  );
 
   // Eventos del calendario de la sección Administración
   const eventsCollection = collection(firestore, collections.EVENTS);
@@ -126,7 +133,7 @@ export default function AdministracionPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {SECTIONS.map((s) => (
+            {visibleSections.map((s) => (
               <Card key={s.href} className="hover:shadow-md transition-shadow">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">

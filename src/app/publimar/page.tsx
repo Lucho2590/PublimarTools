@@ -54,7 +54,7 @@ const ALL_MODULES: ModuleCard[] = [
 
 export default function DashboardPage() {
   const { status, data: signInCheckResult } = useSigninCheck();
-  const { userRole } = useAuth();
+  const { userRole, userData } = useAuth();
 
   if (status === "loading") {
     return <div>Cargando...</div>;
@@ -64,7 +64,9 @@ export default function DashboardPage() {
     return null; // El DashboardLayout se encargará de manejar esto
   }
 
-  const visibleModules = ALL_MODULES.filter((m) => canAccessRoute(userRole, m.href));
+  const visibleModules = ALL_MODULES.filter((m) =>
+    canAccessRoute(userRole, m.href, userData?.permissions)
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">

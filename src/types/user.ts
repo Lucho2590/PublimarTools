@@ -19,4 +19,10 @@ export type TUser = {
   status: EUserStatus;
   createdAt: Date;
   lastLogin?: Date;
+  /**
+   * Permisos puntuales por usuario: lista de paths de módulos habilitados
+   * (ej. "/publimar/administracion/finanzas"). Es aditivo respecto al rol:
+   * amplía el acceso, nunca lo restringe. Ver src/lib/permissions.ts.
+   */
+  permissions?: string[];
 };

@@ -101,6 +101,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
       status: data.status || 'active',
       createdAt: data.createdAt?.toDate?.() || new Date(),
       lastLogin: data.lastLogin?.toDate?.() || undefined,
+      permissions: Array.isArray(data.permissions) ? data.permissions : [],
     } as TUser;
   }, [user, userDataFromFirestore, loadingUserData]);
 
