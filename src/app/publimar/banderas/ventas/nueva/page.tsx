@@ -3,14 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  doc,
-  updateDoc,
-  increment,
-} from "firebase/firestore";
+import { collection } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
@@ -57,20 +50,8 @@ import { formatearPrecio, redondearADecena, redondearTotal, formatDateString } f
 import { useClients } from "@/hooks/useClients";
 import { EClientSection } from "@/types/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
-import {
-  buildChanges,
-  describeSaleCreate,
-  describeStockChange,
-  generateCorrelationId,
-} from "@/lib/auditLog";
-import {
-  EAuditAction,
-  EAuditEntityType,
-  EAuditSection,
-} from "@/types/auditLog";
 import { AccountSelect } from "@/components/admin/AccountSelect";
-import { registerAccountMovement } from "@/lib/accountMovements";
-import { EMovementType } from "@/types/accountMovement";
+import { createSale } from "@/lib/sales";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounts } from "@/hooks/useAccounts";
 import {
@@ -900,136 +881,15 @@ export default function NuevaVentaPage() {
         facturas: facturas.length > 0 ? facturas : [],
         // Datos del cliente (solo se incluyen si tienen valor)
         ...clientData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
       };
 
-      const salesCollection = collection(firestore, collections.SALES);
-      const saleDocRef = await addDoc(salesCollection, saleData);
-      const correlationId = generateCorrelationId();
-      const saleNumber = saleData.number;
-
-      // Registrar un movimiento de ingreso por cada forma de pago con cuenta
-      await Promise.all(
-        formasPagoValidas
-          .filter((fp) => !!fp.accountId)
-          .map(async (fp) => {
-            try {
-              const acc = allAccounts.find((a) => a.id === fp.accountId);
-              await registerAccountMovement(firestore, {
-                accountId: fp.accountId as string,
-                type: EMovementType.INCOME,
-                amount: redondearTotal(fp.amount),
-                description: `Venta #${saleData.number}${
-                  clienteInput ? ` - ${clienteInput}` : ""
-                } (${fp.method}${acc ? ` → ${acc.name}` : ""})`,
-                date: new Date(),
-                sourceType: "sale",
-                sourceId: saleDocRef.id,
-                createdBy: userRole || "",
-              });
-            } catch (err) {
-              console.error("Error al registrar movimiento de cuenta:", err);
-            }
-          })
-      );
-
-      const stockEventPayloads: Array<{
-        productId: string;
-        productName: string;
-        variantId: string;
-        variantName: string;
-        stockBefore: number;
-        stockAfter: number;
-        delta: number;
-      }> = [];
-
-      await Promise.all(
-        items.map(async (item) => {
-          const isManualItem = item.product.id.startsWith('manual-');
-          if (isManualItem) return;
-
-          const productRef = doc(
-            firestore,
-            collections.PRODUCTS,
-            item.product.id
-          );
-
-          const stockBefore = Number(item.variant.stock ?? 0);
-          const stockAfter = stockBefore - item.quantity;
-
-          await updateDoc(productRef, {
-            variants: item.product.variants.map((v) =>
-              v.id === item.variant.id
-                ? { ...v, stock: Number(v.stock) - item.quantity }
-                : v
-            ),
-            salesCount: increment(1),
-            lastSaleDate: new Date(),
-          });
-
-          stockEventPayloads.push({
-            productId: item.product.id,
-            productName: item.product.name,
-            variantId: item.variant.id,
-            variantName: item.variant.size,
-            stockBefore,
-            stockAfter,
-            delta: -item.quantity,
-          });
-        })
-      );
-
-      await Promise.all(
-        stockEventPayloads.map((p) =>
-          logEvent({
-            section: EAuditSection.BANDERAS_STOCK,
-            entityType: EAuditEntityType.PRODUCT_VARIANT,
-            entityId: `${p.productId}:${p.variantId}`,
-            entityLabel: `${p.productName}${p.variantName ? ` · ${p.variantName}` : ""}`,
-            action: EAuditAction.STOCK_CHANGE,
-            description: describeStockChange(p.productName, p.variantName, p.delta, "sale"),
-            metadata: {
-              reason: "sale",
-              saleId: saleDocRef.id,
-              saleNumber,
-              productId: p.productId,
-              productName: p.productName,
-              variantId: p.variantId,
-              variantName: p.variantName,
-              stockBefore: p.stockBefore,
-              stockAfter: p.stockAfter,
-              delta: p.delta,
-            },
-            correlationId,
-          })
-        )
-      );
-
-      await logEvent({
-        section: EAuditSection.BANDERAS_VENTAS,
-        entityType: EAuditEntityType.SALE,
-        entityId: saleDocRef.id,
-        entityLabel: saleNumber,
-        action: EAuditAction.CREATE,
-        description: describeSaleCreate(saleNumber, currentTotal),
-        changes: buildChanges(null, saleData, [
-          "number","clientId","clientName","total","subtotal","paymentMethod","bank","isInvoiced","invoiceNumber","discountPercentage","applyIVA",
-        ]),
-        metadata: {
-          total: currentTotal,
-          paymentMethod: derivedPaymentMethod,
-          formasPago: formasPagoValidas,
-          itemsCount: items.length,
-          stockDeltas: stockEventPayloads.map((p) => ({
-            productId: p.productId,
-            variantId: p.variantId,
-            productName: p.productName,
-            variantName: p.variantName,
-            delta: p.delta,
-          })),
-        },
-        correlationId,
+      await createSale(firestore, logEvent, userRole || "", {
+        saleData,
+        items,
+        formasPagoValidas,
+        allAccounts,
+        clienteInput,
+        total: currentTotal,
       });
 
       toast.success("Venta registrada con éxito");
