@@ -28,7 +28,7 @@ import { EPaymentMethod, TSale } from "@/types/sale";
 import { formatearPrecio, redondearADecena } from "@/lib/utils";
 // import { NuevaVentaModal } from "./modalVentas/newSaleModal";
 import { SaleDetailsModal } from "./modalVentas/saleDetailsModal";
-import { Eye, Trophy } from "lucide-react";
+import { Eye, Trophy, ShoppingCart } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Pagination,
@@ -381,12 +381,20 @@ export default function VentasPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Ventas</h1>
-        <Button
-          asChild
-          className="bg-blue-900 hover:bg-blue-900 hover:text-white"
-        >
-          <Link href="/publimar/banderas/ventas/nueva">Nueva Venta</Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <a href="/pos" target="_blank" rel="noopener noreferrer">
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              Punto de Venta
+            </a>
+          </Button>
+          <Button
+            asChild
+            className="bg-blue-900 hover:bg-blue-900 hover:text-white"
+          >
+            <Link href="/publimar/banderas/ventas/nueva">Nueva Venta</Link>
+          </Button>
+        </div>
       </div>
 
 
