@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/select";
 import { TProduct, TProductCategory } from "@/types/product";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { ProductAutocomplete, AutocompleteOption } from "@/components/ui/product-autocomplete";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -2055,17 +2056,12 @@ export function SaleDetailsModal({
                                 </div>
                                 <div>
                                   <Label className="text-xs">Monto</Label>
-                                  <Input
-                                    type="number"
-                                    min={0}
-                                    step="0.01"
-                                    value={fp.amount || ""}
-                                    onChange={(e) =>
-                                      updateFormaPago(fp.id, {
-                                        amount: parseFloat(e.target.value) || 0,
-                                      })
+                                  <MoneyInput
+                                    value={fp.amount || 0}
+                                    onValueChange={(n) =>
+                                      updateFormaPago(fp.id, { amount: n })
                                     }
-                                    placeholder="0.00"
+                                    placeholder="0"
                                     className="h-9"
                                   />
                                 </div>
@@ -2287,13 +2283,12 @@ export function SaleDetailsModal({
                             </div>
                             <div>
                               <Label className="text-xs">Monto</Label>
-                              <Input
-                                type="number"
-                                value={newFacturaMonto}
-                                onChange={(e) =>
-                                  setNewFacturaMonto(e.target.value)
+                              <MoneyInput
+                                value={parseFloat(newFacturaMonto) || 0}
+                                onValueChange={(n) =>
+                                  setNewFacturaMonto(n ? String(n) : "")
                                 }
-                                placeholder="0.00"
+                                placeholder="0"
                                 className="h-9"
                               />
                             </div>
@@ -2387,14 +2382,11 @@ export function SaleDetailsModal({
                           >
                             Descuento ($)
                           </Label>
-                          <Input
+                          <MoneyInput
                             id="manualDiscount"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={manualDiscount}
-                            onChange={(e) =>
-                              handleManualDiscountChange(Number(e.target.value))
+                            value={manualDiscount || 0}
+                            onValueChange={(n) =>
+                              handleManualDiscountChange(n)
                             }
                             disabled={!isEditing}
                             className="w-20 h-8 text-center text-sm"
@@ -2526,13 +2518,11 @@ export function SaleDetailsModal({
                       </div>
                       <div className="w-32">
                         <label className="text-xs font-medium text-slate-500 mb-1 block">Precio unit.</label>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={unitPrice}
-                          onChange={(e) => setUnitPrice(Number(e.target.value))}
+                        <MoneyInput
+                          value={unitPrice || 0}
+                          onValueChange={(n) => setUnitPrice(n)}
                           className="bg-white"
+                          placeholder="0"
                         />
                       </div>
                       <Button
@@ -2942,16 +2932,13 @@ export function SaleDetailsModal({
               </div>
               <div>
                 <Label>Precio Unitario *</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="10.00"
-                  placeholder="0.00"
-                  value={manualItem.unitPrice || ""}
-                  onChange={(e) =>
+                <MoneyInput
+                  placeholder="0"
+                  value={manualItem.unitPrice || 0}
+                  onValueChange={(n) =>
                     setManualItem((prev) => ({
                       ...prev,
-                      unitPrice: parseFloat(e.target.value) || 0,
+                      unitPrice: n,
                     }))
                   }
                 />
@@ -3056,13 +3043,11 @@ export function SaleDetailsModal({
               </div>
               <div>
                 <Label>Precio unitario *</Label>
-                <Input
-                  type="number"
-                  min="0"
+                <MoneyInput
                   placeholder="0"
-                  value={exchangeManualItem.unitPrice || ""}
-                  onChange={(e) =>
-                    setExchangeManualItem((prev) => ({ ...prev, unitPrice: parseFloat(e.target.value) || 0 }))
+                  value={exchangeManualItem.unitPrice || 0}
+                  onValueChange={(n) =>
+                    setExchangeManualItem((prev) => ({ ...prev, unitPrice: n }))
                   }
                 />
               </div>
@@ -3334,14 +3319,11 @@ export function SaleDetailsModal({
                     </div>
                     <div className="w-32">
                       <label className="text-xs font-medium text-slate-500 mb-1 block">Precio unit.</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={exchangeUnitPrice}
-                        onChange={(e) =>
-                          setExchangeUnitPrice(Number(e.target.value))
-                        }
+                      <MoneyInput
+                        value={exchangeUnitPrice || 0}
+                        onValueChange={(n) => setExchangeUnitPrice(n)}
                         className="h-9 bg-white"
+                        placeholder="0"
                       />
                     </div>
                     <Button

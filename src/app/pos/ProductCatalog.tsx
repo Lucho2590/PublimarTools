@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Search, LayoutGrid, List, Plus, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -237,18 +238,16 @@ export function ProductCatalog({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="manual-price">Precio unitario *</Label>
-                  <Input
+                  <MoneyInput
                     id="manual-price"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={manualItem.unitPrice}
-                    onChange={(e) =>
+                    value={manualItem.unitPrice || 0}
+                    onValueChange={(n) =>
                       setManualItem((prev) => ({
                         ...prev,
-                        unitPrice: Number(e.target.value),
+                        unitPrice: n,
                       }))
                     }
+                    placeholder="0"
                   />
                 </div>
               </div>

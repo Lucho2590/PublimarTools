@@ -8,6 +8,7 @@ import { collection, doc, query, where, orderBy, addDoc, updateDoc, increment, s
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -383,16 +384,13 @@ export default function CuentaCorrienteDetailPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="paymentAmount">Monto *</Label>
-              <Input
+              <MoneyInput
                 id="paymentAmount"
-                type="number"
-                min="0.01"
-                step="0.01"
-                max={account.balance || 0}
-                value={paymentForm.amount}
-                onChange={(e) => setPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
-                required
-                placeholder="0.00"
+                value={parseFloat(paymentForm.amount) || 0}
+                onValueChange={(n) =>
+                  setPaymentForm((prev) => ({ ...prev, amount: String(n) }))
+                }
+                placeholder="0"
               />
             </div>
             <div className="space-y-2">

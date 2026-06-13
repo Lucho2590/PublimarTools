@@ -1627,15 +1627,10 @@ export default function NuevaVentaPage() {
                         >
                           Descuento ($)
                         </Label>
-                        <Input
+                        <MoneyInput
                           id="manualDiscount"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={manualDiscount}
-                          onChange={(e) =>
-                            setManualDiscount(Number(e.target.value))
-                          }
+                          value={manualDiscount || 0}
+                          onValueChange={(n) => setManualDiscount(n)}
                           className="w-20 h-8 text-center text-sm"
                           placeholder="0"
                         />
@@ -1727,16 +1722,13 @@ export default function NuevaVentaPage() {
                 </div>
                 <div>
                   <Label>Precio Unitario *</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="10.00"
-                    placeholder="0.00"
-                    value={manualItem.unitPrice || ""}
-                    onChange={(e) =>
+                  <MoneyInput
+                    placeholder="0"
+                    value={manualItem.unitPrice || 0}
+                    onValueChange={(n) =>
                       setManualItem((prev) => ({
                         ...prev,
-                        unitPrice: parseFloat(e.target.value) || 0,
+                        unitPrice: n,
                       }))
                     }
                   />
@@ -2040,11 +2032,12 @@ export default function NuevaVentaPage() {
                       </div>
                       <div>
                         <Label className="text-xs">Monto</Label>
-                        <Input
-                          type="number"
-                          value={newFacturaMonto}
-                          onChange={(e) => setNewFacturaMonto(e.target.value)}
-                          placeholder="0.00"
+                        <MoneyInput
+                          value={parseFloat(newFacturaMonto) || 0}
+                          onValueChange={(n) =>
+                            setNewFacturaMonto(n ? String(n) : "")
+                          }
+                          placeholder="0"
                           className="h-9"
                         />
                       </div>

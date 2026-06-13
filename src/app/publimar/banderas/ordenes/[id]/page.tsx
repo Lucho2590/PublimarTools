@@ -10,6 +10,7 @@ import { EClientSection } from "@/types/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -1936,16 +1937,13 @@ export default function OrderDetailsPage({
                         </div>
                         <div>
                           <Label>Precio Unitario *</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="10.00"
-                            placeholder="0.00"
-                            value={manualItem.unitPrice}
-                            onChange={(e) =>
+                          <MoneyInput
+                            placeholder="0"
+                            value={manualItem.unitPrice || 0}
+                            onValueChange={(n) =>
                               setManualItem((prev) => ({
                                 ...prev,
-                                unitPrice: parseFloat(e.target.value),
+                                unitPrice: n,
                               }))
                             }
                           />
@@ -2233,17 +2231,15 @@ export default function OrderDetailsPage({
                   </div>
                   <div>
                     <Label>Descuento ($)</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={editedOrder?.manualDiscount || ""}
-                      onChange={(e) =>
+                    <MoneyInput
+                      value={editedOrder?.manualDiscount || 0}
+                      onValueChange={(n) =>
                         setEditedOrder((prev: any) => ({
                           ...prev!,
-                          manualDiscount: parseFloat(e.target.value) || 0,
+                          manualDiscount: n,
                         }))
                       }
-                      placeholder="0.00"
+                      placeholder="0"
                     />
                   </div>
                 </div>
@@ -2386,12 +2382,12 @@ export default function OrderDetailsPage({
                         </div>
                         <div className="space-y-2">
                           <Label>Monto </Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={newFacturaMonto}
-                            onChange={(e) => setNewFacturaMonto(e.target.value)}
-                            placeholder="0.00"
+                          <MoneyInput
+                            placeholder="0"
+                            value={parseFloat(newFacturaMonto) || 0}
+                            onValueChange={(n) =>
+                              setNewFacturaMonto(n ? String(n) : "")
+                            }
                           />
                         </div>
                       </div>
@@ -2433,13 +2429,12 @@ export default function OrderDetailsPage({
                       <div className={`grid ${metodoPago === EPaymentMethod.TRANSFER ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
                         <div>
                           <Label>Monto</Label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="10.00"
-                            placeholder="0.00"
-                            value={pagoParcial}
-                            onChange={(e) => setPagoParcial(e.target.value)}
+                          <MoneyInput
+                            placeholder="0"
+                            value={parseFloat(pagoParcial) || 0}
+                            onValueChange={(n) =>
+                              setPagoParcial(n ? String(n) : "")
+                            }
                             className="h-10 align-middle"
                           />
                         </div>
@@ -2678,13 +2673,11 @@ export default function OrderDetailsPage({
           <div className="space-y-3 py-2">
             <div>
               <Label>Monto</Label>
-              <Input
-                type="number"
-                min="0"
-                step="10.00"
-                value={editForm.amount}
-                onChange={(e) =>
-                  setEditForm((f) => ({ ...f, amount: e.target.value }))
+              <MoneyInput
+                placeholder="0"
+                value={parseFloat(editForm.amount) || 0}
+                onValueChange={(n) =>
+                  setEditForm((f) => ({ ...f, amount: n ? String(n) : "" }))
                 }
               />
             </div>
