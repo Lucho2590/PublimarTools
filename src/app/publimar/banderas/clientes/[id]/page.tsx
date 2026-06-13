@@ -71,32 +71,7 @@ import { toast } from "sonner";
 import { SaleDetailsModal } from "../../ventas/modalVentas/saleDetailsModal";
 import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
 import { Wallet } from "lucide-react";
-
-const taxConditionInfo: Record<
-  EClientTaxCondition,
-  { label: string; invoice: string; className: string }
-> = {
-  [EClientTaxCondition.IVA_INSCRIPTO]: {
-    label: "IVA Inscripto",
-    invoice: "Factura A",
-    className: "bg-blue-50 text-blue-700 border border-blue-200",
-  },
-  [EClientTaxCondition.IVA_EXENTO]: {
-    label: "IVA Exento",
-    invoice: "Factura B",
-    className: "bg-amber-50 text-amber-700 border border-amber-200",
-  },
-  [EClientTaxCondition.IVA_NO_ALCANZADO]: {
-    label: "IVA No Alcanzado",
-    invoice: "Factura B",
-    className: "bg-slate-50 text-slate-700 border border-slate-200",
-  },
-  [EClientTaxCondition.CONSUMIDOR_FINAL]: {
-    label: "Consumidor Final",
-    invoice: "Factura B",
-    className: "bg-violet-50 text-violet-700 border border-violet-200",
-  },
-};
+import { taxConditionInfo } from "@/lib/taxCondition";
 
 export default function ClienteDetallePage({
   params,

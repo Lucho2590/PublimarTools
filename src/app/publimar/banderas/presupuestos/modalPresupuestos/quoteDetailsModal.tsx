@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCuit } from "@/lib/cuit";
+import { getTaxConditionLabel } from "@/lib/taxCondition";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -910,9 +911,14 @@ export default function QuoteDetailsModal({
                       Dirección: {quote.client.address}
                     </p>
                   )}
-                  {quote.client.cuit && (
+                  {(quote.client.cuit ?? (quote.client as { taxId?: string }).taxId) && (
                     <p className="text-slate-600">
-                      CUIT/CUIL: <span className="font-mono tabular-nums">{formatCuit(quote.client.cuit)}</span>
+                      CUIT/CUIL: <span className="font-mono tabular-nums">{formatCuit(quote.client.cuit ?? (quote.client as { taxId?: string }).taxId ?? "")}</span>
+                    </p>
+                  )}
+                  {quote.client.taxCondition && (
+                    <p className="text-slate-600">
+                      Condición fiscal: {getTaxConditionLabel(quote.client.taxCondition)}
                     </p>
                   )}
                 </CardContent>
