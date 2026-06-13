@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
+import { CuitInput } from "@/components/cuit-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -45,6 +46,8 @@ import {
 import { formatearPrecio, formatDate, redondearTotal, extractIdFromSlug } from "@/lib/utils";
 import { toast } from "sonner";
 import { EQuoteStatus, TQuote } from "@/types/quote";
+import { EClientTaxCondition } from "@/types/client";
+import { taxConditionOptions } from "@/lib/taxCondition";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
@@ -428,6 +431,52 @@ export default function QuoteDetailsPage({
             <div>
               <Label className="text-sm text-gray-600">Dirección</Label>
               <p className="font-medium">{editedQuote.client.address || "-"}</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm text-gray-600">CUIT/CUIL</Label>
+              <CuitInput
+                value={
+                  editedQuote.client.cuit ??
+                  (editedQuote.client as { taxId?: string }).taxId ??
+                  ""
+                }
+                onValueChange={(v) =>
+                  setEditedQuote({
+                    ...editedQuote,
+                    client: { ...editedQuote.client, cuit: v },
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm text-gray-600">Condición fiscal</Label>
+              <Select
+                value={editedQuote.client.taxCondition ?? "none"}
+                onValueChange={(value) =>
+                  setEditedQuote({
+                    ...editedQuote,
+                    client: {
+                      ...editedQuote.client,
+                      taxCondition:
+                        value === "none"
+                          ? undefined
+                          : (value as EClientTaxCondition),
+                    },
+                  })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar condición fiscal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin definir</SelectItem>
+                  {taxConditionOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label} · {opt.invoice}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>

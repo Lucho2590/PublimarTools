@@ -380,6 +380,8 @@ export default function NuevoPresupuestoPage() {
           id: selectedClient.id,
           name: selectedClient.name,
           section: selectedClient.section,
+          cuit: selectedClient.cuit ?? null,
+          taxCondition: selectedClient.taxCondition ?? null,
         },
         items: [],
         periodos: preparedPeriodos,
