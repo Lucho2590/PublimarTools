@@ -176,6 +176,47 @@ export default function PuntoDeVentaPage() {
     });
   };
 
+  const addManualToCart = (m: {
+    name: string;
+    variantName: string;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+  }) => {
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const price = Number(m.unitPrice);
+    const qty = Math.max(1, Number(m.quantity) || 1);
+    const item: CartItem = {
+      product: {
+        id: `manual-${stamp}`,
+        name: m.name,
+        description: m.description,
+        sku: "",
+        categories: [],
+        variants: [],
+        salesCount: 0,
+        totalSales: 0,
+        price,
+        stock: Infinity,
+        imageUrls: [],
+        hasVariants: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as unknown as TProduct,
+      variant: {
+        id: `manual-variant-${stamp}`,
+        size: m.variantName || "N/A",
+        sku: "",
+        price,
+        stock: Infinity,
+      } as unknown as TProductVariant,
+      quantity: qty,
+      unitPrice: price,
+      total: redondearTotal(price * qty),
+    };
+    setCart((prev) => [...prev, item]);
+  };
+
   const updateQty = (key: string, qty: number) => {
     setCart((prev) =>
       prev
@@ -389,6 +430,7 @@ export default function PuntoDeVentaPage() {
                 products={products}
                 categories={categories}
                 onAdd={addToCart}
+                onAddManual={addManualToCart}
                 cartQty={cartQty}
               />
             ))}
