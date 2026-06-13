@@ -7,6 +7,7 @@ import { useQuotes, useQuoteById } from "@/hooks/useQuotes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -551,14 +552,11 @@ export default function QuoteDetailsPage({
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="manualPrice">Precio unitario</Label>
-                      <Input
+                      <MoneyInput
                         id="manualPrice"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={manualItemPrice}
-                        onChange={(e) => setManualItemPrice(Number(e.target.value))}
+                        placeholder="0"
+                        value={manualItemPrice || 0}
+                        onValueChange={(n) => setManualItemPrice(n)}
                       />
                     </div>
                   </div>
@@ -699,13 +697,11 @@ export default function QuoteDetailsPage({
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="customPrice">Precio Unitario</Label>
-                          <Input
+                          <MoneyInput
                             id="customPrice"
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            placeholder="0"
                             value={customUnitPrice || 0}
-                            onChange={(e) => setCustomUnitPrice(parseFloat(e.target.value) || 0)}
+                            onValueChange={(n) => setCustomUnitPrice(n)}
                           />
                         </div>
                         <div className="space-y-2">
@@ -903,13 +899,10 @@ export default function QuoteDetailsPage({
                   <Label htmlFor="manualDiscount" className="text-sm text-gray-700 w-24">
                     Descuento ($)
                   </Label>
-                  <Input
+                  <MoneyInput
                     id="manualDiscount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={manualDiscount}
-                    onChange={(e) => setManualDiscount(Number(e.target.value))}
+                    value={manualDiscount || 0}
+                    onValueChange={(n) => setManualDiscount(n)}
                     className="w-20 h-8 text-center text-sm"
                     placeholder="0"
                   />

@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MoneyInput } from '@/components/ui/money-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -404,16 +405,11 @@ export default function PurchaseCreateModal({
 
             <div className="space-y-2">
               <Label htmlFor="amount">Monto *</Label>
-              <Input
+              <MoneyInput
                 id="amount"
-                name="amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.amount || ''}
-                onChange={handleChange}
-                required
-                placeholder="0.00"
+                value={Number(form.amount) || 0}
+                onValueChange={(n) => setForm((f) => ({ ...f, amount: n }))}
+                placeholder="0"
               />
             </div>
 

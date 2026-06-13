@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -229,13 +230,10 @@ export function ExpenseFormModal({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label className="mb-1 block">Monto *</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={form.amount}
-                onChange={(e) =>
-                  update("amount", Number(e.target.value) || 0)
-                }
+              <MoneyInput
+                value={form.amount || 0}
+                onValueChange={(n) => update("amount", n)}
+                placeholder="0"
               />
             </div>
             <div>

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { CuitInput } from "@/components/cuit-input";
 import { formatCuit } from "@/lib/cuit";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1460,16 +1461,11 @@ export default function NuevasOrdenesPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="manualPrice">Precio unitario</Label>
-                        <Input
+                        <MoneyInput
                           id="manualPrice"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={manualItemPrice}
-                          onChange={(e) =>
-                            setManualItemPrice(Number(e.target.value))
-                          }
+                          placeholder="0"
+                          value={manualItemPrice || 0}
+                          onValueChange={(n) => setManualItemPrice(n)}
                         />
                       </div>
                     </div>
@@ -1943,15 +1939,10 @@ export default function NuevasOrdenesPage() {
                     >
                       Descuento ($)
                     </Label>
-                    <Input
+                    <MoneyInput
                       id="manualDiscount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={manualDiscount}
-                      onChange={(e) =>
-                        setManualDiscount(Number(e.target.value))
-                      }
+                      value={manualDiscount || 0}
+                      onValueChange={(n) => setManualDiscount(n)}
                       className="w-20 h-8 text-center text-sm"
                       placeholder="0"
                     />
@@ -2001,13 +1992,10 @@ export default function NuevasOrdenesPage() {
                 >
                   <div className="space-y-2">
                     <Label>Monto de seña</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={sena}
-                      onChange={(e) => setSena(e.target.value)}
+                    <MoneyInput
+                      placeholder="0"
+                      value={parseFloat(sena) || 0}
+                      onValueChange={(n) => setSena(n ? String(n) : "")}
                     />
                   </div>
                   <div className="space-y-2">
@@ -2159,12 +2147,12 @@ export default function NuevasOrdenesPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Monto</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={newFacturaMonto}
-                        onChange={(e) => setNewFacturaMonto(e.target.value)}
-                        placeholder="0.00"
+                      <MoneyInput
+                        placeholder="0"
+                        value={parseFloat(newFacturaMonto) || 0}
+                        onValueChange={(n) =>
+                          setNewFacturaMonto(n ? String(n) : "")
+                        }
                       />
                     </div>
                   </div>

@@ -37,6 +37,7 @@ import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog"
 import {
   formatDate,
   formatearPrecio,
+  redondearADecena,
   extractIdFromSlug,
   generateSlug,
   cn,
@@ -680,7 +681,18 @@ export default function ClienteDetallePage({
                             {isFacturado ? "Facturado" : "Sin facturar"}
                           </span>
                           <span className="text-sm font-semibold hidden sm:inline">
-                            {formatearPrecio(sale.total || 0)}
+                            {formatearPrecio(redondearADecena(sale.finalTotal ?? sale.total ?? 0))}
+                            {sale.returns && sale.returns.length > 0 && (() => {
+                              const hasExchanges = sale.returns?.some((r: any) => r.isExchange);
+                              const hasReturnsOnly = sale.returns?.some((r: any) => !r.isExchange);
+                              if (hasExchanges && hasReturnsOnly) {
+                                return <span className="text-xs text-purple-600 ml-1" title="Tiene devoluciones y cambios">◆</span>;
+                              } else if (hasExchanges) {
+                                return <span className="text-xs text-purple-600 ml-1" title="Tiene cambios">↔</span>;
+                              } else {
+                                return <span className="text-xs text-orange-600 ml-1" title="Tiene devoluciones">↩</span>;
+                              }
+                            })()}
                           </span>
                           <EyeIcon className="h-4 w-4 text-muted-foreground opacity-0 md:group-hover:opacity-100 md:transition-opacity" />
                         </div>

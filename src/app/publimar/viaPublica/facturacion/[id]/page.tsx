@@ -7,6 +7,7 @@ import { useFirestore, useFirestoreDocData } from "reactfire";
 import { doc, updateDoc, serverTimestamp, arrayUnion } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCuit } from "@/lib/cuit";
@@ -695,11 +696,10 @@ export default function FacturacionDetailPage() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Monto</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={newPayment.amount}
-                onChange={(e) => setNewPayment({ ...newPayment, amount: e.target.value })}
+              <MoneyInput
+                placeholder="0"
+                value={parseFloat(newPayment.amount) || 0}
+                onValueChange={(n) => setNewPayment({ ...newPayment, amount: String(n) })}
               />
               <p className="text-xs text-slate-500">
                 Saldo pendiente: {formatCurrency(billing.balance)}
@@ -800,10 +800,10 @@ export default function FacturacionDetailPage() {
 
                   <div className="space-y-1">
                     <Label className="text-xs">Monto</Label>
-                    <Input
-                      type="number"
-                      value={fp.monto}
-                      onChange={(e) => handleUpdateFormaPago(index, 'monto', parseFloat(e.target.value) || 0)}
+                    <MoneyInput
+                      placeholder="0"
+                      value={fp.monto || 0}
+                      onValueChange={(n) => handleUpdateFormaPago(index, 'monto', n)}
                     />
                   </div>
 

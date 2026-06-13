@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -245,13 +246,10 @@ export function AccountFormModal({
               <Label className="mb-1 block">
                 {isEditing ? "Saldo inicial" : "Saldo inicial"}
               </Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={form.initialBalance}
-                onChange={(e) =>
-                  update("initialBalance", Number(e.target.value) || 0)
-                }
+              <MoneyInput
+                value={form.initialBalance || 0}
+                onValueChange={(n) => update("initialBalance", n)}
+                placeholder="0"
                 disabled={isEditing}
               />
             </div>
