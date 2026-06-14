@@ -11,6 +11,11 @@ import { getFirestore } from 'firebase-admin/firestore';
  * Si ya viene con saltos reales, queda igual.
  */
 function normalizePrivateKey(raw?: string): string | undefined {
+  // Preferencia: FIREBASE_PRIVATE_KEY_BASE64 (a prueba de problemas de pegado).
+  const b64 = process.env.FIREBASE_PRIVATE_KEY_BASE64?.trim();
+  if (b64) {
+    return Buffer.from(b64, 'base64').toString('utf8');
+  }
   if (!raw) return undefined;
   let key = raw.trim();
   if (
