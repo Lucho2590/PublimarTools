@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { CuitInput } from "@/components/cuit-input";
 import { formatCuit } from "@/lib/cuit";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,7 +48,8 @@ import {
 import { Search, Plus, Trash2, Edit, ArrowLeft, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import collections from "@/lib/collections";
 import { EQuoteStatus } from "@/types/quote";
-import { TClient, EClientType, EClientStatus, EClientSection } from "@/types/client";
+import { TClient, EClientType, EClientStatus, EClientSection, EClientTaxCondition } from "@/types/client";
+import { taxConditionOptions } from "@/lib/taxCondition";
 import { TProduct, TProductVariant, TProductCategory } from "@/types/product";
 import {
   Select,
@@ -91,6 +93,7 @@ export default function NuevoPresupuestoPage() {
   const [email, setEmail] = useState("");
   const [telefono, setTelefono] = useState("");
   const [cuit, setCuit] = useState("");
+  const [taxCondition, setTaxCondition] = useState<EClientTaxCondition | undefined>(undefined);
   const [referencia, setReferencia] = useState("");
 
   // Estados para contacto adicional (opcional)
@@ -393,6 +396,7 @@ export default function NuevoPresupuestoPage() {
         phone: pendingQuoteData.telefono || undefined,
         address: pendingQuoteData.direccion || undefined,
         cuit: pendingQuoteData.cuit || undefined,
+        taxCondition: pendingQuoteData.taxCondition || undefined,
         contacts:
           pendingQuoteData.contactoNombre ||
           pendingQuoteData.contactoEmail ||
@@ -511,7 +515,8 @@ export default function NuevoPresupuestoPage() {
             email: data.email || "",
             phone: data.telefono || "",
             address: data.direccion || "",
-            taxId: data.cuit || "",
+            cuit: data.cuit || "",
+            taxCondition: data.taxCondition || null,
             notes: "",
             contacts:
               data.contactoNombre || data.contactoEmail || data.contactoTelefono
@@ -536,7 +541,8 @@ export default function NuevoPresupuestoPage() {
             email: data.email || "",
             phone: data.telefono || "",
             address: data.direccion || "",
-            taxId: data.cuit || "",
+            cuit: data.cuit || "",
+            taxCondition: data.taxCondition || null,
             notes: "",
             contacts:
               data.contactoNombre || data.contactoEmail || data.contactoTelefono
@@ -630,6 +636,7 @@ export default function NuevoPresupuestoPage() {
           telefono,
           direccion,
           cuit,
+          taxCondition,
           contactoNombre,
           contactoEmail,
           contactoTelefono,
@@ -687,7 +694,8 @@ export default function NuevoPresupuestoPage() {
             email: email || selectedClient.email || "",
             phone: telefono || selectedClient.phone || "",
             address: direccion || selectedClient.address || "",
-            taxId: cuit || selectedClient.cuit || "",
+            cuit: cuit || selectedClient.cuit || "",
+            taxCondition: taxCondition || selectedClient.taxCondition || null,
             notes: selectedClient.notes || "",
             contacts:
               contactoNombre || contactoEmail || contactoTelefono
@@ -712,7 +720,8 @@ export default function NuevoPresupuestoPage() {
             email: email || "",
             phone: telefono || "",
             address: direccion || "",
-            taxId: cuit || "",
+            cuit: cuit || "",
+            taxCondition: taxCondition || null,
             notes: "",
             contacts:
               contactoNombre || contactoEmail || contactoTelefono
@@ -784,6 +793,7 @@ export default function NuevoPresupuestoPage() {
     setEmail(contacto?.email || client?.email || "");
     setTelefono(client?.phone || "");
     setCuit(client?.cuit || "");
+    setTaxCondition(client?.taxCondition || undefined);
     setReferencia(client?.reference || "");
 
     // Precargar datos del contacto
@@ -1032,6 +1042,34 @@ export default function NuevoPresupuestoPage() {
                 <CuitInput value={cuit} onValueChange={setCuit} />
               </div>
               <div className="space-y-2">
+                <Label>Condición fiscal</Label>
+                <Select
+                  value={taxCondition ?? "none"}
+                  onValueChange={(value) =>
+                    setTaxCondition(
+                      value === "none"
+                        ? undefined
+                        : (value as EClientTaxCondition)
+                    )
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Seleccionar condición fiscal" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin definir</SelectItem>
+                    {taxConditionOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label} · {opt.invoice}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <Label>Referencia</Label>
                 <Input
                   value={referencia}
@@ -1218,14 +1256,11 @@ export default function NuevoPresupuestoPage() {
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="manualPrice">Precio unitario</Label>
-                      <Input
+                      <MoneyInput
                         id="manualPrice"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={manualItemPrice}
-                        onChange={(e) => setManualItemPrice(Number(e.target.value))}
+                        placeholder="0"
+                        value={manualItemPrice || 0}
+                        onValueChange={(n) => setManualItemPrice(n)}
                       />
                     </div>
                   </div>
@@ -1436,15 +1471,11 @@ export default function NuevoPresupuestoPage() {
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="customPrice">Precio Unitario</Label>
-                          <Input
+                          <MoneyInput
                             id="customPrice"
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            placeholder="0"
                             value={customUnitPrice || 0}
-                            onChange={(e) =>
-                              setCustomUnitPrice(parseFloat(e.target.value) || 0)
-                            }
+                            onValueChange={(n) => setCustomUnitPrice(n)}
                           />
                         </div>
                         <div className="space-y-2">
@@ -1685,15 +1716,10 @@ export default function NuevoPresupuestoPage() {
                     >
                       Descuento ($)
                     </Label>
-                    <Input
+                    <MoneyInput
                       id="manualDiscount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={manualDiscount}
-                      onChange={(e) =>
-                        setManualDiscount(Number(e.target.value))
-                      }
+                      value={manualDiscount || 0}
+                      onValueChange={(n) => setManualDiscount(n)}
                       className="w-20 h-8 text-center text-sm"
                       placeholder="0"
                     />

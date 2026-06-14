@@ -37,6 +37,7 @@ import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog"
 import {
   formatDate,
   formatearPrecio,
+  redondearADecena,
   extractIdFromSlug,
   generateSlug,
   cn,
@@ -70,32 +71,7 @@ import { toast } from "sonner";
 import { SaleDetailsModal } from "../../ventas/modalVentas/saleDetailsModal";
 import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
 import { Wallet } from "lucide-react";
-
-const taxConditionInfo: Record<
-  EClientTaxCondition,
-  { label: string; invoice: string; className: string }
-> = {
-  [EClientTaxCondition.IVA_INSCRIPTO]: {
-    label: "IVA Inscripto",
-    invoice: "Factura A",
-    className: "bg-blue-50 text-blue-700 border border-blue-200",
-  },
-  [EClientTaxCondition.IVA_EXENTO]: {
-    label: "IVA Exento",
-    invoice: "Factura B",
-    className: "bg-amber-50 text-amber-700 border border-amber-200",
-  },
-  [EClientTaxCondition.IVA_NO_ALCANZADO]: {
-    label: "IVA No Alcanzado",
-    invoice: "Factura B",
-    className: "bg-slate-50 text-slate-700 border border-slate-200",
-  },
-  [EClientTaxCondition.CONSUMIDOR_FINAL]: {
-    label: "Consumidor Final",
-    invoice: "Factura B",
-    className: "bg-violet-50 text-violet-700 border border-violet-200",
-  },
-};
+import { taxConditionInfo } from "@/lib/taxCondition";
 
 export default function ClienteDetallePage({
   params,
@@ -680,7 +656,18 @@ export default function ClienteDetallePage({
                             {isFacturado ? "Facturado" : "Sin facturar"}
                           </span>
                           <span className="text-sm font-semibold hidden sm:inline">
-                            {formatearPrecio(sale.total || 0)}
+                            {formatearPrecio(redondearADecena(sale.finalTotal ?? sale.total ?? 0))}
+                            {sale.returns && sale.returns.length > 0 && (() => {
+                              const hasExchanges = sale.returns?.some((r: any) => r.isExchange);
+                              const hasReturnsOnly = sale.returns?.some((r: any) => !r.isExchange);
+                              if (hasExchanges && hasReturnsOnly) {
+                                return <span className="text-xs text-purple-600 ml-1" title="Tiene devoluciones y cambios">◆</span>;
+                              } else if (hasExchanges) {
+                                return <span className="text-xs text-purple-600 ml-1" title="Tiene cambios">↔</span>;
+                              } else {
+                                return <span className="text-xs text-orange-600 ml-1" title="Tiene devoluciones">↩</span>;
+                              }
+                            })()}
                           </span>
                           <EyeIcon className="h-4 w-4 text-muted-foreground opacity-0 md:group-hover:opacity-100 md:transition-opacity" />
                         </div>

@@ -55,7 +55,10 @@ import { es } from "date-fns/locale";
 import { cn, extractIdFromSlug } from "@/lib/utils";
 import collections from "@/lib/collections";
 import { EQuoteStatus } from "@/types/quote";
-import { TClient, EClientSection } from "@/types/client";
+import { TClient, EClientSection, EClientTaxCondition } from "@/types/client";
+import { CuitInput } from "@/components/cuit-input";
+import { formatCuit } from "@/lib/cuit";
+import { taxConditionOptions, getTaxConditionLabel } from "@/lib/taxCondition";
 import { TDeviceType } from "@/types/device";
 import { EUserRole } from "@/types/user";
 import { useAuth } from "@/contexts/AuthContext";
@@ -517,7 +520,13 @@ export default function PresupuestoDetailPage({
         .filter((p): p is NonNullable<typeof p> => p !== null);
 
       const updateData = {
-        client: { id: editData.client.id, name: editData.client.name, section: editData.client.section },
+        client: {
+          id: editData.client.id,
+          name: editData.client.name,
+          section: editData.client.section,
+          cuit: editData.client.cuit ?? null,
+          taxCondition: editData.client.taxCondition ?? null,
+        },
         items: [],
         periodos: preparedPeriodos,
         fecha: toTimestamp(editData.fecha),
@@ -868,6 +877,64 @@ export default function PresupuestoDetailPage({
               </Badge>
             </div>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div className="space-y-2">
+              <Label>CUIT/CUIL</Label>
+              {isEditing ? (
+                <CuitInput
+                  value={
+                    editData?.client?.cuit ??
+                    (editData?.client as { taxId?: string } | undefined)?.taxId ??
+                    ""
+                  }
+                  onValueChange={(v) =>
+                    setEditData({
+                      ...editData!,
+                      client: { ...editData!.client, cuit: v },
+                    })
+                  }
+                />
+              ) : (
+                <p className="text-sm py-2 font-mono tabular-nums">
+                  {(quote.client?.cuit ?? (quote.client as { taxId?: string })?.taxId)
+                    ? formatCuit(quote.client.cuit ?? (quote.client as { taxId?: string }).taxId ?? "")
+                    : "-"}
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Condición fiscal</Label>
+              {isEditing ? (
+                <Select
+                  value={editData?.client?.taxCondition ?? "none"}
+                  onValueChange={(value) =>
+                    setEditData({
+                      ...editData!,
+                      client: {
+                        ...editData!.client,
+                        taxCondition:
+                          value === "none"
+                            ? undefined
+                            : (value as EClientTaxCondition),
+                      },
+                    })
+                  }
+                >
+                  <SelectTrigger><SelectValue placeholder="Seleccionar condición fiscal" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin definir</SelectItem>
+                    {taxConditionOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label} · {opt.invoice}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <p className="text-sm py-2">{getTaxConditionLabel(quote.client?.taxCondition)}</p>
+              )}
+            </div>
+          </div>
           <div className="mt-4 space-y-2">
             <Label>Observaciones</Label>
             {isEditing ? (
@@ -923,7 +990,7 @@ export default function PresupuestoDetailPage({
               <div className="space-y-2">
                 <Label>Costo</Label>
                 {isEditing ? (
-                  <Input type="number" min="0" step="0.01" value={editData?.impresiones?.costo ?? ""} onChange={(e) => setEditData({ ...editData!, impresiones: { ...editData!.impresiones!, costo: Number(e.target.value) } })} placeholder="$" />
+                  <MoneyInput value={editData?.impresiones?.costo || 0} onValueChange={(n) => setEditData({ ...editData!, impresiones: { ...editData!.impresiones!, costo: n } })} placeholder="0" />
                 ) : (
                   <p className="text-sm py-2">{formatCurrency(displayData?.impresiones?.costo || 0)}</p>
                 )}
@@ -931,7 +998,7 @@ export default function PresupuestoDetailPage({
               <div className="space-y-2">
                 <Label>Venta</Label>
                 {isEditing ? (
-                  <Input type="number" min="0" step="0.01" value={editData?.impresiones?.venta ?? ""} onChange={(e) => setEditData({ ...editData!, impresiones: { ...editData!.impresiones!, venta: Number(e.target.value) } })} placeholder="$" />
+                  <MoneyInput value={editData?.impresiones?.venta || 0} onValueChange={(n) => setEditData({ ...editData!, impresiones: { ...editData!.impresiones!, venta: n } })} placeholder="0" />
                 ) : (
                   <p className="text-sm py-2">{formatCurrency(displayData?.impresiones?.venta || 0)}</p>
                 )}
@@ -939,7 +1006,7 @@ export default function PresupuestoDetailPage({
               <div className="space-y-2">
                 <Label>Flete</Label>
                 {isEditing ? (
-                  <Input type="number" min="0" step="0.01" value={editData?.impresiones?.flete ?? ""} onChange={(e) => setEditData({ ...editData!, impresiones: { ...editData!.impresiones!, flete: Number(e.target.value) } })} placeholder="$" />
+                  <MoneyInput value={editData?.impresiones?.flete || 0} onValueChange={(n) => setEditData({ ...editData!, impresiones: { ...editData!.impresiones!, flete: n } })} placeholder="0" />
                 ) : (
                   <p className="text-sm py-2">{formatCurrency(displayData?.impresiones?.flete || 0)}</p>
                 )}
@@ -982,7 +1049,7 @@ export default function PresupuestoDetailPage({
                 </div>
                 <div className="w-[120px]">
                   {isEditing ? (
-                    <Input type="number" min="0" step="0.01" value={fp.monto ?? ""} onChange={(e) => handleFormaPagoChange(index, "monto", Number(e.target.value))} placeholder="Monto $" />
+                    <MoneyInput value={fp.monto || 0} onValueChange={(n) => handleFormaPagoChange(index, "monto", n)} placeholder="0" />
                   ) : (
                     <span>{formatCurrency(fp.monto)}</span>
                   )}

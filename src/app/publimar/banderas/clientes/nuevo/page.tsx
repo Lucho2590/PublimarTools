@@ -47,33 +47,7 @@ import {
   EAuditEntityType,
   EAuditSection,
 } from "@/types/auditLog";
-
-const taxConditionOptions: {
-  value: EClientTaxCondition;
-  label: string;
-  invoice: string;
-}[] = [
-  {
-    value: EClientTaxCondition.IVA_INSCRIPTO,
-    label: "IVA Inscripto",
-    invoice: "Factura A",
-  },
-  {
-    value: EClientTaxCondition.IVA_EXENTO,
-    label: "IVA Exento",
-    invoice: "Factura B",
-  },
-  {
-    value: EClientTaxCondition.IVA_NO_ALCANZADO,
-    label: "IVA No Alcanzado",
-    invoice: "Factura B",
-  },
-  {
-    value: EClientTaxCondition.CONSUMIDOR_FINAL,
-    label: "Consumidor Final",
-    invoice: "Factura B",
-  },
-];
+import { taxConditionOptions } from "@/lib/taxCondition";
 
 export default function NuevoClientePage() {
   const [loading, setLoading] = useState(false);

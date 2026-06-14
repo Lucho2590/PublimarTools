@@ -1,9 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, LayoutGrid, List, Plus } from "lucide-react";
+import { Search, LayoutGrid, List, Plus, FileText } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -11,27 +15,71 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
 import { formatearPrecio } from "@/lib/utils";
 
 type ViewMode = "grid" | "list";
 
+interface ManualItemInput {
+  name: string;
+  variantName: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 interface ProductCatalogProps {
   products: TProduct[];
   categories: TProductCategory[];
   onAdd: (product: TProduct, variant: TProductVariant) => void;
+  onAddManual: (item: ManualItemInput) => void;
   cartQty: (productId: string, variantId: string) => number;
 }
+
+const emptyManualItem: ManualItemInput = {
+  name: "",
+  variantName: "",
+  description: "",
+  quantity: 1,
+  unitPrice: 0,
+};
 
 export function ProductCatalog({
   products,
   categories,
   onAdd,
+  onAddManual,
   cartQty,
 }: ProductCatalogProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [showManualDialog, setShowManualDialog] = useState(false);
+  const [manualItem, setManualItem] = useState<ManualItemInput>(emptyManualItem);
+
+  const handleAddManual = () => {
+    if (!manualItem.name.trim() || Number(manualItem.unitPrice) <= 0) {
+      toast.error("Nombre y precio son requeridos");
+      return;
+    }
+    onAddManual({
+      ...manualItem,
+      name: manualItem.name.trim(),
+      variantName: manualItem.variantName.trim(),
+      description: manualItem.description.trim(),
+    });
+    setManualItem(emptyManualItem);
+    setShowManualDialog(false);
+    toast.success("Item manual agregado");
+  };
   // Variante elegida por producto (default: primera)
   const [selectedVariants, setSelectedVariants] = useState<
     Record<string, string>
@@ -119,6 +167,115 @@ export function ProductCatalog({
             ))}
           </SelectContent>
         </Select>
+        <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
+          <DialogTrigger asChild>
+            <Button type="button" variant="outline" className="shrink-0">
+              <FileText className="w-4 h-4 mr-2" />
+              Item Manual
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Agregar item manual</DialogTitle>
+            </DialogHeader>
+            <div className="py-2 space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-name">Nombre *</Label>
+                <Input
+                  id="manual-name"
+                  value={manualItem.name}
+                  onChange={(e) =>
+                    setManualItem((prev) => ({ ...prev, name: e.target.value }))
+                  }
+                  placeholder="Ej: Bandera personalizada"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-variant">Variante / Medida</Label>
+                <Input
+                  id="manual-variant"
+                  value={manualItem.variantName}
+                  onChange={(e) =>
+                    setManualItem((prev) => ({
+                      ...prev,
+                      variantName: e.target.value,
+                    }))
+                  }
+                  placeholder='Ej: 2x1m, "Talle L" (opcional)'
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="manual-description">Descripción</Label>
+                <Textarea
+                  id="manual-description"
+                  value={manualItem.description}
+                  onChange={(e) =>
+                    setManualItem((prev) => ({
+                      ...prev,
+                      description: e.target.value,
+                    }))
+                  }
+                  placeholder="Detalle adicional (opcional)"
+                  rows={2}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="manual-quantity">Cantidad *</Label>
+                  <Input
+                    id="manual-quantity"
+                    type="number"
+                    min={1}
+                    value={manualItem.quantity}
+                    onChange={(e) =>
+                      setManualItem((prev) => ({
+                        ...prev,
+                        quantity: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="manual-price">Precio unitario *</Label>
+                  <MoneyInput
+                    id="manual-price"
+                    value={manualItem.unitPrice || 0}
+                    onValueChange={(n) =>
+                      setManualItem((prev) => ({
+                        ...prev,
+                        unitPrice: n,
+                      }))
+                    }
+                    placeholder="0"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 text-sm">
+                <span className="text-gray-500">Subtotal</span>
+                <span className="font-semibold text-gray-900">
+                  {formatearPrecio(
+                    Math.max(0, Number(manualItem.unitPrice) || 0) *
+                      Math.max(1, Number(manualItem.quantity) || 1),
+                  )}
+                </span>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowManualDialog(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="button" onClick={handleAddManual}>
+                <Plus className="w-4 h-4 mr-1" />
+                Agregar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <div className="flex gap-1 rounded-md border bg-white p-0.5">
           <Button
             type="button"

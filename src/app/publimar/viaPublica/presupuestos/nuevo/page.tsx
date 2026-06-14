@@ -380,6 +380,8 @@ export default function NuevoPresupuestoPage() {
           id: selectedClient.id,
           name: selectedClient.name,
           section: selectedClient.section,
+          cuit: selectedClient.cuit ?? null,
+          taxCondition: selectedClient.taxCondition ?? null,
         },
         items: [],
         periodos: preparedPeriodos,
@@ -662,13 +664,10 @@ export default function NuevoPresupuestoPage() {
               </div>
               <div className="md:w-[120px]">
                 <Label className="text-xs text-slate-500 md:hidden">Monto</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={fp.monto ?? ""}
-                  onChange={(e) => handleFormaPagoChange(index, "monto", e.target.value ? Number(e.target.value) : undefined)}
-                  placeholder="Monto $"
+                <MoneyInput
+                  value={fp.monto || 0}
+                  onValueChange={(n) => handleFormaPagoChange(index, "monto", n)}
+                  placeholder="0"
                 />
               </div>
             </div>
@@ -743,44 +742,35 @@ export default function NuevoPresupuestoPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label htmlFor="costoImpresiones">Costo impresiones</Label>
-            <Input
+            <MoneyInput
               id="costoImpresiones"
-              type="number"
-              min="0"
-              step="0.01"
-              value={impresiones.costo ?? ""}
-              onChange={(e) =>
-                setImpresiones((prev) => ({ ...prev, costo: e.target.value ? Number(e.target.value) : undefined }))
+              value={impresiones.costo || 0}
+              onValueChange={(n) =>
+                setImpresiones((prev) => ({ ...prev, costo: n }))
               }
-              placeholder="$"
+              placeholder="0"
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="ventaImpresiones">Venta impresiones</Label>
-            <Input
+            <MoneyInput
               id="ventaImpresiones"
-              type="number"
-              min="0"
-              step="0.01"
-              value={impresiones.venta ?? ""}
-              onChange={(e) =>
-                setImpresiones((prev) => ({ ...prev, venta: e.target.value ? Number(e.target.value) : undefined }))
+              value={impresiones.venta || 0}
+              onValueChange={(n) =>
+                setImpresiones((prev) => ({ ...prev, venta: n }))
               }
-              placeholder="$"
+              placeholder="0"
             />
           </div>
           <div className="space-y-2">
             <Label htmlFor="fleteImpresiones">Flete</Label>
-            <Input
+            <MoneyInput
               id="fleteImpresiones"
-              type="number"
-              min="0"
-              step="0.01"
-              value={impresiones.flete ?? ""}
-              onChange={(e) =>
-                setImpresiones((prev) => ({ ...prev, flete: e.target.value ? Number(e.target.value) : undefined }))
+              value={impresiones.flete || 0}
+              onValueChange={(n) =>
+                setImpresiones((prev) => ({ ...prev, flete: n }))
               }
-              placeholder="$"
+              placeholder="0"
             />
           </div>
         </div>
@@ -1089,44 +1079,35 @@ export default function NuevoPresupuestoPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="costoImpresiones-desktop">Costo impresiones</Label>
-                      <Input
+                      <MoneyInput
                         id="costoImpresiones-desktop"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={impresiones.costo ?? ""}
-                        onChange={(e) =>
-                          setImpresiones((prev) => ({ ...prev, costo: e.target.value ? Number(e.target.value) : undefined }))
+                        value={impresiones.costo || 0}
+                        onValueChange={(n) =>
+                          setImpresiones((prev) => ({ ...prev, costo: n }))
                         }
-                        placeholder="$"
+                        placeholder="0"
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="ventaImpresiones-desktop">Venta impresiones</Label>
-                      <Input
+                      <MoneyInput
                         id="ventaImpresiones-desktop"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={impresiones.venta ?? ""}
-                        onChange={(e) =>
-                          setImpresiones((prev) => ({ ...prev, venta: e.target.value ? Number(e.target.value) : undefined }))
+                        value={impresiones.venta || 0}
+                        onValueChange={(n) =>
+                          setImpresiones((prev) => ({ ...prev, venta: n }))
                         }
-                        placeholder="$"
+                        placeholder="0"
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="fleteImpresiones-desktop">Flete</Label>
-                      <Input
+                      <MoneyInput
                         id="fleteImpresiones-desktop"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={impresiones.flete ?? ""}
-                        onChange={(e) =>
-                          setImpresiones((prev) => ({ ...prev, flete: e.target.value ? Number(e.target.value) : undefined }))
+                        value={impresiones.flete || 0}
+                        onValueChange={(n) =>
+                          setImpresiones((prev) => ({ ...prev, flete: n }))
                         }
-                        placeholder="$"
+                        placeholder="0"
                       />
                     </div>
                   </div>

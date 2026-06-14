@@ -42,30 +42,9 @@ import {
 } from "lucide-react";
 import { cn, formatearPrecio, generateSlug } from "@/lib/utils";
 import { formatCuit } from "@/lib/cuit";
+import { taxConditionInfo } from "@/lib/taxCondition";
 import { useAvailableCreditByClient } from "@/hooks/useCreditNotes";
 import { Wallet } from "lucide-react";
-
-const taxConditionInfo: Record<
-  EClientTaxCondition,
-  { label: string; className: string }
-> = {
-  [EClientTaxCondition.IVA_INSCRIPTO]: {
-    label: "IVA Inscripto",
-    className: "bg-blue-50 text-blue-700 border border-blue-200",
-  },
-  [EClientTaxCondition.IVA_EXENTO]: {
-    label: "IVA Exento",
-    className: "bg-amber-50 text-amber-700 border border-amber-200",
-  },
-  [EClientTaxCondition.IVA_NO_ALCANZADO]: {
-    label: "IVA No Alcanzado",
-    className: "bg-slate-50 text-slate-700 border border-slate-200",
-  },
-  [EClientTaxCondition.CONSUMIDOR_FINAL]: {
-    label: "Consumidor Final",
-    className: "bg-violet-50 text-violet-700 border border-violet-200",
-  },
-};
 
 const timestampToDate = (timestamp: any): Date | null => {
   if (!timestamp) return null;

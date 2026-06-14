@@ -7,6 +7,8 @@ import { useQuotes, useQuoteById } from "@/hooks/useQuotes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
+import { CuitInput } from "@/components/cuit-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -44,6 +46,8 @@ import {
 import { formatearPrecio, formatDate, redondearTotal, extractIdFromSlug } from "@/lib/utils";
 import { toast } from "sonner";
 import { EQuoteStatus, TQuote } from "@/types/quote";
+import { EClientTaxCondition } from "@/types/client";
+import { taxConditionOptions } from "@/lib/taxCondition";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
@@ -428,6 +432,52 @@ export default function QuoteDetailsPage({
               <Label className="text-sm text-gray-600">Dirección</Label>
               <p className="font-medium">{editedQuote.client.address || "-"}</p>
             </div>
+            <div className="space-y-1">
+              <Label className="text-sm text-gray-600">CUIT/CUIL</Label>
+              <CuitInput
+                value={
+                  editedQuote.client.cuit ??
+                  (editedQuote.client as { taxId?: string }).taxId ??
+                  ""
+                }
+                onValueChange={(v) =>
+                  setEditedQuote({
+                    ...editedQuote,
+                    client: { ...editedQuote.client, cuit: v },
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm text-gray-600">Condición fiscal</Label>
+              <Select
+                value={editedQuote.client.taxCondition ?? "none"}
+                onValueChange={(value) =>
+                  setEditedQuote({
+                    ...editedQuote,
+                    client: {
+                      ...editedQuote.client,
+                      taxCondition:
+                        value === "none"
+                          ? undefined
+                          : (value as EClientTaxCondition),
+                    },
+                  })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar condición fiscal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin definir</SelectItem>
+                  {taxConditionOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label} · {opt.invoice}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -551,14 +601,11 @@ export default function QuoteDetailsPage({
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="manualPrice">Precio unitario</Label>
-                      <Input
+                      <MoneyInput
                         id="manualPrice"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={manualItemPrice}
-                        onChange={(e) => setManualItemPrice(Number(e.target.value))}
+                        placeholder="0"
+                        value={manualItemPrice || 0}
+                        onValueChange={(n) => setManualItemPrice(n)}
                       />
                     </div>
                   </div>
@@ -699,13 +746,11 @@ export default function QuoteDetailsPage({
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="customPrice">Precio Unitario</Label>
-                          <Input
+                          <MoneyInput
                             id="customPrice"
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            placeholder="0"
                             value={customUnitPrice || 0}
-                            onChange={(e) => setCustomUnitPrice(parseFloat(e.target.value) || 0)}
+                            onValueChange={(n) => setCustomUnitPrice(n)}
                           />
                         </div>
                         <div className="space-y-2">
@@ -903,13 +948,10 @@ export default function QuoteDetailsPage({
                   <Label htmlFor="manualDiscount" className="text-sm text-gray-700 w-24">
                     Descuento ($)
                   </Label>
-                  <Input
+                  <MoneyInput
                     id="manualDiscount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={manualDiscount}
-                    onChange={(e) => setManualDiscount(Number(e.target.value))}
+                    value={manualDiscount || 0}
+                    onValueChange={(n) => setManualDiscount(n)}
                     className="w-20 h-8 text-center text-sm"
                     placeholder="0"
                   />
