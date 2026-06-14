@@ -51,3 +51,5 @@ FLUJO_VIA_PUBLICA.md
 
 # Scripts de migración
 scripts/
+# Workflows de n8n (contienen secretos / URLs de túnel temporales)
+n8n/

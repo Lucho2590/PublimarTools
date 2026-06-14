@@ -36,6 +36,8 @@ const collections = {
   OPERATIONAL_EXPENSES: "operationalExpenses",
   CREDIT_NOTES: "creditNotes",
   PAYMENT_ACCOUNT_DEFAULTS: "paymentAccountDefaults",
+  WHATSAPP_CONVERSATIONS: "whatsappConversations",
+  WHATSAPP_ORDERS: "whatsappOrders",
 } as const;
 
 export default collections;
