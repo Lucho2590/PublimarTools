@@ -21,6 +21,8 @@ import {
   Wallet,
   Receipt,
   CreditCard,
+  MessageCircle,
+  MessageSquare,
   LucideIcon,
 } from "lucide-react";
 
@@ -189,6 +191,23 @@ export const navConfig: NavItem[] = [
         name: "RRHH",
         href: "/publimar/administracion/rrhh",
         icon: Users,
+      },
+    ],
+  },
+  {
+    name: "WhatsApp",
+    href: "/publimar/whatsapp",
+    icon: MessageCircle,
+    subItems: [
+      {
+        name: "Conversaciones",
+        href: "/publimar/whatsapp/conversaciones",
+        icon: MessageSquare,
+      },
+      {
+        name: "Pedidos",
+        href: "/publimar/whatsapp/pedidos",
+        icon: ShoppingBag,
       },
     ],
   },
