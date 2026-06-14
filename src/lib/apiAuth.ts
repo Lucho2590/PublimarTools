@@ -3,14 +3,33 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
+/**
+ * Normaliza el private key sin importar cómo se haya pegado en el env:
+ * - recorta espacios,
+ * - saca comillas envolventes (" o '),
+ * - convierte `\n` escapados en saltos de línea reales.
+ * Si ya viene con saltos reales, queda igual.
+ */
+function normalizePrivateKey(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  let key = raw.trim();
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'"))
+  ) {
+    key = key.slice(1, -1);
+  }
+  return key.replace(/\\n/g, '\n');
+}
+
 // Lazy initialization of Firebase Admin
 function initializeFirebaseAdmin() {
   if (!getApps().length) {
     initializeApp({
       credential: cert({
         projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim(),
+        privateKey: normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY),
       }),
     });
   }
