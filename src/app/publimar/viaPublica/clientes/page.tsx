@@ -35,9 +35,21 @@ import {
 } from "@/components/ui/pagination";
 import collections from "@/lib/collections";
 import { EClientType, EClientStatus, EClientSection } from "@/types/client";
-import { Edit, Eye } from "lucide-react";
+import { Edit, Eye, Trash2 } from "lucide-react";
 import ClientDetailsModal from "./modalClientes/clientDetailsModal";
 import { generateSlug } from "@/lib/utils";
+import { softDelete } from "@/lib/softDelete";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { useAuditLog } from "@/hooks/useAuditLog";
+import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
+import { toast } from "sonner";
 
 export default function ClientesPage() {
   const router = useRouter();
@@ -47,6 +59,32 @@ export default function ClientesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const firestore = useFirestore();
+  const { logEvent } = useAuditLog();
+  const [clientToDelete, setClientToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteClient = async () => {
+    if (!clientToDelete) return;
+    setIsDeleting(true);
+    try {
+      await softDelete(firestore, collections.CLIENTS, clientToDelete.id);
+      await logEvent({
+        section: EAuditSection.VIA_PUBLICA,
+        entityType: EAuditEntityType.CLIENT,
+        entityId: clientToDelete.id,
+        entityLabel: clientToDelete.name ?? null,
+        action: EAuditAction.DELETE,
+        description: `Eliminó el cliente ${clientToDelete.name ?? ""}`.trim(),
+      });
+      toast.success("Cliente eliminado correctamente");
+    } catch (e) {
+      console.error("Error al eliminar cliente:", e);
+      toast.error("Error al eliminar el cliente");
+    } finally {
+      setIsDeleting(false);
+      setClientToDelete(null);
+    }
+  };
 
   // Consulta a Firestore - Filtra solo clientes de la sección "viaPublica"
   const clientsCollection = collection(firestore, collections.CLIENTS);
@@ -90,7 +128,7 @@ export default function ClientesPage() {
     // Filtrar por status en el cliente
     const isActive = client.status === EClientStatus.ACTIVE;
 
-    return matchesSearch && isActive;
+    return matchesSearch && isActive && !client.deleted;
   });
 
   // Calcular índices para la paginación
@@ -240,6 +278,15 @@ export default function ClientesPage() {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Eliminar"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => setClientToDelete({ id: client.id, name: client.name })}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -309,6 +356,36 @@ export default function ClientesPage() {
           // The real-time data will automatically update the list
         }}
       />
+
+      <Dialog
+        open={!!clientToDelete}
+        onOpenChange={(open) => !open && setClientToDelete(null)}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>¿Eliminar cliente?</DialogTitle>
+            <DialogDescription>
+              Esta acción ocultará al cliente <strong>{clientToDelete?.name}</strong> de la lista.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setClientToDelete(null)}
+              disabled={isDeleting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleDeleteClient}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeleting ? "Eliminando..." : "Eliminar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

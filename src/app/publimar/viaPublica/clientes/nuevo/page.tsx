@@ -9,6 +9,7 @@ import { collection, addDoc, serverTimestamp, doc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CuitInput } from "@/components/cuit-input";
+import { AddressInput } from "@/components/ui/address-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
@@ -20,8 +21,9 @@ import {
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import collections from "@/lib/collections";
-import { EClientType, EClientStatus, EClientSection, TClientContact } from "@/types/client";
+import { EClientType, EClientStatus, EClientSection, EClientTaxCondition, TClientContact } from "@/types/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { taxConditionOptions } from "@/lib/taxCondition";
 import { Save, Trash2, Plus } from "lucide-react";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { buildChanges } from "@/lib/auditLog";
@@ -40,7 +42,7 @@ export default function NuevoClientePage() {
   ]);
 
   // Estado para razones sociales adicionales
-  const [razonesSociales, setRazonesSociales] = useState<{ razonSocial: string; fantasyName: string; cuit: string }[]>([]);
+  const [razonesSociales, setRazonesSociales] = useState<{ razonSocial: string; fantasyName: string; cuit: string; taxCondition?: EClientTaxCondition }[]>([]);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -53,6 +55,7 @@ export default function NuevoClientePage() {
     phone: "",
     address: "",
     cuit: "",
+    taxCondition: undefined as EClientTaxCondition | undefined,
     reference: "",
     notes: "",
   });
@@ -95,14 +98,18 @@ export default function NuevoClientePage() {
 
   // Handlers para razones sociales adicionales
   const addRazonSocial = () => {
-    setRazonesSociales([...razonesSociales, { razonSocial: "", fantasyName: "", cuit: "" }]);
+    setRazonesSociales([...razonesSociales, { razonSocial: "", fantasyName: "", cuit: "", taxCondition: undefined }]);
   };
 
   const removeRazonSocial = (index: number) => {
     setRazonesSociales(razonesSociales.filter((_, i) => i !== index));
   };
 
-  const handleRazonSocialChange = (index: number, field: "razonSocial" | "fantasyName" | "cuit", value: string) => {
+  const handleRazonSocialChange = (
+    index: number,
+    field: "razonSocial" | "fantasyName" | "cuit" | "taxCondition",
+    value: string | EClientTaxCondition | undefined
+  ) => {
     const updated = [...razonesSociales];
     updated[index] = { ...updated[index], [field]: value };
     setRazonesSociales(updated);
@@ -149,6 +156,7 @@ export default function NuevoClientePage() {
           razonSocial: rs.razonSocial,
           ...(rs.fantasyName.trim() && { fantasyName: rs.fantasyName }),
           ...(rs.cuit.trim() && { cuit: rs.cuit }),
+          ...(rs.taxCondition && { taxCondition: rs.taxCondition }),
         }));
 
       const clientData: Record<string, any> = {
@@ -163,7 +171,7 @@ export default function NuevoClientePage() {
 
       // Eliminar campos vacíos, excepto los campos requeridos
       Object.keys(clientData).forEach((key) => {
-        if (clientData[key] === "" && key !== "name") {
+        if ((clientData[key] === "" || clientData[key] === undefined) && key !== "name") {
           delete clientData[key];
         }
       });
@@ -184,7 +192,7 @@ export default function NuevoClientePage() {
           razonesSociales: filteredRazonesSociales,
         } as any, [
           'name', 'type', 'status', 'section', 'businessName', 'fantasyName',
-          'razonesSociales', 'email', 'phone', 'address', 'cuit', 'reference', 'notes', 'contacts',
+          'razonesSociales', 'email', 'phone', 'address', 'cuit', 'taxCondition', 'reference', 'notes', 'contacts',
         ]),
       });
 
@@ -260,11 +268,11 @@ export default function NuevoClientePage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="address">Dirección</Label>
-                  <Input
+                  <AddressInput
                     id="address"
                     name="address"
                     value={formData.address}
-                    onChange={handleChange}
+                    onValueChange={(address) => setFormData((prev) => ({ ...prev, address }))}
                   />
                 </div>
               </div>
@@ -291,6 +299,33 @@ export default function NuevoClientePage() {
                       placeholder="Si difiere de la razón social"
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="taxCondition">Condición frente al IVA</Label>
+                    <Select
+                      value={formData.taxCondition ?? "none"}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          taxCondition:
+                            value === "none"
+                              ? undefined
+                              : (value as EClientTaxCondition),
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Seleccionar condición fiscal" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Sin definir</SelectItem>
+                        {taxConditionOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label} · {opt.invoice}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 {razonesSociales.length > 0 && (
@@ -309,7 +344,7 @@ export default function NuevoClientePage() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="space-y-2">
                             <Label>Razón Social *</Label>
                             <Input
@@ -333,6 +368,31 @@ export default function NuevoClientePage() {
                               onValueChange={(digits) => handleRazonSocialChange(index, "cuit", digits)}
                             />
                           </div>
+                          <div className="space-y-2">
+                            <Label>Condición frente al IVA</Label>
+                            <Select
+                              value={rs.taxCondition ?? "none"}
+                              onValueChange={(value) =>
+                                handleRazonSocialChange(
+                                  index,
+                                  "taxCondition",
+                                  value === "none" ? undefined : (value as EClientTaxCondition)
+                                )
+                              }
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Seleccionar condición fiscal" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Sin definir</SelectItem>
+                                {taxConditionOptions.map((opt) => (
+                                  <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label} · {opt.invoice}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -353,11 +413,11 @@ export default function NuevoClientePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="address">Dirección</Label>
-                    <Input
+                    <AddressInput
                       id="address"
                       name="address"
                       value={formData.address}
-                      onChange={handleChange}
+                      onValueChange={(address) => setFormData((prev) => ({ ...prev, address }))}
                     />
                   </div>
                 </div>

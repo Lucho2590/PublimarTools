@@ -8,6 +8,7 @@ import { softDelete } from '@/lib/softDelete';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AddressInput } from "@/components/ui/address-input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 // import collections from "@/lib/collections";
@@ -144,7 +145,7 @@ export default function EditarProveedorPage({ params }: { params: { id: string }
             </div>
             <div>
               <Label>Dirección</Label>
-              <Input name="address" value={formData.address || ""} onChange={handleChange} />
+              <AddressInput name="address" value={formData.address || ""} onValueChange={(address) => setFormData({ ...formData, address })} />
             </div>
             <div>
               <Label>CUIT/CUIL</Label>

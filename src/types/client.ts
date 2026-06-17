@@ -33,6 +33,7 @@ export enum EClientType {
     razonSocial: string;
     fantasyName?: string;
     cuit?: string;
+    taxCondition?: EClientTaxCondition; // Condición frente al IVA
   };
 
   export type TClient = {
