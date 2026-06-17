@@ -7,6 +7,7 @@ import { useFirestore, useUser } from "reactfire";
 import { collection, addDoc, serverTimestamp, doc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AddressInput } from "@/components/ui/address-input";
 import { CuitInput } from "@/components/cuit-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -305,11 +306,11 @@ export default function NuevoClientePage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="address">Dirección</Label>
-                  <Input
+                  <AddressInput
                     id="address"
                     name="address"
                     value={formData.address}
-                    onChange={handleChange}
+                    onValueChange={(address) => setFormData((prev) => ({ ...prev, address }))}
                   />
                 </div>
               </div>
@@ -337,11 +338,11 @@ export default function NuevoClientePage() {
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="address">Dirección</Label>
-                  <Input
+                  <AddressInput
                     id="address"
                     name="address"
                     value={formData.address}
-                    onChange={handleChange}
+                    onValueChange={(address) => setFormData((prev) => ({ ...prev, address }))}
                   />
                 </div>
               </div>

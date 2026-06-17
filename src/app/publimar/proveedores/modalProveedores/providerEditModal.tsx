@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { AddressInput } from '@/components/ui/address-input';
 import { CuitInput } from '@/components/cuit-input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -274,11 +275,11 @@ export default function ProviderEditModal({
 
               <div className="space-y-2">
                 <Label htmlFor="address">Dirección</Label>
-                <Input
+                <AddressInput
                   id="address"
                   name="address"
                   value={formData.address || ''}
-                  onChange={handleChange}
+                  onValueChange={(address) => setFormData((prev) => ({ ...prev, address }))}
                   className="w-full"
                 />
               </div>

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Search, UserPlus, UserX, Check, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { AddressInput } from "@/components/ui/address-input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { CuitInput } from "@/components/cuit-input";
@@ -156,9 +157,9 @@ export function ClientStep({
             </div>
             <div>
               <Label>Dirección</Label>
-              <Input
+              <AddressInput
                 value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                onValueChange={(address) => setForm({ ...form, address })}
               />
             </div>
             <div>

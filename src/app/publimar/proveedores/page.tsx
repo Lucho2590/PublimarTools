@@ -7,6 +7,7 @@ import { useFirestoreCollectionData } from "reactfire";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AddressInput } from "@/components/ui/address-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
@@ -240,11 +241,11 @@ export default function ProveedoresPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="address">Dirección</Label>
-                  <Input
+                  <AddressInput
                     id="address"
                     name="address"
                     value={form.address || ""}
-                    onChange={handleChange}
+                    onValueChange={(address) => setForm({ ...form, address })}
                     placeholder="Calle 123, Ciudad"
                   />
                 </div>

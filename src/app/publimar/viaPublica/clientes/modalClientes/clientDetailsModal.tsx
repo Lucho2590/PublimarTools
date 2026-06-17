@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { AddressInput } from "@/components/ui/address-input";
 import { CuitInput } from "@/components/cuit-input";
 import { formatCuit } from "@/lib/cuit";
 import { Label } from "@/components/ui/label";
@@ -627,11 +628,11 @@ export default function ClientDetailsModal({
 
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="address">Dirección</Label>
-                    <Input
+                    <AddressInput
                       id="address"
                       value={formData.address}
-                      onChange={(e) =>
-                        setFormData({ ...formData, address: e.target.value })
+                      onValueChange={(address) =>
+                        setFormData({ ...formData, address })
                       }
                     />
                   </div>
