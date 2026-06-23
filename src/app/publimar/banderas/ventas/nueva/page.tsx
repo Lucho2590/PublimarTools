@@ -181,6 +181,24 @@ export default function NuevaVentaPage() {
   );
   const total = manualTotal !== null ? manualTotal : calculatedTotal;
 
+  // Suma de las formas de pago que NO son la primera.
+  const othersSum = formasPago
+    .slice(1)
+    .reduce((s, fp) => s + (fp.amount || 0), 0);
+
+  // La primera forma de pago se autocompleta con el resto (total − las demás).
+  // Editable: si el usuario la pisa a mano, su valor persiste hasta que cambie
+  // otra forma o el total/descuento (ahí se recalcula). No genera loop porque sólo
+  // escribe prev[0].amount, que no afecta othersSum (slice(1)) ni length.
+  useEffect(() => {
+    setFormasPago((prev) => {
+      if (!prev.length) return prev;
+      const remaining = Math.max(0, redondearTotal(total - othersSum));
+      if (Math.abs((prev[0].amount || 0) - remaining) < 0.001) return prev;
+      return [{ ...prev[0], amount: remaining }, ...prev.slice(1)];
+    });
+  }, [total, othersSum, formasPago.length]);
+
   const handleTotalChange = (value: string) => {
     const numericValue = parseFloat(value);
     if (!isNaN(numericValue)) {
