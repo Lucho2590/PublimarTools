@@ -58,6 +58,7 @@ import { EOrderStatus, TFactura, TPaymentHistory } from "@/types/order";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 
 // Hooks personalizados
 import { useOrders } from "@/hooks/useOrders";
@@ -293,6 +294,7 @@ export default function NuevasOrdenesPage() {
   // Filtrar productos (case-insensitive y sin acentos, memoizado)
   const filteredProducts = useMemo(() => {
     return products?.filter((product: any) => {
+      if (isDeleted(product)) return false;
       const searchNormalized = normalizeText(productSearchTerm);
       return (
         normalizeText(product.name || "").includes(searchNormalized) ||

@@ -79,6 +79,7 @@ async function resolveItems(db: Firestore, items: ItemInput[]): Promise<Resolved
     const snap = await db.collection(collections.PRODUCTS).doc(it.productId).get();
     if (!snap.exists) throw new Error(`Producto no encontrado: ${it.productId}`);
     const p = snap.data() as any;
+    if (p.deleted) throw new Error(`Producto no disponible: ${it.productId}`);
     const variants = p.variants || [];
     const variant = it.variantId ? variants.find((v: any) => v.id === it.variantId) : null;
     const unitPrice = coerceNumber(variant ? variant.price : p.price);
@@ -149,6 +150,7 @@ export async function getProductDetails(args: { productId: string }) {
   if (!args?.productId) throw new Error("Se requiere productId");
   const snap = await db.collection(collections.PRODUCTS).doc(args.productId).get();
   if (!snap.exists) return null;
+  if ((snap.data() as any)?.deleted) return null;
   return mapProduct(snap.id, snap.data());
 }
 

@@ -15,3 +15,19 @@ export async function softDelete(
     deletedAt: serverTimestamp(),
   });
 }
+
+/**
+ * Devuelve `true` si el documento está marcado como eliminado (soft delete).
+ * Los documentos viejos sin el campo `deleted` se tratan como activos.
+ */
+export const isDeleted = (item: unknown): boolean =>
+  !!(item as { deleted?: boolean } | null)?.deleted;
+
+/**
+ * Filtra una lista dejando solo los documentos activos (no eliminados).
+ * Usar en todo punto de lectura para que un producto/entidad con soft delete
+ * no aparezca en ninguna parte de la app.
+ */
+export function filterActive<T>(items: T[] | undefined | null): T[] {
+  return (items ?? []).filter((item) => !isDeleted(item));
+}

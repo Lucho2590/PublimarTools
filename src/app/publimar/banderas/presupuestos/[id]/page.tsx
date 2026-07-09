@@ -52,6 +52,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 import { TProduct, TProductVariant } from "@/types/product";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -675,6 +676,7 @@ export default function QuoteDetailsPage({
                           <TableBody>
                             {products
                               ?.filter((p: any) =>
+                                !isDeleted(p) &&
                                 p.name?.toLowerCase().includes(productSearchTerm.toLowerCase())
                               )
                               .map((product: any) => {

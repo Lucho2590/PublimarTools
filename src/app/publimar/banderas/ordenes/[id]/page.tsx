@@ -59,6 +59,7 @@ import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 import { TProduct, TProductVariant } from "@/types/product";
 import { TClient } from "@/types/client";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -449,6 +450,7 @@ export default function OrderDetailsPage({
   // Productos filtrados para búsqueda
   const filteredProducts =
     products?.filter((product: any) => {
+      if (isDeleted(product)) return false;
       if (!productSearchTerm) return true;
       return (
         product.name?.toLowerCase().includes(productSearchTerm.toLowerCase()) ||

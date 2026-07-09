@@ -60,6 +60,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { SummaryCard } from "@/components/admin/SummaryCard";
 import { TablePagination } from "@/components/admin/TablePagination";
@@ -127,6 +128,7 @@ export default function DashboardPage() {
   });
 
   const lowStockProducts = allProducts?.filter((product) =>
+    !isDeleted(product) &&
     product.lowStock === true &&
     product.variants?.some((variant: { stock: number }) => variant.stock <= 3)
   );

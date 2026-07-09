@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
 import { EPaymentMethod, ESaleDepartment, PAYMENT_METHOD_ACCOUNT_TYPES, TFactura, TSaleFormaPago } from "@/types/sale";
 import { useQuotes } from "@/hooks/useQuotes";
@@ -459,6 +460,12 @@ export default function NuevaVentaPage() {
     }
   );
 
+  // Cantidad de productos activos (sin eliminados) para los contadores
+  const activeProductsCount = useMemo(
+    () => (products ?? []).filter((p) => !isDeleted(p)).length,
+    [products]
+  );
+
   // Obtener categorías
   const categoriesCollection = collection(
     firestore,
@@ -474,6 +481,7 @@ export default function NuevaVentaPage() {
   // Filtrar productos con filtro súper combinado (memoizado)
   const sortedProducts = useMemo(() => {
     const filtered = products?.reduce((unique: TProduct[], product) => {
+      if (isDeleted(product)) return unique;
       const typedProduct = product as unknown as TProduct;
       const exists = unique.find((p) => p.name === typedProduct.name);
       if (exists) return unique;
@@ -1248,11 +1256,9 @@ export default function NuevaVentaPage() {
 
             {/* Contador de resultados */}
             <div className="text-sm text-muted-foreground">
-              {sortedProducts?.length === products?.length
-                ? `${products?.length || 0} productos disponibles`
-                : `${sortedProducts?.length || 0} de ${
-                    products?.length || 0
-                  } productos`}
+              {sortedProducts?.length === activeProductsCount
+                ? `${activeProductsCount} productos disponibles`
+                : `${sortedProducts?.length || 0} de ${activeProductsCount} productos`}
             </div>
 
             {/* Lista compacta de productos */}

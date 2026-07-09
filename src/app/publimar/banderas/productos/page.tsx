@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { softDelete } from '@/lib/softDelete';
+import { softDelete, isDeleted } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -92,6 +92,7 @@ export default function ProductosPage() {
   // Filtrar productos según la búsqueda, categoría y grupo (memoizado)
   const filteredProducts = useMemo(() => {
     return products?.filter((product) => {
+      if (isDeleted(product)) return false;
       const typedProduct = product as unknown as TProduct;
       const matchesSearch = typedProduct.name
         .toLowerCase()

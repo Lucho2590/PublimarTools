@@ -59,6 +59,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 // import { Label } from "@/components/ui/label";
 // import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -121,6 +122,7 @@ export default function DashboardPage() {
   // Filtrar productos con bajo stock en el cliente
   // Solo mostramos productos que tengan lowStock: true Y que tengan variantes con stock <= 3
   const lowStockProducts = allProducts?.filter((product) =>
+    !isDeleted(product) &&
     product.lowStock === true &&
     product.variants?.some((variant: { stock: number }) => variant.stock <= 3)
   );

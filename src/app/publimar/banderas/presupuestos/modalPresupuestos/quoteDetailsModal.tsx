@@ -44,6 +44,7 @@ import {
 import { toast } from "sonner";
 import { Edit, Save, X, Plus, Trash2, Search } from "lucide-react";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 import { EQuoteStatus, TQuote, TQuoteItem } from "@/types/quote";
 import { TClient } from "@/types/client";
 import { TProduct, TProductVariant } from "@/types/product";
@@ -265,6 +266,7 @@ export default function QuoteDetailsModal({
   const filteredProducts = useMemo(() => {
     return products?.filter((product: DocumentData) => {
       if (!product) return false;
+      if (isDeleted(product)) return false;
       return (
         product.name?.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
         product.description
