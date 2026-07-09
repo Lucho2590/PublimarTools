@@ -38,7 +38,8 @@ import { TProduct, TProductCategory, TProductGroup } from "@/types/product";
 import { Edit, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 // XLSX se importa dinámicamente en handleDownloadExcel para no cargar ~700KB al inicio
-import { formatearPrecio, redondearADecena } from "@/lib/utils";
+import { formatearPrecio, redondearADecena, redondearPrecio } from "@/lib/utils";
+import { getRoundingConfig } from "@/lib/pricingConfig";
 import ProductEditModal from "./modalProductos/productEditModal";
 
 export default function ProductosPage() {
@@ -259,12 +260,15 @@ export default function ProductosPage() {
     const percentage = Number(increasePercentage) / 100;
 
     try {
+      // Config global de redondeo (editable desde /sudo). Fallback: decena.
+      const roundingConfig = await getRoundingConfig(firestore);
+
       for (const productId of selectedProducts) {
         const product = products?.find(p => (p as unknown as TProduct).id === productId) as unknown as TProduct;
         if (product && product.variants) {
           const updatedVariants = product.variants.map(variant => {
             const increasedPrice = Number(variant.price) * (1 + percentage);
-            const roundedPrice = redondearADecena(increasedPrice);
+            const roundedPrice = redondearPrecio(increasedPrice, roundingConfig);
             return {
               ...variant,
               price: roundedPrice

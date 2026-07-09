@@ -38,6 +38,7 @@ const collections = {
   PAYMENT_ACCOUNT_DEFAULTS: "paymentAccountDefaults",
   WHATSAPP_CONVERSATIONS: "whatsappConversations",
   WHATSAPP_ORDERS: "whatsappOrders",
+  SETTINGS: "settings",
 } as const;
 
 export default collections;

@@ -59,11 +59,73 @@ export const formatDateString = (dateString: string): string => {
 export const redondearADecena = (num: number): number => {
   // Paso 1: Redondear centavos normalmente (< 50 hacia abajo, ≥ 50 hacia arriba)
   const sinCentavos = Math.round(num);
-  
+
   // Paso 2: Redondear a la decena más cercana
   // Si el último dígito es 0-4, redondear hacia abajo
   // Si el último dígito es 5-9, redondear hacia arriba
   return Math.round(sinCentavos / 10) * 10;
+};
+
+/**
+ * Configuración global de redondeo de precios (editable desde /sudo).
+ * - multiplo: paso base de redondeo (a 10, 50 o 100).
+ * - direccion: "cercano" (al más cercano) o "arriba" (siempre hacia arriba).
+ * - terminacion: terminación psicológica del precio. Cuando es distinta de
+ *   "ninguna" el precio termina en …90 / …99 / …00 (paso de 100) y el `multiplo`
+ *   se ignora.
+ */
+export type TRoundingConfig = {
+  multiplo: 10 | 50 | 100;
+  direccion: "cercano" | "arriba";
+  terminacion: "ninguna" | "90" | "99" | "00";
+};
+
+/** Config por defecto: replica el comportamiento histórico (redondearADecena). */
+export const DEFAULT_ROUNDING: TRoundingConfig = {
+  multiplo: 10,
+  direccion: "cercano",
+  terminacion: "ninguna",
+};
+
+/**
+ * Redondea un precio según una configuración de redondeo.
+ * Con DEFAULT_ROUNDING es equivalente a `redondearADecena`.
+ * @example
+ * redondearPrecio(1150, { multiplo: 100, direccion: "arriba", terminacion: "ninguna" })   // 1200
+ * redondearPrecio(1150, { multiplo: 10, direccion: "cercano", terminacion: "99" })         // 1199
+ * redondearPrecio(1150, { multiplo: 10, direccion: "cercano", terminacion: "ninguna" })    // 1150
+ */
+export const redondearPrecio = (
+  num: number,
+  config: TRoundingConfig = DEFAULT_ROUNDING
+): number => {
+  if (!num || isNaN(num) || num <= 0) return 0;
+
+  const { multiplo, direccion, terminacion } = config;
+  // Redondear centavos primero (igual que redondearADecena).
+  const base = Math.round(num);
+
+  // Sin terminación psicológica: redondear al múltiplo elegido.
+  if (terminacion === "ninguna") {
+    const fn = direccion === "arriba" ? Math.ceil : Math.round;
+    return fn(base / multiplo) * multiplo;
+  }
+
+  // Terminación psicológica: precios que terminan en …90 / …99 / …00 (paso de 100).
+  const offset = terminacion === "00" ? 0 : Number(terminacion); // 90 | 99 | 0
+  const step = 100;
+
+  if (direccion === "arriba") {
+    // Menor valor k*100 + offset que sea >= base.
+    const k = Math.ceil((base - offset) / step);
+    return k * step + offset;
+  }
+
+  // Al más cercano entre la terminación de abajo y la de arriba.
+  const kFloor = Math.floor((base - offset) / step);
+  const lower = kFloor * step + offset;
+  const upper = lower + step;
+  return Math.abs(base - lower) <= Math.abs(upper - base) ? lower : upper;
 };
 
 /**
