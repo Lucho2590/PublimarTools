@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog";
 import { Search, Plus, Trash2, Edit, ArrowLeft, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 import { EQuoteStatus } from "@/types/quote";
 import { TClient, EClientType, EClientStatus, EClientSection, EClientTaxCondition } from "@/types/client";
 import { taxConditionOptions } from "@/lib/taxCondition";
@@ -190,6 +191,7 @@ export default function NuevoPresupuestoPage() {
   // Filter products based on search (case-insensitive y sin acentos)
   const filteredProducts = products?.filter((product: DocumentData) => {
     if (!product) return false;
+    if (isDeleted(product)) return false;
     const searchNormalized = normalizeText(productSearchTerm);
     return (
       normalizeText(product.name || '').includes(searchNormalized) ||

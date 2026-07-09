@@ -6,6 +6,7 @@ import { collection, doc, updateDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 import { TProduct } from "@/types/product";
 import { TSale, TSaleItem } from "@/types/sale";
 import { Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
@@ -61,8 +62,10 @@ export default function FixCountersPage() {
       });
     });
 
-    // Comparar con los contadores actuales de cada producto
-    const result: ProductFix[] = (products as unknown as TProduct[]).map((product) => {
+    // Comparar con los contadores actuales de cada producto (ignorar eliminados)
+    const result: ProductFix[] = (products as unknown as TProduct[])
+      .filter((product) => !isDeleted(product))
+      .map((product) => {
       const realCount = salesByProduct.get(product.id) || 0;
       const currentCount = product.salesCount || 0;
 

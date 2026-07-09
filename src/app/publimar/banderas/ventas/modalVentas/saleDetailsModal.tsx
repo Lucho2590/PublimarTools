@@ -10,7 +10,7 @@ import {
   getDoc,
   increment,
 } from "firebase/firestore";
-import { softDelete } from '@/lib/softDelete';
+import { softDelete, isDeleted } from '@/lib/softDelete';
 import {
   Dialog,
   DialogContent,
@@ -1886,6 +1886,7 @@ export function SaleDetailsModal({
 
   // Filtrar productos basado en el término de búsqueda y categoría
   const filteredProducts = Object.entries(products).filter(([_, product]) => {
+    if (isDeleted(product)) return false;
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = product.name.toLowerCase().includes(searchLower);
     const matchesCategory =
@@ -3256,7 +3257,7 @@ export function SaleDetailsModal({
                   {/* Producto y variante */}
                   <div className="grid grid-cols-2 gap-3">
                     <ProductAutocomplete
-                      options={Object.entries(products).map(([id, product]) => {
+                      options={Object.entries(products).filter(([_, product]) => !isDeleted(product)).map(([id, product]) => {
                         const totalStock = product?.variants?.reduce((sum, v) => sum + Number(v.stock), 0) ?? 0;
                         return {
                           id,

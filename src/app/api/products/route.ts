@@ -20,7 +20,9 @@ export async function GET(request: NextRequest) {
     const db = getFirestoreAdmin();
     const productsSnapshot = await db.collection(collections.PRODUCTS).get();
 
-    const products = productsSnapshot.docs.map((doc) => {
+    const products = productsSnapshot.docs
+      .filter((doc) => !doc.data().deleted)
+      .map((doc) => {
       const data = doc.data();
       return {
         id: doc.id,
