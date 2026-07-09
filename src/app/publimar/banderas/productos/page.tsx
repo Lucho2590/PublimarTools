@@ -318,10 +318,15 @@ export default function ProductosPage() {
   };
 
   const handleDownloadExcel = async () => {
-    if (!filteredProducts) return;
+    if (!products) return;
 
     const XLSX = await import('xlsx');
     const wb = XLSX.utils.book_new();
+
+    // Exportar TODOS los productos activos (no solo los filtrados en pantalla)
+    const activeProducts = products
+      .filter((product) => !isDeleted(product))
+      .map((product) => product as unknown as TProduct);
 
     // Crear un mapa de grupos: groupId -> groupName
     const groupMap = new Map<string, string>();
@@ -333,8 +338,7 @@ export default function ProductosPage() {
     // Agrupar productos por grupo
     const productsByGroup = new Map<string, TProduct[]>();
 
-    filteredProducts.forEach((product) => {
-      const typedProduct = product as unknown as TProduct;
+    activeProducts.forEach((typedProduct) => {
       const groupId = typedProduct.group || 'sin-grupo';
 
       if (!productsByGroup.has(groupId)) {
@@ -343,12 +347,26 @@ export default function ProductosPage() {
       productsByGroup.get(groupId)!.push(typedProduct);
     });
 
-    // Ordenar los grupos alfabéticamente por nombre
+    // Ordenar los grupos alfabéticamente por nombre ("Sin Grupo" al final)
     const sortedGroupIds = Array.from(productsByGroup.keys()).sort((a, b) => {
       const nameA = a === 'sin-grupo' ? 'ZZZ' : (groupMap.get(a) || a);
       const nameB = b === 'sin-grupo' ? 'ZZZ' : (groupMap.get(b) || b);
       return nameA.localeCompare(nameB);
     });
+
+    // Evitar nombres de hoja duplicados (Excel no lo permite)
+    const usedSheetNames = new Set<string>();
+    const makeUniqueSheetName = (name: string) => {
+      let candidate = name || "Hoja";
+      let suffix = 2;
+      while (usedSheetNames.has(candidate.toLowerCase())) {
+        const tag = ` (${suffix})`;
+        candidate = `${name.substring(0, 31 - tag.length)}${tag}`;
+        suffix++;
+      }
+      usedSheetNames.add(candidate.toLowerCase());
+      return candidate;
+    };
 
     // Crear una hoja por cada grupo
     sortedGroupIds.forEach((groupId) => {
@@ -356,21 +374,45 @@ export default function ProductosPage() {
       const groupName = groupId === 'sin-grupo' ? 'Sin Grupo' : (groupMap.get(groupId) || 'Grupo Desconocido');
 
       // Nombre de hoja válido para Excel (max 31 caracteres, sin caracteres especiales)
-      const sheetName = groupName.substring(0, 31).replace(/[\\/*?:\[\]]/g, '');
+      const sheetName = makeUniqueSheetName(
+        groupName.substring(0, 31).replace(/[\\/*?:\[\]]/g, '')
+      );
 
       const data = productsInGroup
         .sort((a, b) => a.name.localeCompare(b.name))
         .flatMap((product) => {
-          return product.variants?.map((variant) => ({
-            SKU: variant.sku || '-',
-            Nombre: product.name,
-            Medida: variant.size || '-',
-            Precio: Number(variant.price).toFixed(2),
-          })) || [];
+          // Productos con variantes: una fila por variante
+          if (product.variants && product.variants.length > 0) {
+            return product.variants.map((variant) => ({
+              Nombre: product.name,
+              Medida: variant.size || '-',
+              SKU: variant.sku || '-',
+              Valor: Number(variant.price) || 0,
+            }));
+          }
+          // Productos sin variantes: una fila con los datos del producto
+          return [
+            {
+              Nombre: product.name,
+              Medida: '-',
+              SKU: product.sku || '-',
+              Valor: Number(product.price) || 0,
+            },
+          ];
         });
 
       if (data.length > 0) {
         const ws = XLSX.utils.json_to_sheet(data);
+
+        // Anchos de columna: Nombre, Medida, SKU, Valor
+        ws["!cols"] = [{ wch: 40 }, { wch: 18 }, { wch: 28 }, { wch: 12 }];
+
+        // Formato numérico para la columna "Valor" (columna D, desde la fila 2)
+        for (let row = 2; row <= data.length + 1; row++) {
+          const cell = ws[`D${row}`];
+          if (cell) cell.z = "#,##0";
+        }
+
         XLSX.utils.book_append_sheet(wb, ws, sheetName);
       }
     });
@@ -381,7 +423,7 @@ export default function ProductosPage() {
       XLSX.utils.book_append_sheet(wb, ws, "Productos");
     }
 
-    XLSX.writeFile(wb, "productos.xlsx");
+    XLSX.writeFile(wb, "Lista de productos.xlsx");
   };
 
   // console.log(filteredProducts?.[44]);
