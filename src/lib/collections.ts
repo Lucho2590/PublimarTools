@@ -39,6 +39,7 @@ const collections = {
   WHATSAPP_CONVERSATIONS: "whatsappConversations",
   WHATSAPP_ORDERS: "whatsappOrders",
   SETTINGS: "settings",
+  PRICE_HISTORY: "priceHistory",
 } as const;
 
 export default collections;

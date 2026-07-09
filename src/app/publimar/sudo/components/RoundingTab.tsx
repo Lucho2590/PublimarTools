@@ -50,6 +50,8 @@ import { DEFAULT_ROUNDING, TRoundingConfig, formatearPrecio, redondearPrecio } f
 import { getRoundingConfig, saveRoundingConfig } from "@/lib/pricingConfig";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { EAuditAction, EAuditEntityType, EAuditSection } from "@/lib/auditLog";
+import { recordPriceChanges } from "@/lib/priceHistory";
+import { EPriceChangeSource, TPriceChangeInput } from "@/types/priceHistory";
 import { TProduct, TProductVariant } from "@/types/product";
 
 type SampleRow = {
@@ -82,7 +84,7 @@ const BATCH_SIZE = 450;
 
 export function RoundingTab() {
   const firestore = useFirestore();
-  const { logEvent } = useAuditLog();
+  const { logEvent, actor } = useAuditLog();
 
   // Config persistida (última guardada) y borrador editable del formulario.
   const [savedConfig, setSavedConfig] = useState<TRoundingConfig>(DEFAULT_ROUNDING);
@@ -318,6 +320,7 @@ export function RoundingTab() {
 
     setApplying(true);
     setProgress({ done: 0, total: affected.length });
+    const priceChanges: TPriceChangeInput[] = [];
     try {
       let done = 0;
       for (let i = 0; i < affected.length; i += BATCH_SIZE) {
@@ -329,17 +332,36 @@ export function RoundingTab() {
           if (variants.length > 0) {
             const newVariants = variants.map((v: any) => {
               const k = rowKeyFor(p.id, v.id ?? v.size);
-              return approvedKeys.has(k)
-                ? { ...v, price: redondearPrecio(Number(v.price), bulkConfig) }
-                : v;
+              if (!approvedKeys.has(k)) return v;
+              const oldPrice = Number(v.price);
+              const newPrice = redondearPrecio(oldPrice, bulkConfig);
+              priceChanges.push({
+                productId: p.id,
+                productName: p.name,
+                variantId: v.id ?? null,
+                variantSize: v.size ?? null,
+                oldPrice,
+                newPrice,
+              });
+              return { ...v, price: newPrice };
             });
             batch.update(ref, {
               variants: newVariants,
               updatedAt: serverTimestamp(),
             });
           } else {
+            const oldPrice = Number(p.price);
+            const newPrice = redondearPrecio(oldPrice, bulkConfig);
+            priceChanges.push({
+              productId: p.id,
+              productName: p.name,
+              variantId: null,
+              variantSize: null,
+              oldPrice,
+              newPrice,
+            });
             batch.update(ref, {
-              price: redondearPrecio(Number(p.price), bulkConfig),
+              price: newPrice,
               updatedAt: serverTimestamp(),
             });
           }
@@ -348,6 +370,14 @@ export function RoundingTab() {
         done += chunk.length;
         setProgress({ done, total: affected.length });
       }
+
+      // Historial de cambios de precio (un lote).
+      await recordPriceChanges(
+        firestore,
+        actor,
+        priceChanges,
+        EPriceChangeSource.REDONDEO_MASIVO
+      );
 
       await logEvent({
         section: EAuditSection.SUDO,

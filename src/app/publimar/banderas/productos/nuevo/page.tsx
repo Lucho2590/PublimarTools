@@ -28,12 +28,16 @@ import collections from "@/lib/collections";
 import { TProductCategory, TProductGroup, TProductVariant } from "@/types/product";
 import { Trash2 } from "lucide-react";
 import { generateSlug } from "@/lib/utils";
+import { recordPriceChanges } from "@/lib/priceHistory";
+import { EPriceChangeSource, TPriceChangeInput } from "@/types/priceHistory";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 export default function NuevoProductoPage() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const firestore = useFirestore();
   const { data: user } = useUser();
+  const { actor } = useAuditLog();
 
   // Obtener categorías
   const categoriesCollection = collection(
@@ -148,6 +152,22 @@ export default function NuevoProductoPage() {
           updatedAt: serverTimestamp()
         });
       }
+
+      // Historial de precios: baseline de cada variante (punto de partida).
+      const baseline: TPriceChangeInput[] = formData.variants.map((v) => ({
+        productId: docRef.id,
+        productName: formData.name,
+        variantId: v.id ?? null,
+        variantSize: v.size ?? null,
+        oldPrice: 0,
+        newPrice: Number(v.price) || 0,
+      }));
+      await recordPriceChanges(
+        firestore,
+        actor,
+        baseline,
+        EPriceChangeSource.CREACION
+      );
 
       toast.success("Producto creado exitosamente");
       router.push("/publimar/banderas/productos");
