@@ -6,9 +6,7 @@ import {
   collection,
   doc,
   getDocs,
-  query,
   serverTimestamp,
-  where,
   writeBatch,
 } from "firebase/firestore";
 import { toast } from "sonner";
@@ -121,15 +119,12 @@ export function RoundingTab() {
   const loadSample = async () => {
     setLoadingSample(true);
     try {
-      const snap = await getDocs(
-        query(
-          collection(firestore, collections.PRODUCTS),
-          where("deleted", "==", false)
-        )
-      );
+      const snap = await getDocs(collection(firestore, collections.PRODUCTS));
       const rows: SampleRow[] = [];
       for (const d of snap.docs) {
-        const p = { id: d.id, ...(d.data() as any) } as TProduct;
+        const data = d.data() as any;
+        if (data.deleted === true) continue; // excluir eliminados (campo puede no existir)
+        const p = { id: d.id, ...data } as TProduct;
         const variants = Array.isArray(p.variants) ? p.variants : [];
         for (const v of variants as TProductVariant[]) {
           const price = Number(v.price);
@@ -214,16 +209,13 @@ export function RoundingTab() {
     setGenerating(true);
     try {
       const cfg = savedConfig; // usar SIEMPRE la config guardada
-      const snap = await getDocs(
-        query(
-          collection(firestore, collections.PRODUCTS),
-          where("deleted", "==", false)
-        )
-      );
+      const snap = await getDocs(collection(firestore, collections.PRODUCTS));
       const prods: TProduct[] = [];
       const rows: BulkRow[] = [];
       for (const d of snap.docs) {
-        const p = { id: d.id, ...(d.data() as any) } as TProduct;
+        const data = d.data() as any;
+        if (data.deleted === true) continue; // excluir eliminados (campo puede no existir)
+        const p = { id: d.id, ...data } as TProduct;
         prods.push(p);
         const variants = Array.isArray(p.variants) ? p.variants : [];
         if (variants.length > 0) {
