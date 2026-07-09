@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, LayoutGrid, List, Plus, FileText } from "lucide-react";
+import { Search, LayoutGrid, List, Plus, FileText, X } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { MoneyInput } from "@/components/ui/money-input";
@@ -144,7 +144,8 @@ export function ProductCatalog({
   return (
     <div className="flex flex-col h-full">
       {/* Filtros */}
-      <div className="flex flex-col sm:flex-row gap-2 sm:items-center mb-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center mb-4">
+        {/* Renglón 1 en mobile: búsqueda a todo el ancho */}
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <Input
@@ -154,26 +155,43 @@ export function ProductCatalog({
             className="pl-9"
           />
         </div>
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-full sm:w-52">
-            <SelectValue placeholder="Categoría" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas las categorías</SelectItem>
-            {categories.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
-          <DialogTrigger asChild>
-            <Button type="button" variant="outline" className="shrink-0">
-              <FileText className="w-4 h-4 mr-2" />
-              Item Manual
+        {/* Renglón 2 en mobile: controles compactos */}
+        <div className="flex items-center gap-2">
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="flex-1 sm:w-52 sm:flex-none">
+              <SelectValue placeholder="Categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las categorías</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(searchTerm || selectedCategory !== "all") && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0 px-2 text-gray-500"
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedCategory("all");
+              }}
+            >
+              <X className="w-4 h-4 sm:mr-1" />
+              <span className="hidden sm:inline">Limpiar</span>
             </Button>
-          </DialogTrigger>
+          )}
+          <Dialog open={showManualDialog} onOpenChange={setShowManualDialog}>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" className="shrink-0">
+                <FileText className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Item Manual</span>
+              </Button>
+            </DialogTrigger>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
               <DialogTitle>Agregar item manual</DialogTitle>
@@ -276,27 +294,28 @@ export function ProductCatalog({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <div className="flex gap-1 rounded-md border bg-white p-0.5">
-          <Button
-            type="button"
-            variant={viewMode === "grid" ? "default" : "ghost"}
-            size="sm"
-            className="px-2"
-            onClick={() => setViewMode("grid")}
-            aria-label="Vista en tarjetas"
-          >
-            <LayoutGrid className="w-4 h-4" />
-          </Button>
-          <Button
-            type="button"
-            variant={viewMode === "list" ? "default" : "ghost"}
-            size="sm"
-            className="px-2"
-            onClick={() => setViewMode("list")}
-            aria-label="Vista en lista"
-          >
-            <List className="w-4 h-4" />
-          </Button>
+          <div className="flex shrink-0 gap-0.5 rounded-md border bg-white p-0.5">
+            <Button
+              type="button"
+              variant={viewMode === "grid" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-1.5"
+              onClick={() => setViewMode("grid")}
+              aria-label="Vista en tarjetas"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </Button>
+            <Button
+              type="button"
+              variant={viewMode === "list" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-1.5"
+              onClick={() => setViewMode("list")}
+              aria-label="Vista en lista"
+            >
+              <List className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
