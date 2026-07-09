@@ -40,6 +40,9 @@ import { toast } from "sonner";
 // XLSX se importa dinámicamente en handleDownloadExcel para no cargar ~700KB al inicio
 import { formatearPrecio, redondearADecena, redondearPrecio } from "@/lib/utils";
 import { getRoundingConfig } from "@/lib/pricingConfig";
+import { recordPriceChanges } from "@/lib/priceHistory";
+import { EPriceChangeSource, TPriceChangeInput } from "@/types/priceHistory";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import ProductEditModal from "./modalProductos/productEditModal";
 
 export default function ProductosPage() {
@@ -57,6 +60,7 @@ export default function ProductosPage() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const firestore = useFirestore();
+  const { actor } = useAuditLog();
 
   // Consulta a Firestore para productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
@@ -263,18 +267,28 @@ export default function ProductosPage() {
     try {
       // Config global de redondeo (editable desde /sudo). Fallback: decena.
       const roundingConfig = await getRoundingConfig(firestore);
+      const priceChanges: TPriceChangeInput[] = [];
 
       for (const productId of selectedProducts) {
         const product = products?.find(p => (p as unknown as TProduct).id === productId) as unknown as TProduct;
         if (product && product.variants) {
           const updatedVariants = product.variants.map(variant => {
-            const increasedPrice = Number(variant.price) * (1 + percentage);
+            const oldPrice = Number(variant.price);
+            const increasedPrice = oldPrice * (1 + percentage);
             const roundedPrice = redondearPrecio(increasedPrice, roundingConfig);
+            priceChanges.push({
+              productId,
+              productName: product.name,
+              variantId: variant.id ?? null,
+              variantSize: variant.size ?? null,
+              oldPrice,
+              newPrice: roundedPrice,
+            });
             return {
               ...variant,
               price: roundedPrice
             };
-           
+
           });
 
           await updateDoc(doc(firestore, collections.PRODUCTS, productId), {
@@ -283,6 +297,15 @@ export default function ProductosPage() {
           });
         }
       }
+
+      // Registrar el historial de cambios de precio (un lote).
+      await recordPriceChanges(
+        firestore,
+        actor,
+        priceChanges,
+        EPriceChangeSource.AUMENTO
+      );
+
       toast.success(`Aumento del ${increasePercentage}% aplicado a ${selectedProducts.length} productos`);
       setIncreasePercentage("");
       setSelectedProducts([]);

@@ -32,6 +32,7 @@ import { AuditLogTab } from "./components/AuditLogTab";
 import { PermissionsTab } from "./components/PermissionsTab";
 import { ImportMovementsTab } from "./components/ImportMovementsTab";
 import { RoundingTab } from "./components/RoundingTab";
+import { PriceHistoryTab } from "./components/PriceHistoryTab";
 import {
   HIDDEN_FIELDS,
   formatFieldName,
@@ -75,8 +76,11 @@ export default function SudoPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [topTab, setTopTab] = useState<
-    "eliminados" | "audit" | "permisos" | "importar" | "redondeo"
-  >("eliminados");
+    "auditoria" | "eliminados" | "permisos" | "importar" | "redondeo"
+  >("auditoria");
+  const [auditSubTab, setAuditSubTab] = useState<"actividad" | "precios">(
+    "actividad"
+  );
 
   const loadDeletedItems = async () => {
     setLoading(true);
@@ -240,12 +244,30 @@ export default function SudoPage() {
 
       <Tabs value={topTab} onValueChange={(v) => setTopTab(v as any)}>
         <TabsList>
+          <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
           <TabsTrigger value="eliminados">Eliminados</TabsTrigger>
-          <TabsTrigger value="audit">Registro de actividad</TabsTrigger>
           <TabsTrigger value="permisos">Permisos</TabsTrigger>
           <TabsTrigger value="importar">Importar movimientos</TabsTrigger>
           <TabsTrigger value="redondeo">Redondeo</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="auditoria" className="mt-4">
+          <Tabs
+            value={auditSubTab}
+            onValueChange={(v) => setAuditSubTab(v as any)}
+          >
+            <TabsList>
+              <TabsTrigger value="actividad">Registro de actividad</TabsTrigger>
+              <TabsTrigger value="precios">Historial de precios</TabsTrigger>
+            </TabsList>
+            <TabsContent value="actividad" className="mt-4">
+              <AuditLogTab />
+            </TabsContent>
+            <TabsContent value="precios" className="mt-4">
+              <PriceHistoryTab />
+            </TabsContent>
+          </Tabs>
+        </TabsContent>
 
         <TabsContent value="eliminados" className="mt-4">
           <div className="flex justify-end mb-3">
@@ -414,10 +436,6 @@ export default function SudoPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="audit" className="mt-4">
-          <AuditLogTab />
         </TabsContent>
 
         <TabsContent value="permisos" className="mt-4">

@@ -16,6 +16,8 @@ import {
   EAuditEntityType,
   EAuditSection,
 } from "@/types/auditLog";
+import { recordPriceChanges } from "@/lib/priceHistory";
+import { EPriceChangeSource, TPriceChangeInput } from "@/types/priceHistory";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -63,7 +65,7 @@ export default function ProductEditModal({
   const [loading, setLoading] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const firestore = useFirestore();
-  const { logEvent } = useAuditLog();
+  const { logEvent, actor } = useAuditLog();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -404,6 +406,35 @@ export default function ProductEditModal({
         },
         correlationId,
       });
+
+      // Historial de cambios de precio: diff por variante (match por id).
+      const beforeVariants: any[] = Array.isArray(before?.variants)
+        ? (before!.variants as any[])
+        : [];
+      const beforePriceById = new Map<string, number>(
+        beforeVariants.map((v) => [v.id, Number(v.price)])
+      );
+      const priceChanges: TPriceChangeInput[] = [];
+      for (const v of productData.variants) {
+        const oldPrice = beforePriceById.get(v.id);
+        if (oldPrice === undefined) continue; // variante nueva: no es cambio de precio
+        if (oldPrice === v.price) continue;
+        priceChanges.push({
+          productId: productId!,
+          productName: productData.name,
+          variantId: v.id,
+          variantSize: v.size ?? null,
+          oldPrice,
+          newPrice: v.price,
+        });
+      }
+      await recordPriceChanges(
+        firestore,
+        actor,
+        priceChanges,
+        EPriceChangeSource.EDICION,
+        correlationId
+      );
 
       toast.success("Producto actualizado con éxito");
       onProductUpdated?.();
