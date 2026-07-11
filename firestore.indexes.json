@@ -85,6 +85,15 @@
         { "fieldPath": "correlationId", "order": "ASCENDING" },
         { "fieldPath": "timestamp", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "abandonedCarts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "abandoned", "order": "ASCENDING" },
+        { "fieldPath": "converted", "order": "ASCENDING" },
+        { "fieldPath": "viewed", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

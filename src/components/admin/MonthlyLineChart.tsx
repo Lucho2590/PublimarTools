@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -41,7 +42,7 @@ function compactNumber(v: number): string {
  * tooltips y leyenda. Pensado para márgenes/ingresos por departamento u otras
  * series temporales.
  */
-export function MonthlyLineChart({
+export const MonthlyLineChart = memo(function MonthlyLineChart({
   title,
   data,
   series,
@@ -93,4 +94,4 @@ export function MonthlyLineChart({
       <CardContent>{chart}</CardContent>
     </Card>
   );
-}
+});

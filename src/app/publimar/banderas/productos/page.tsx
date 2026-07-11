@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { collection, query, orderBy, limit, doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { softDelete, isDeleted } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,8 +38,169 @@ import { EPriceChangeSource, TPriceChangeInput } from "@/types/priceHistory";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import ProductEditModal from "./modalProductos/productEditModal";
 
+// Fila memoizada: solo se re-renderiza cuando cambian SUS props (selección,
+// medida elegida, categorías), no cuando se togglea otra fila. Evita re-montar
+// 25 Select + 25 Popover en cada interacción.
+interface ProductRowProps {
+  product: TProduct;
+  isSelected: boolean;
+  selectedSize: string;
+  categoryNames: string;
+  onToggleSelect: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string, name: string) => void;
+  onVariantChange: (id: string, size: string) => void;
+}
+
+const ProductRow = memo(function ProductRow({
+  product,
+  isSelected,
+  selectedSize,
+  categoryNames,
+  onToggleSelect,
+  onEdit,
+  onDelete,
+  onVariantChange,
+}: ProductRowProps) {
+  const variants = product.variants ?? [];
+  const selectedVariant = !variants.length
+    ? null
+    : selectedSize
+    ? variants.find((v) => v.size === selectedSize)
+    : variants[0];
+  const thumb = product.imageUrls?.[0];
+  const lowStock =
+    selectedVariant != null &&
+    Number.isFinite(Number(selectedVariant.stock)) &&
+    Number(selectedVariant.stock) < 5;
+
+  return (
+    <div
+      onClick={() => onEdit(product.id)}
+      className={cn(
+        "flex items-center gap-4 p-3 rounded-lg transition-colors duration-150 group cursor-pointer",
+        isSelected ? "bg-blue-50/70" : "hover:bg-slate-50"
+      )}
+    >
+      {/* Selección */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={() => onToggleSelect(product.id)}
+          className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
+        />
+      </div>
+
+      {/* Icono / miniatura */}
+      <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0 overflow-hidden">
+        {thumb ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumb}
+            alt={product.name}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <Package className="h-4 w-4 text-blue-600" />
+        )}
+      </div>
+
+      {/* Nombre + categorías */}
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium truncate">{product.name}</p>
+        <p className="text-xs text-muted-foreground truncate">
+          {categoryNames}
+        </p>
+      </div>
+
+      {/* Selector de medida */}
+      <div
+        className="hidden sm:block w-[150px] shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {variants.length > 0 ? (
+          <Select
+            value={selectedVariant?.size || ""}
+            onValueChange={(value) => onVariantChange(product.id, value)}
+          >
+            <SelectTrigger className="h-8">
+              <SelectValue placeholder="Medida" />
+            </SelectTrigger>
+            <SelectContent className="max-h-48 overflow-y-auto">
+              {variants.map((variant) => (
+                <SelectItem key={variant.id} value={variant.size}>
+                  {variant.size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span className="text-sm text-muted-foreground">-</span>
+        )}
+      </div>
+
+      {/* Precio + stock */}
+      <div className="text-right shrink-0 w-24">
+        <p className="text-sm font-medium">
+          {selectedVariant
+            ? formatearPrecio(Number(selectedVariant.price))
+            : "-"}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {selectedVariant ? (
+            <span className={lowStock ? "text-red-500" : ""}>
+              Stock:{" "}
+              {selectedVariant.stock === Infinity
+                ? "∞"
+                : selectedVariant.stock}
+            </span>
+          ) : (
+            "sin variantes"
+          )}
+        </p>
+      </div>
+
+      {/* Acciones */}
+      <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              type="button"
+              title="Acciones"
+              className="h-8 w-8 text-slate-500 hover:text-slate-900"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-40 p-1">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+              onClick={() => onEdit(product.id)}
+            >
+              <Edit className="h-4 w-4" />
+              Editar
+            </button>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-red-600 hover:bg-red-50"
+              onClick={() => onDelete(product.id, product.name)}
+            >
+              <Trash2 className="h-4 w-4" />
+              Eliminar
+            </button>
+          </PopoverContent>
+        </Popover>
+      </div>
+    </div>
+  );
+});
+
 export default function ProductosPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [selectedVariant, setSelectedVariant] = useState<{
@@ -55,7 +218,7 @@ export default function ProductosPage() {
 
   // Consulta a Firestore para productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
-  const productsQuery = query(productsCollection, orderBy("name"));
+  const productsQuery = query(productsCollection, orderBy("name"), limit(LIST_FETCH_CAP));
 
   // Consulta a Firestore para categorías
   const categoriesCollection = collection(
@@ -92,7 +255,7 @@ export default function ProductosPage() {
       const typedProduct = product as unknown as TProduct;
       const matchesSearch = typedProduct.name
         .toLowerCase()
-        .includes(searchTerm.toLowerCase());
+        .includes(debouncedSearchTerm.toLowerCase());
       const matchesCategory =
         selectedCategory === "all" ||
         (typedProduct.categories &&
@@ -103,7 +266,7 @@ export default function ProductosPage() {
         (selectedGroup === "sin-grupo" && !typedProduct.group);
       return matchesSearch && matchesCategory && matchesGroup;
     });
-  }, [products, searchTerm, selectedCategory, selectedGroup]);
+  }, [products, debouncedSearchTerm, selectedCategory, selectedGroup]);
 
   // Calcular índices para la paginación
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -182,23 +345,17 @@ export default function ProductosPage() {
     return Array.from(sizes).sort();
   };
 
-  // Obtener la variante seleccionada para un producto
-  const getSelectedVariant = (product: TProduct) => {
-    if (!product.variants || product.variants.length === 0) return null;
-    const selectedSize = selectedVariant[product.id];
-    if (selectedSize) {
-      return product.variants.find((v) => v.size === selectedSize);
-    }
-    return product.variants[0];
-  };
-
-  const handleProductSelection = (productId: string) => {
-    setSelectedProducts(prev => 
-      prev.includes(productId) 
+  const handleProductSelection = useCallback((productId: string) => {
+    setSelectedProducts(prev =>
+      prev.includes(productId)
         ? prev.filter(id => id !== productId)
         : [...prev, productId]
     );
-  };
+  }, []);
+
+  const handleVariantChange = useCallback((productId: string, size: string) => {
+    setSelectedVariant((prev) => ({ ...prev, [productId]: size }));
+  }, []);
 
   const handleSelectAll = () => {
     if (selectedProducts.length === filteredProducts?.length) {
@@ -208,17 +365,17 @@ export default function ProductosPage() {
     }
   };
 
-  const handleEditProduct = (productId: string) => {
+  const handleEditProduct = useCallback((productId: string) => {
     setSelectedProductId(productId);
     setIsModalOpen(true);
-  };
+  }, []);
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setSelectedProductId(null);
   };
 
-  const handleDeleteProduct = async (productId: string, productName: string) => {
+  const handleDeleteProduct = useCallback(async (productId: string, productName: string) => {
     const confirmDelete = window.confirm(
       `¿Estás seguro de que querés eliminar "${productName}"? Esta acción no se puede deshacer.`
     );
@@ -234,7 +391,7 @@ export default function ProductosPage() {
       console.error("Error al eliminar el producto:", error);
       toast.error("Error al eliminar el producto");
     }
-  };
+  }, [firestore]);
 
   const handleApplyIncrease = async () => {
     if (!increasePercentage || isNaN(Number(increasePercentage))) {
@@ -440,6 +597,7 @@ export default function ProductosPage() {
         <SummaryCard
           title="Total productos"
           value={stats.total}
+          subtitle={products?.length === LIST_FETCH_CAP ? `máx. ${LIST_FETCH_CAP}` : undefined}
           icon={Package}
           variant="blue"
         />
@@ -585,153 +743,18 @@ export default function ProductosPage() {
             <div className="space-y-1">
               {currentItems.map((product) => {
                 const typedProduct = product as unknown as TProduct;
-                const selectedVariant = getSelectedVariant(typedProduct);
-                const isSelected = selectedProducts.includes(typedProduct.id);
-                const thumb = typedProduct.imageUrls?.[0];
-                const lowStock =
-                  selectedVariant != null &&
-                  Number.isFinite(Number(selectedVariant.stock)) &&
-                  Number(selectedVariant.stock) < 5;
                 return (
-                  <div
+                  <ProductRow
                     key={typedProduct.id}
-                    onClick={() => handleEditProduct(typedProduct.id)}
-                    className={cn(
-                      "flex items-center gap-4 p-3 rounded-lg transition-colors duration-150 group cursor-pointer",
-                      isSelected ? "bg-blue-50/70" : "hover:bg-slate-50"
-                    )}
-                  >
-                    {/* Selección */}
-                    <div onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() =>
-                          handleProductSelection(typedProduct.id)
-                        }
-                        className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
-                      />
-                    </div>
-
-                    {/* Icono / miniatura */}
-                    <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0 overflow-hidden">
-                      {thumb ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={thumb}
-                          alt={typedProduct.name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <Package className="h-4 w-4 text-blue-600" />
-                      )}
-                    </div>
-
-                    {/* Nombre + categorías */}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">
-                        {typedProduct.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {getCategoryNames(typedProduct.categories)}
-                      </p>
-                    </div>
-
-                    {/* Selector de medida */}
-                    <div
-                      className="hidden sm:block w-[150px] shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {typedProduct.variants &&
-                      typedProduct.variants.length > 0 ? (
-                        <Select
-                          value={selectedVariant?.size || ""}
-                          onValueChange={(value) => {
-                            setSelectedVariant((prev) => ({
-                              ...prev,
-                              [typedProduct.id]: value,
-                            }));
-                          }}
-                        >
-                          <SelectTrigger className="h-8">
-                            <SelectValue placeholder="Medida" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-48 overflow-y-auto">
-                            {typedProduct.variants.map((variant) => (
-                              <SelectItem key={variant.id} value={variant.size}>
-                                {variant.size}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </div>
-
-                    {/* Precio + stock */}
-                    <div className="text-right shrink-0 w-24">
-                      <p className="text-sm font-medium">
-                        {selectedVariant
-                          ? formatearPrecio(Number(selectedVariant.price))
-                          : "-"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedVariant ? (
-                          <span className={lowStock ? "text-red-500" : ""}>
-                            Stock:{" "}
-                            {selectedVariant.stock === Infinity
-                              ? "∞"
-                              : selectedVariant.stock}
-                          </span>
-                        ) : (
-                          "sin variantes"
-                        )}
-                      </p>
-                    </div>
-
-                    {/* Acciones */}
-                    <div
-                      className="shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            type="button"
-                            title="Acciones"
-                            className="h-8 w-8 text-slate-500 hover:text-slate-900"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-40 p-1">
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                            onClick={() => handleEditProduct(typedProduct.id)}
-                          >
-                            <Edit className="h-4 w-4" />
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-red-600 hover:bg-red-50"
-                            onClick={() =>
-                              handleDeleteProduct(
-                                typedProduct.id,
-                                typedProduct.name
-                              )
-                            }
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Eliminar
-                          </button>
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
+                    product={typedProduct}
+                    isSelected={selectedProducts.includes(typedProduct.id)}
+                    selectedSize={selectedVariant[typedProduct.id] ?? ""}
+                    categoryNames={getCategoryNames(typedProduct.categories)}
+                    onToggleSelect={handleProductSelection}
+                    onEdit={handleEditProduct}
+                    onDelete={handleDeleteProduct}
+                    onVariantChange={handleVariantChange}
+                  />
                 );
               })}
             </div>
