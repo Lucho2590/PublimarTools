@@ -1068,22 +1068,29 @@ export default function NuevasOrdenesPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Nueva orden</h1>
+      <div className="flex items-center gap-3 mb-6">
         <Button
           variant="outline"
+          size="icon"
           onClick={() => setShowCancelDialog(true)}
           disabled={loading}
           type="button"
-          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+          title="Volver a órdenes"
+          className="shrink-0"
         >
-          Cancelar
+          <ArrowLeft className="h-4 w-4" />
         </Button>
+        <div>
+          <h1 className="text-2xl font-bold">Nueva orden</h1>
+          <p className="text-slate-600 text-sm mt-1">
+            Cargá el cliente, los items y las condiciones de la orden
+          </p>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit}>
         {/* Sección Cliente */}
-        <Card className="mb-6">
+        <Card className="mb-6 border-0 shadow-sm">
           <CardHeader>
             <CardTitle>Cliente</CardTitle>
           </CardHeader>
@@ -1326,7 +1333,7 @@ export default function NuevasOrdenesPage() {
         </Card>
 
         {/* Detalles de la orden */}
-        <Card className="mb-6">
+        <Card className="mb-6 border-0 shadow-sm">
           <CardHeader>
             <div className="flex items-center gap-2">
               <CardTitle>Detalles de la orden</CardTitle>
@@ -1377,7 +1384,7 @@ export default function NuevasOrdenesPage() {
         </Card>
 
         {/* Items */}
-        <Card className="mb-6">
+        <Card className="mb-6 border-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Items</CardTitle>
             <div className="flex gap-2">
@@ -1868,9 +1875,12 @@ export default function NuevasOrdenesPage() {
         </Card>
 
         {/* Totales */}
-        <Card className="mb-6">
-          <CardContent className="p-6">
-            <div className="border-t pt-4">
+        <Card className="mb-6 border-0 shadow-sm">
+          <CardHeader>
+            <CardTitle>Totales</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div>
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <p className="text-gray-700">Subtotal</p>
@@ -1954,13 +1964,11 @@ export default function NuevasOrdenesPage() {
                   </p>
                 </div>
 
-                <div className="border-t pt-3">
-                  <div className="flex justify-between items-center">
-                    <p className="text-lg font-semibold">Total</p>
-                    <p className="text-xl font-bold">
-                      {formatearPrecio(redondearTotal(total))}
-                    </p>
-                  </div>
+                <div className="mt-2 flex items-center justify-between rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+                  <p className="text-base font-semibold text-blue-900">Total</p>
+                  <p className="text-2xl font-bold text-blue-900">
+                    {formatearPrecio(redondearTotal(total))}
+                  </p>
                 </div>
               </div>
             </div>
@@ -1980,7 +1988,7 @@ export default function NuevasOrdenesPage() {
         )}
 
         {/* Información de facturación */}
-        <Card className="mb-6">
+        <Card className="mb-6 border-0 shadow-sm">
           <CardHeader>
             <CardTitle>Información de facturación</CardTitle>
           </CardHeader>
@@ -2240,14 +2248,13 @@ export default function NuevasOrdenesPage() {
         </Card>
 
         {/* Footer con botones */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardFooter className="flex justify-between pt-6">
             <Button
               variant="outline"
               onClick={() => setShowCancelDialog(true)}
               disabled={loading}
               type="button"
-              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
             >
               Cancelar
             </Button>
@@ -2255,7 +2262,7 @@ export default function NuevasOrdenesPage() {
               <Button
                 type="submit"
                 variant="default"
-                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                className="bg-blue-900 hover:bg-blue-800 text-white"
                 disabled={loading}
               >
                 {loading ? "Guardando..." : "Guardar orden"}

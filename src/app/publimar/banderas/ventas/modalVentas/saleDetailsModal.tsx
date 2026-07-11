@@ -2414,13 +2414,11 @@ export function SaleDetailsModal({
                         </p>
                       </div>
 
-                      <div className="border-t pt-3">
-                        <div className="flex justify-between items-center">
-                          <p className="text-lg">Total</p>
-                          <p className="text-xl">
-                            {formatearPrecio(redondearADecena(total))}
-                          </p>
-                        </div>
+                      <div className="mt-2 flex items-center justify-between rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+                        <p className="text-base font-semibold text-blue-900">Total</p>
+                        <p className="text-2xl font-bold text-blue-900">
+                          {formatearPrecio(redondearADecena(total))}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -2558,10 +2556,10 @@ export function SaleDetailsModal({
                   </div>
                 )}
 
-                <div className="border rounded-lg">
+                <div className="border rounded-lg overflow-hidden">
                   <Table>
                     <TableHeader>
-                      <TableRow>
+                      <TableRow className="bg-slate-50 hover:bg-slate-50">
                         <TableHead>Producto</TableHead>
                         {/* <TableHead>Categoría</TableHead> */}
                         <TableHead>Medida</TableHead>

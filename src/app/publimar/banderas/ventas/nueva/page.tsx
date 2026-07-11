@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -954,8 +954,8 @@ export default function NuevaVentaPage() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">Nueva Venta</h1>
-            <p className="text-muted-foreground">
-              Registra una nueva venta en el sistema
+            <p className="text-slate-600 text-sm mt-1">
+              Registrá una nueva venta en el sistema
             </p>
           </div>
         </div>
@@ -963,8 +963,8 @@ export default function NuevaVentaPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Sección Cliente */}
-        <Card>
-          <CardHeader 
+        <Card className="border-0 shadow-sm">
+          <CardHeader
             className="cursor-pointer hover:bg-gray-50 transition-colors"
             onClick={() => setIsClientExpanded(!isClientExpanded)}
           >
@@ -1161,7 +1161,7 @@ export default function NuevaVentaPage() {
         </Card>
 
         {/* Búsqueda de productos - Nueva UI Híbrida */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle>Seleccionar Productos</CardTitle>
           </CardHeader>
@@ -1529,7 +1529,7 @@ export default function NuevaVentaPage() {
 
         {/* Productos seleccionados */}
         {items.length > 0 && (
-          <Card>
+          <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle>Productos Seleccionados</CardTitle>
             </CardHeader>
@@ -1681,13 +1681,11 @@ export default function NuevaVentaPage() {
                       </p>
                     </div>
 
-                    <div className="border-t pt-3">
-                      <div className="flex justify-between items-center">
-                        <p className="text-lg font-semibold">Total</p>
-                        <p className="text-xl font-bold">
-                          {formatearPrecio(redondearADecena(total))}
-                        </p>
-                      </div>
+                    <div className="mt-2 flex items-center justify-between rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+                      <p className="text-base font-semibold text-blue-900">Total</p>
+                      <p className="text-2xl font-bold text-blue-900">
+                        {formatearPrecio(redondearADecena(total))}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1839,7 +1837,7 @@ export default function NuevaVentaPage() {
         </Dialog>
 
         {/* Detalles de pago */}
-        <Card>
+        <Card className="border-0 shadow-sm">
           <CardHeader>
             <CardTitle>Detalles de Pago</CardTitle>
           </CardHeader>
@@ -2109,28 +2107,30 @@ export default function NuevaVentaPage() {
         </Card>
 
         {/* Footer con botones */}
-        <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" onClick={() => router.back()}>
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            className="bg-blue-600 hover:bg-blue-700"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Registrando...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Registrar Venta
-              </>
-            )}
-          </Button>
-        </div>
+        <Card className="border-0 shadow-sm">
+          <CardFooter className="flex justify-end gap-4 pt-6">
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              className="bg-blue-900 hover:bg-blue-800 text-white"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Registrando...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Registrar Venta
+                </>
+              )}
+            </Button>
+          </CardFooter>
+        </Card>
       </form>
     </div>
   );

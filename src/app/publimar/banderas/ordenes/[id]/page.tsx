@@ -1270,15 +1270,36 @@ export default function OrderDetailsPage({
   return (
     <div className="container mx-auto py-6 max-w-7xl">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          {/* <Button variant="ghost" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver
-          </Button> */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => router.push("/publimar/banderas/ordenes")}
+            title="Volver a órdenes"
+            className="shrink-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <div>
-            <h1 className="text-2xl font-bold">Orden {order.number}</h1>
-            <p className="text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold">Orden {order.number}</h1>
+              {(() => {
+                const map: Record<string, { label: string; cls: string }> = {
+                  [EOrderStatus.COMPLETED]: { label: "Entregada", cls: "bg-green-100 text-green-800" },
+                  [EOrderStatus.IN_PROCESS]: { label: "En proceso", cls: "bg-amber-100 text-amber-800" },
+                  [EOrderStatus.DRAFT]: { label: "Borrador", cls: "bg-gray-100 text-gray-800" },
+                  [EOrderStatus.CANCELLED]: { label: "Cancelada", cls: "bg-red-100 text-red-800" },
+                };
+                const info = map[order.status] ?? map[EOrderStatus.DRAFT];
+                return (
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${info.cls}`}>
+                    {info.label}
+                  </span>
+                );
+              })()}
+            </div>
+            <p className="text-slate-600 text-sm mt-1">
               Creada el {order.createdAt ? formatDate(order.createdAt) : "N/A"}
             </p>
           </div>
@@ -1287,7 +1308,7 @@ export default function OrderDetailsPage({
           <Button
             onClick={() => handleSave()}
             disabled={saving}
-            className="bg-green-600 hover:bg-green-700"
+            className="bg-green-600 hover:bg-green-700 text-white"
           >
             <Save className="h-4 w-4 mr-2" />
             {saving ? "Guardando..." : "Guardar"}
@@ -1295,10 +1316,11 @@ export default function OrderDetailsPage({
           <Button
             onClick={handleDeleteOrder}
             disabled={saving}
-            className="bg-red-600 hover:bg-red-700"
+            variant="outline"
+            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
           >
             <Trash2 className="h-4 w-4 mr-2" />
-            {saving ? "Guardando..." : "Eliminar"}
+            Eliminar
           </Button>
         </div>
       </div>
@@ -1307,7 +1329,7 @@ export default function OrderDetailsPage({
         {/* Columna 1: Cliente & Información General */}
         <div className="space-y-4">
           {/* Cliente - Movido arriba */}
-          <Card>
+          <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle>Información del Cliente</CardTitle>
             </CardHeader>
@@ -1575,7 +1597,7 @@ export default function OrderDetailsPage({
           </Card>
 
           {/* Información General */}
-          <Card>
+          <Card className="border-0 shadow-sm">
             <CardHeader>
               <CardTitle>Información General</CardTitle>
             </CardHeader>
@@ -1651,7 +1673,7 @@ export default function OrderDetailsPage({
 
         {/* Columna 2: Items */}
         <div className="lg:col-span-2">
-          <Card>
+          <Card className="border-0 shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Items de la Orden</CardTitle>
               <div className="flex gap-2">
@@ -2039,9 +2061,16 @@ export default function OrderDetailsPage({
                               {item?.product?.description || item.description}
                             </div>
                           )}
-                          <div className="mt-1 px-2 py-1 bg-gray-200 text-gray-800 text-xs rounded inline-block">
+                          <Badge
+                            variant="secondary"
+                            className={`mt-1 ${
+                              item.isManual
+                                ? "bg-amber-100 text-amber-800 hover:bg-amber-100"
+                                : "bg-blue-100 text-blue-800 hover:bg-blue-100"
+                            }`}
+                          >
                             {item.isManual ? "Manual" : "Catálogo"}
-                          </div>
+                          </Badge>
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
@@ -2067,16 +2096,16 @@ export default function OrderDetailsPage({
           </Card>
 
           {/* Resumen de Pagos - 3 Cards */}
-          <Card className="mt-4">
+          <Card className="mt-4 border-0 shadow-sm">
             <CardHeader>
               <CardTitle>Resumen de Pagos</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 {/* Card Total */}
-                <div className="bg-slate-50 p-4 rounded-lg">
+                <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 p-4">
                   <p className="text-sm text-slate-600 mb-1">Total</p>
-                  <p className="text-xl font-semibold">
+                  <p className="text-2xl font-bold text-slate-900">
                     {formatearPrecio(total)}
                   </p>
                   <div className="mt-2 pt-2 border-t border-slate-200">
@@ -2128,9 +2157,9 @@ export default function OrderDetailsPage({
                 </div>
 
                 {/* Card Pagado */}
-                <div className="bg-green-50 p-4 rounded-lg">
+                <div className="rounded-lg border border-green-200 bg-gradient-to-br from-green-50 to-green-100 p-4">
                   <p className="text-sm text-green-600 mb-1">Pagado</p>
-                  <p className="text-xl font-semibold text-green-700">
+                  <p className="text-2xl font-bold text-green-700">
                     {formatearPrecio(getTotalPaid(order))}
                   </p>
                   <div className="mt-2 pt-2 border-t border-green-200">
@@ -2142,9 +2171,9 @@ export default function OrderDetailsPage({
                 </div>
 
                 {/* Card Saldo */}
-                <div className="bg-amber-50 p-4 rounded-lg">
+                <div className="rounded-lg border border-amber-200 bg-gradient-to-br from-amber-50 to-amber-100 p-4">
                   <p className="text-sm text-amber-600 mb-1">Saldo</p>
-                  <p className="text-xl font-semibold text-amber-700">
+                  <p className="text-2xl font-bold text-amber-700">
                     {formatearPrecio(getRemainingBalance(order, total))}
                   </p>
                 </div>

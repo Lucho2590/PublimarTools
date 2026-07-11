@@ -6,15 +6,7 @@ import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import collections from "@/lib/collections";
 import { EOrderStatus, TOrder } from "@/types/order";
 import { useSales } from "@/hooks/useSales";
@@ -36,16 +28,9 @@ import {
 } from "@/components/ui/popover";
 import { formatearPrecio, generateSlug } from "@/lib/utils";
 import { variantDiscountsStock } from "@/lib/stock";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
-import { Edit, Eye, CheckCircle2, Coins, Circle, Receipt } from "lucide-react";
+import { SummaryCard } from "@/components/admin/SummaryCard";
+import { TablePagination } from "@/components/admin/TablePagination";
+import { Eye, Receipt, ClipboardList, Coins, CheckCircle2, Wallet, Plus, Search } from "lucide-react";
 // import OrderDetailsModal from "./modalOrdenes/orderDetailsModal"; // Comentado temporalmente
 import { toast } from "sonner";
 
@@ -288,40 +273,30 @@ export default function PedidosPage() {
   const currentItems = filteredOrders?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredOrders?.length || 0) / itemsPerPage);
 
-  // Generar números de página para mostrar
-  const getPageNumbers = () => {
-    const pageNumbers = [];
-    const maxPagesToShow = 5;
-    
-    if (totalPages <= maxPagesToShow) {
-      for (let i = 1; i <= totalPages; i++) {
-        pageNumbers.push(i);
-      }
-    } else {
-      if (currentPage <= 3) {
-        for (let i = 1; i <= 4; i++) {
-          pageNumbers.push(i);
-        }
-        pageNumbers.push(-1); // -1 representa elipsis
-        pageNumbers.push(totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        pageNumbers.push(1);
-        pageNumbers.push(-1);
-        for (let i = totalPages - 3; i <= totalPages; i++) {
-          pageNumbers.push(i);
-        }
-      } else {
-        pageNumbers.push(1);
-        pageNumbers.push(-1);
-        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-          pageNumbers.push(i);
-        }
-        pageNumbers.push(-1);
-        pageNumbers.push(totalPages);
-      }
-    }
-    
-    return pageNumbers;
+  // KPIs de resumen sobre las órdenes de la vista actual (respeta búsqueda y
+  // filtro de estado). "Cobrado" = total − saldo pendiente.
+  const stats = useMemo(() => {
+    const list = (filteredOrders ?? []) as TOrder[];
+    const facturado = list.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const pendiente = list.reduce(
+      (sum, o) => sum + (Number(o.balance) || 0),
+      0
+    );
+    return {
+      total: list.length,
+      facturado,
+      pendiente,
+      cobrado: facturado - pendiente,
+    };
+  }, [filteredOrders]);
+
+  // Abrir el detalle de la orden (nueva pestaña, igual que el flujo anterior)
+  const handleOpenOrder = (order: TOrder) => {
+    window.open(
+      `/publimar/banderas/ordenes/${generateSlug(order.number, order.id)}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
   };
 
   // Formatear fecha
@@ -338,38 +313,76 @@ export default function PedidosPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Ordenes de trabajo</h1>
-        <Button
-          asChild
-          className="bg-blue-900 hover:bg-blue-900 hover:text-white"
-        >
-          <Link href="/publimar/banderas/ordenes/nuevas">Nueva Orden</Link>
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Órdenes de trabajo</h1>
+          <p className="text-slate-600 text-sm mt-1">
+            Seguí el estado, los pagos y los totales de tus órdenes
+          </p>
+        </div>
+        <Button asChild className="bg-blue-900 hover:bg-blue-800 text-white">
+          <Link href="/publimar/banderas/ordenes/nuevas">
+            <Plus className="h-4 w-4 mr-2" />
+            Nueva Orden
+          </Link>
         </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <SummaryCard
+          title="Órdenes"
+          value={stats.total}
+          icon={ClipboardList}
+          variant="blue"
+        />
+        <SummaryCard
+          title="Facturado"
+          value={formatearPrecio(stats.facturado)}
+          icon={Coins}
+          variant="slate"
+        />
+        <SummaryCard
+          title="Cobrado"
+          value={formatearPrecio(stats.cobrado)}
+          icon={CheckCircle2}
+          variant="green"
+        />
+        <SummaryCard
+          title="Saldo pendiente"
+          value={formatearPrecio(stats.pendiente)}
+          icon={Wallet}
+          variant="amber"
+        />
       </div>
 
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end">
             <div className="flex-1">
-              <Input
-                placeholder="Buscar por número o cliente..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1); // Reset a la primera página cuando se busca
-                }}
-              />
+              <Label className="mb-2 block">Buscar</Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  className="pl-9"
+                  placeholder="Buscar por número o cliente..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                />
+              </div>
             </div>
             <div>
+              <Label className="mb-2 block">Estado</Label>
               <Select
                 value={statusFilter}
                 onValueChange={(value) => {
                   setStatusFilter(value as EOrderStatus | "all");
-                  setCurrentPage(1); // Reset a la primera página cuando se filtra
+                  setCurrentPage(1);
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full md:w-[200px]">
                   <SelectValue placeholder="Filtrar por estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -389,255 +402,221 @@ export default function PedidosPage() {
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
         </div>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="p-4 overflow-x-auto">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Mostrar</span>
-                  <Select
-                    value={itemsPerPage.toString()}
-                    onValueChange={(value) => {
-                      setItemsPerPage(Number(value));
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <SelectTrigger className="w-[100px]">
-                      <SelectValue placeholder="10" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10</SelectItem>
-                      <SelectItem value="15">15</SelectItem>
-                      <SelectItem value="25">25</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span className="text-sm text-gray-500">por página</span>
-                </div>
-                <div className="text-sm text-gray-500">
-                  Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredOrders?.length || 0)} de {filteredOrders?.length || 0} órdenes
-                </div>
-              </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Cliente</TableHead> 
-                    <TableHead>Referencia</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Pagos</TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {currentItems && currentItems.length > 0 ? (
-                    currentItems.map((order) => (
-                      <TableRow key={order.id}>
-                        <TableCell className="font-medium">
-                          {order.number}
-                        </TableCell>
-                        <TableCell>{order.clientName || order.client.name || order.client?.name || "-"}</TableCell>
-                        <TableCell>
-                         {order.clientReference || order.client?.reference || order.reference || "-"}
-                        </TableCell>
-                        <TableCell>{formatDate(order.createdAt)}</TableCell>
-                        <TableCell>{formatearPrecio(order.total)}</TableCell>
-                        <TableCell>
-                          {order.status === EOrderStatus.COMPLETED ? (
-                            // Badge estático para órdenes entregadas
-                            <span
-                              className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 min-w-[80px] h-6 w-24"
-                            >
-                              Entregada
-                            </span>
-                          ) : (
-                            // Select editable para órdenes no entregadas
-                            <Select
-                              value={order.status}
-                              onValueChange={(newStatus: EOrderStatus) => 
-                                handleStatusChange(order.id, newStatus)
-                              }
-                            >
-                              <SelectTrigger 
-                                className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium border-none shadow-none cursor-pointer transition-colors min-w-[80px] h-6 ${
-                                  order.status === EOrderStatus.IN_PROCESS
-                                    ? "bg-amber-100 text-amber-800 hover:bg-amber-200 w-24"
-                                    : order.status === EOrderStatus.DRAFT
-                                    ? "bg-gray-100 text-gray-800 hover:bg-gray-200 w-24"
-                                    : "bg-red-100 text-red-800 hover:bg-red-200 w-24"
-                                } [&>svg]:hidden`}
-                              >
-                                <SelectValue>
-                                  {order.status === EOrderStatus.IN_PROCESS
-                                    ? "En proceso"
-                                    : order.status === EOrderStatus.DRAFT
-                                    ? "Borrador"
-                                    : "Cancelada"}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value={EOrderStatus.DRAFT}>
-                                  Borrador
-                                </SelectItem>
-                                <SelectItem value={EOrderStatus.IN_PROCESS}>
-                                  En proceso
-                                </SelectItem>
-                                <SelectItem value={EOrderStatus.COMPLETED}>
-                                  Entregada
-                                </SelectItem>
-                                <SelectItem value={EOrderStatus.CANCELLED}>
-                                  Cancelada
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {(() => {
-                            if (order.paymentHistory?.reduce((sum: number, payment: any) => sum + payment.amount, 0) === order.total || order.balance === 0) {
-                              // Pagado - Verde
-                              return (
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
-                                      <Receipt className="h-5 w-5 text-green-600" />
-                                    </button>
-                                  </PopoverTrigger>
-                                </Popover>
-                              );
-                            } else if (order.balance === order.total) {
-                              // Pendiente - Gris
-                              return (
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
-                                      <Receipt className="h-5 w-5 text-gray-400" />
-                                    </button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-auto p-3">
-                                    <div className="space-y-1">
-                                      <p className="text-xs font-medium text-gray-600">Sin Pagos</p>
-                                      <p className="text-sm">
-                                        <span className="text-gray-600">Saldo pendiente:</span>
-                                      </p>
-                                      <p className="text-lg font-bold text-red-600">
-                                        {formatearPrecio(order.balance)}
-                                      </p>
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
-                              );
-                            } else {
-                              // Parcial - Ámbar
-                              return (
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
-                                      <Receipt className="h-5 w-5 text-amber-500" />
-                                    </button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-auto p-3">
-                                    <div className="space-y-1">
-                                      <p className="text-xs font-medium text-amber-600">Pago Parcial</p>
-                                      <p className="text-sm">
-                                        <span className="text-gray-600">Saldo pendiente:</span>
-                                      </p>
-                                      <p className="text-lg font-bold text-amber-600">
-                                        {formatearPrecio(order.balance)}
-                                      </p>
-                                    </div>
-                                  </PopoverContent>
-                                </Popover>
-                              );
-                            }
-                          })()}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex justify-center gap-2 ">
-                              {/* <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Ver orden (Modal)"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                onClick={() => handleViewOrder(order.id)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button> */}
-                              <Button
-                                asChild
-                                variant="ghost"
-                                size="icon"
-                                title="Editar orden (Página)"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                              >
-                                <Link
-                                  href={`/publimar/banderas/ordenes/${generateSlug(order.number, order.id)}`}
-                                  prefetch={true}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Link>
-                              </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell
-                        colSpan={7}
-                        className="text-center py-8 text-slate-500"
-                      >
-                        {searchTerm || statusFilter !== "all"
-                          ? "No se encontraron pedidos con los filtros aplicados."
-                          : "No hay pedidos disponibles."}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-
-              {totalPages > 1 && (
-                <div className="mt-4">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                      
-                      {getPageNumbers().map((pageNumber, index) => (
-                        <PaginationItem key={index}>
-                          {pageNumber === -1 ? (
-                            <PaginationEllipsis />
-                          ) : (
-                            <PaginationLink
-                              onClick={() => setCurrentPage(pageNumber)}
-                              isActive={currentPage === pageNumber}
-                              className={currentPage === pageNumber ? "bg-blue-900 text-white" : ""}
-                            >
-                              {pageNumber}
-                            </PaginationLink>
-                          )}
-                        </PaginationItem>
-                      ))}
-
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold">Órdenes</CardTitle>
+              <span className="text-sm text-muted-foreground">
+                {filteredOrders?.length || 0} resultados
+              </span>
             </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {currentItems && currentItems.length > 0 ? (
+              <div className="space-y-1">
+                {currentItems.map((order) => {
+                  const clientName =
+                    order.clientName || order.client?.name || "-";
+                  const referencia =
+                    order.clientReference ||
+                    order.client?.reference ||
+                    order.reference ||
+                    "";
+                  const meta = [
+                    order.number,
+                    referencia,
+                    formatDate(order.createdAt),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                  return (
+                    <div
+                      key={order.id}
+                      onClick={() => handleOpenOrder(order as unknown as TOrder)}
+                      className="flex items-center gap-4 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-150 group cursor-pointer"
+                    >
+                      {/* Icono */}
+                      <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                        <ClipboardList className="h-4 w-4 text-blue-600" />
+                      </div>
+
+                      {/* Cliente + meta */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">
+                          {clientName}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {meta}
+                        </p>
+                      </div>
+
+                      {/* Total */}
+                      <div className="hidden sm:block text-right shrink-0 w-28">
+                        <p className="text-sm font-medium">
+                          {formatearPrecio(order.total)}
+                        </p>
+                      </div>
+
+                      {/* Estado */}
+                      <div
+                        className="shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {order.status === EOrderStatus.COMPLETED ? (
+                          <span className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 h-6 w-24">
+                            Entregada
+                          </span>
+                        ) : (
+                          <Select
+                            value={order.status}
+                            onValueChange={(newStatus: EOrderStatus) =>
+                              handleStatusChange(order.id, newStatus)
+                            }
+                          >
+                            <SelectTrigger
+                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium border-none shadow-none cursor-pointer transition-colors h-6 w-24 ${
+                                order.status === EOrderStatus.IN_PROCESS
+                                  ? "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                                  : order.status === EOrderStatus.DRAFT
+                                  ? "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                                  : "bg-red-100 text-red-800 hover:bg-red-200"
+                              } [&>svg]:hidden`}
+                            >
+                              <SelectValue>
+                                {order.status === EOrderStatus.IN_PROCESS
+                                  ? "En proceso"
+                                  : order.status === EOrderStatus.DRAFT
+                                  ? "Borrador"
+                                  : "Cancelada"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={EOrderStatus.DRAFT}>
+                                Borrador
+                              </SelectItem>
+                              <SelectItem value={EOrderStatus.IN_PROCESS}>
+                                En proceso
+                              </SelectItem>
+                              <SelectItem value={EOrderStatus.COMPLETED}>
+                                Entregada
+                              </SelectItem>
+                              <SelectItem value={EOrderStatus.CANCELLED}>
+                                Cancelada
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+
+                      {/* Pagos */}
+                      <div
+                        className="shrink-0 w-8 flex justify-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {(() => {
+                          if (
+                            order.paymentHistory?.reduce(
+                              (sum: number, payment: any) => sum + payment.amount,
+                              0
+                            ) === order.total ||
+                            order.balance === 0
+                          ) {
+                            // Pagado - Verde
+                            return (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                    <Receipt className="h-5 w-5 text-green-600" />
+                                  </button>
+                                </PopoverTrigger>
+                              </Popover>
+                            );
+                          } else if (order.balance === order.total) {
+                            // Pendiente - Gris
+                            return (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                    <Receipt className="h-5 w-5 text-gray-400" />
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium text-gray-600">
+                                      Sin Pagos
+                                    </p>
+                                    <p className="text-sm">
+                                      <span className="text-gray-600">
+                                        Saldo pendiente:
+                                      </span>
+                                    </p>
+                                    <p className="text-lg font-bold text-red-600">
+                                      {formatearPrecio(order.balance)}
+                                    </p>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            );
+                          } else {
+                            // Parcial - Ámbar
+                            return (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button className="flex justify-center cursor-pointer hover:scale-110 transition-transform">
+                                    <Receipt className="h-5 w-5 text-amber-500" />
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-medium text-amber-600">
+                                      Pago Parcial
+                                    </p>
+                                    <p className="text-sm">
+                                      <span className="text-gray-600">
+                                        Saldo pendiente:
+                                      </span>
+                                    </p>
+                                    <p className="text-lg font-bold text-amber-600">
+                                      {formatearPrecio(order.balance)}
+                                    </p>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            );
+                          }
+                        })()}
+                      </div>
+
+                      {/* Abrir */}
+                      <Eye className="h-4 w-4 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100 md:transition-opacity shrink-0" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                {searchTerm || statusFilter !== "all"
+                  ? "No se encontraron pedidos con los filtros aplicados."
+                  : "No hay pedidos disponibles."}
+              </div>
+            )}
+
+            {filteredOrders && filteredOrders.length > 0 && (
+              <div className="border-t">
+                <TablePagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={filteredOrders?.length ?? 0}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                  onItemsPerPageChange={(n) => {
+                    setItemsPerPage(n);
+                    setCurrentPage(1);
+                  }}
+                  pageSizeOptions={[10, 15, 25]}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

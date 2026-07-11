@@ -7,16 +7,9 @@ import { collection, query, orderBy, doc, updateDoc, serverTimestamp } from "fir
 import { softDelete, isDeleted } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -25,20 +18,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { SummaryCard } from "@/components/admin/SummaryCard";
+import { TablePagination } from "@/components/admin/TablePagination";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductGroup } from "@/types/product";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, Download, Plus, Package, AlertTriangle, PackageX, Search, MoreVertical } from "lucide-react";
 import { toast } from "sonner";
 // XLSX se importa dinámicamente en handleDownloadExcel para no cargar ~700KB al inicio
-import { formatearPrecio, redondearADecena, redondearPrecio } from "@/lib/utils";
+import { cn, formatearPrecio, redondearADecena, redondearPrecio } from "@/lib/utils";
 import { getRoundingConfig } from "@/lib/pricingConfig";
 import { recordPriceChanges } from "@/lib/priceHistory";
 import { EPriceChangeSource, TPriceChangeInput } from "@/types/priceHistory";
@@ -120,41 +111,36 @@ export default function ProductosPage() {
   const currentItems = filteredProducts?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredProducts?.length || 0) / itemsPerPage);
 
-  // Generar números de página para mostrar
-  const getPageNumbers = () => {
-    const pageNumbers = [];
-    const maxPagesToShow = 5;
-    
-    if (totalPages <= maxPagesToShow) {
-      for (let i = 1; i <= totalPages; i++) {
-        pageNumbers.push(i);
+  // KPIs de resumen sobre los productos filtrados (respeta soft delete y filtros
+  // activos). Criterio de stock alineado con el de la tabla: stock < 5 = bajo,
+  // Infinity = ilimitado (no cuenta como bajo ni sin stock).
+  const stats = useMemo(() => {
+    const list = (filteredProducts ?? []).map(
+      (p) => p as unknown as TProduct
+    );
+    let lowStock = 0;
+    let outOfStock = 0;
+
+    for (const product of list) {
+      const variants = product.variants ?? [];
+      if (variants.length === 0) continue;
+
+      const finiteStocks = variants
+        .map((v) => Number(v.stock))
+        .filter((s) => Number.isFinite(s));
+
+      // Sin stock: todas las variantes con stock finito están en 0.
+      if (finiteStocks.length > 0 && finiteStocks.every((s) => s === 0)) {
+        outOfStock++;
       }
-    } else {
-      if (currentPage <= 3) {
-        for (let i = 1; i <= 4; i++) {
-          pageNumbers.push(i);
-        }
-        pageNumbers.push(-1); // -1 representa elipsis
-        pageNumbers.push(totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        pageNumbers.push(1);
-        pageNumbers.push(-1);
-        for (let i = totalPages - 3; i <= totalPages; i++) {
-          pageNumbers.push(i);
-        }
-      } else {
-        pageNumbers.push(1);
-        pageNumbers.push(-1);
-        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-          pageNumbers.push(i);
-        }
-        pageNumbers.push(-1);
-        pageNumbers.push(totalPages);
+      // Stock bajo: alguna variante con stock finito < 5.
+      if (finiteStocks.some((s) => s < 5)) {
+        lowStock++;
       }
     }
-    
-    return pageNumbers;
-  };
+
+    return { total: list.length, lowStock, outOfStock };
+  }, [filteredProducts]);
 
   // Calcular precio con IVA (redondeado hacia arriba a la decena más cercana)
   const calculatePriceWithTax = (price: number, taxRate: number) => {
@@ -429,305 +415,348 @@ export default function ProductosPage() {
   // console.log(filteredProducts?.[44]);
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Productos</h1>
-        <div className="flex gap-2">
-          <Button 
-            onClick={handleDownloadExcel}
-            className="bg-green-600 hover:bg-green-700 text-white"
-          >
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Productos</h1>
+          <p className="text-slate-600 text-sm mt-1">
+            Gestioná el catálogo, stock y precios
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="outline" onClick={handleDownloadExcel}>
+            <Download className="h-4 w-4 mr-2" />
             Descargar Excel
           </Button>
           <Link href="/publimar/banderas/productos/nuevo">
-            <Button className="bg-blue-900 hover:bg-blue-900 hover:text-white">
+            <Button className="w-full bg-blue-900 hover:bg-blue-800 text-white">
+              <Plus className="h-4 w-4 mr-2" />
               Nuevo Producto
             </Button>
           </Link>
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <SummaryCard
+          title="Total productos"
+          value={stats.total}
+          icon={Package}
+          variant="blue"
+        />
+        <SummaryCard
+          title="Stock bajo"
+          value={stats.lowStock}
+          subtitle="menos de 5"
+          icon={AlertTriangle}
+          variant="amber"
+        />
+        <SummaryCard
+          title="Sin stock"
+          value={stats.outOfStock}
+          icon={PackageX}
+          variant="red"
+        />
+      </div>
+
       <Card className="mb-6">
-        <CardContent className="p-4 space-y-4">
-          <div className="flex flex-col md:flex-row gap-4 items-center">
-            <Input
-              placeholder="Buscar productos..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="max-w-sm"
-            />
-            <Select
-              value={selectedCategory}
-              onValueChange={setSelectedCategory}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filtrar por categoría" />
-              </SelectTrigger>
-              <SelectContent className="max-h-48 overflow-y-auto">
-                <SelectItem value="all">Todas las categorías</SelectItem>
-                {categories?.map((category) => {
-                  const typedCategory = category as unknown as TProductCategory;
-                  return (
-                    <SelectItem key={typedCategory.id} value={typedCategory.id}>
-                      {typedCategory.name}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedGroup}
-              onValueChange={setSelectedGroup}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filtrar por grupo" />
-              </SelectTrigger>
-              <SelectContent className="max-h-48 overflow-y-auto">
-                <SelectItem value="all">Todos los grupos</SelectItem>
-                <SelectItem value="sin-grupo">Sin grupo</SelectItem>
-                {groups
-                  ?.sort((a, b) => {
-                    const nameA = (a as unknown as TProductGroup).name;
-                    const nameB = (b as unknown as TProductGroup).name;
-                    return nameA.localeCompare(nameB);
-                  })
-                  .map((group) => {
-                    const typedGroup = group as unknown as TProductGroup;
+        <CardContent className="pt-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end">
+            <div className="flex-1">
+              <Label className="mb-2 block">Buscar</Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  placeholder="Buscar productos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="mb-2 block">Categoría</Label>
+              <Select
+                value={selectedCategory}
+                onValueChange={setSelectedCategory}
+              >
+                <SelectTrigger className="w-full md:w-[200px]">
+                  <SelectValue placeholder="Filtrar por categoría" />
+                </SelectTrigger>
+                <SelectContent className="max-h-48 overflow-y-auto">
+                  <SelectItem value="all">Todas las categorías</SelectItem>
+                  {categories?.map((category) => {
+                    const typedCategory = category as unknown as TProductCategory;
                     return (
-                      <SelectItem key={typedGroup.id} value={typedGroup.id}>
-                        {typedGroup.name}
+                      <SelectItem key={typedCategory.id} value={typedCategory.id}>
+                        {typedCategory.name}
                       </SelectItem>
                     );
                   })}
-              </SelectContent>
-            </Select>
-            <div className="flex items-center gap-2 ml-auto">
-              <Input
-                type="number"
-                placeholder="% Aumento"
-                value={increasePercentage}
-                onChange={(e) => setIncreasePercentage(e.target.value)}
-                className="w-24"
-              />
-              <Button
-                onClick={handleApplyIncrease}
-                disabled={isApplyingIncrease || selectedProducts.length === 0}
-                className="bg-green-600 hover:bg-green-700 text-white"
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="mb-2 block">Grupo</Label>
+              <Select
+                value={selectedGroup}
+                onValueChange={setSelectedGroup}
               >
-                {isApplyingIncrease ? "Aplicando..." : "Aplicar Aumento"}
-              </Button>
+                <SelectTrigger className="w-full md:w-[200px]">
+                  <SelectValue placeholder="Filtrar por grupo" />
+                </SelectTrigger>
+                <SelectContent className="max-h-48 overflow-y-auto">
+                  <SelectItem value="all">Todos los grupos</SelectItem>
+                  <SelectItem value="sin-grupo">Sin grupo</SelectItem>
+                  {groups
+                    ?.sort((a, b) => {
+                      const nameA = (a as unknown as TProductGroup).name;
+                      const nameB = (b as unknown as TProductGroup).name;
+                      return nameA.localeCompare(nameB);
+                    })
+                    .map((group) => {
+                      const typedGroup = group as unknown as TProductGroup;
+                      return (
+                        <SelectItem key={typedGroup.id} value={typedGroup.id}>
+                          {typedGroup.name}
+                        </SelectItem>
+                      );
+                    })}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="md:ml-auto md:border-l md:pl-4 pt-4 border-t md:pt-0 md:border-t-0">
+              <Label className="mb-2 block">
+                Aumento{" "}
+                {selectedProducts.length > 0 && (
+                  <span className="text-slate-500 font-normal">
+                    ({selectedProducts.length} seleccionados)
+                  </span>
+                )}
+              </Label>
+              <div className="flex items-end gap-2">
+                <div className="relative w-28">
+                  <Input
+                    type="number"
+                    placeholder="0"
+                    value={increasePercentage}
+                    onChange={(e) => setIncreasePercentage(e.target.value)}
+                    className="pr-7"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                    %
+                  </span>
+                </div>
+                <Button
+                  onClick={handleApplyIncrease}
+                  disabled={isApplyingIncrease || selectedProducts.length === 0}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {isApplyingIncrease ? "Aplicando..." : "Aplicar Aumento"}
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="p-4 overflow-x-auto">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-500">Mostrar</span>
-                <Select
-                  value={itemsPerPage.toString()}
-                  onValueChange={(value) => {
-                    setItemsPerPage(Number(value));
-                    setCurrentPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-[100px]">
-                    <SelectValue placeholder="10" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="15">15</SelectItem>
-                    <SelectItem value="25">25</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-sm text-gray-500">por página</span>
-              </div>
-              <div className="text-sm text-gray-500">
-                Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredProducts?.length || 0)} de {filteredProducts?.length || 0} productos
-              </div>
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Checkbox
+                checked={
+                  !!filteredProducts &&
+                  filteredProducts.length > 0 &&
+                  selectedProducts.length === filteredProducts.length
+                }
+                onCheckedChange={handleSelectAll}
+                title="Seleccionar todos"
+                className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
+              />
+              <CardTitle className="text-base font-semibold">Productos</CardTitle>
             </div>
-
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[50px]">
-                    <Checkbox
-                      checked={selectedProducts.length === filteredProducts?.length}
-                      onCheckedChange={handleSelectAll}
-                      className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
-                    />
-                  </TableHead>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Categorías</TableHead>
-                  <TableHead>Medida</TableHead>
-                  <TableHead className="text-right">Stock</TableHead>
-                  <TableHead className="text-right">Precio Final</TableHead>
-                  {/* <TableHead className="text-right">+ IVA</TableHead> */}
-                  <TableHead className="text-center">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentItems && currentItems.length > 0 ? (
-                  currentItems.map((product) => {
-                    const typedProduct = product as unknown as TProduct;
-                    const selectedVariant = getSelectedVariant(typedProduct);
-                    return (
-                      <TableRow key={typedProduct.id}>
-                        <TableCell>
-                          <Checkbox
-                            checked={selectedProducts.includes(typedProduct.id)}
-                            onCheckedChange={() => handleProductSelection(typedProduct.id)}
-                            className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
-                          />
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {typedProduct.name}
-                        </TableCell>
-                        <TableCell>
-                          {getCategoryNames(typedProduct.categories)}
-                        </TableCell>
-                        <TableCell >
-                          {typedProduct.variants &&
-                          typedProduct.variants.length > 0 ? (
-                            <Select
-                              value={selectedVariant?.size || ""}
-                              onValueChange={(value) => {
-                                setSelectedVariant((prev) => ({
-                                  ...prev,
-                                  [typedProduct.id]: value,
-                                }));
-                              }}
-                            >
-                              <SelectTrigger className="w-[150px]">
-                                <SelectValue placeholder="Seleccionar medida" />
-                              </SelectTrigger>
-                              <SelectContent className="max-h-48 overflow-y-auto">
-                                {typedProduct.variants.map((variant) => (
-                                  <SelectItem
-                                    key={variant.id}
-                                    value={variant.size}
-                                  >
-                                    {variant.size}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {selectedVariant ? (
-                            <span
-                              className={`${
-                                Number(selectedVariant.stock) < 5 ? "text-red-500" : ""
-                              }`}
-                            >
-                              {selectedVariant.stock === Infinity ? "." : selectedVariant.stock}
-                            </span>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {selectedVariant ? (
-                            <span>{formatearPrecio(Number(selectedVariant.price))}</span>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell>
-                        {/* <TableCell className="text-right">
-                          {selectedVariant ? (
-                            <span>
-                              {formatearPrecio(calculatePriceWithTax(
-                                Number(selectedVariant.price),
-                                typedProduct.taxRate || 21
-                              ))}
-                            </span>
-                          ) : (
-                            "-"
-                          )}
-                        </TableCell> */}
-                        <TableCell className="text-center">
-                          <div className="flex justify-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Editar"
-                              type="button"
-                              className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                              onClick={() => handleEditProduct(typedProduct.id)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Eliminar"
-                              type="button"
-                              className="bg-red-600 hover:bg-red-700 hover:text-white text-white"
-                              onClick={() => handleDeleteProduct(typedProduct.id, typedProduct.name)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={8}
-                      className="text-center text-blue-500 py-4"
-                    >
-                      No se encontraron productos
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-
-            {totalPages > 1 && (
-              <div className="mt-4">
-                <Pagination>
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                        className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                      />
-                    </PaginationItem>
-                    
-                    {getPageNumbers().map((pageNumber, index) => (
-                      <PaginationItem key={index}>
-                        {pageNumber === -1 ? (
-                          <PaginationEllipsis />
-                        ) : (
-                          <PaginationLink
-                            onClick={() => setCurrentPage(pageNumber)}
-                            isActive={currentPage === pageNumber}
-                            className={currentPage === pageNumber ? "bg-blue-900 text-white" : ""}
-                          >
-                            {pageNumber}
-                          </PaginationLink>
-                        )}
-                      </PaginationItem>
-                    ))}
-
-                    <PaginationItem>
-                      <PaginationNext
-                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                        className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              </div>
-            )}
+            <span className="text-sm text-muted-foreground">
+              {filteredProducts?.length || 0} resultados
+            </span>
           </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {currentItems && currentItems.length > 0 ? (
+            <div className="space-y-1">
+              {currentItems.map((product) => {
+                const typedProduct = product as unknown as TProduct;
+                const selectedVariant = getSelectedVariant(typedProduct);
+                const isSelected = selectedProducts.includes(typedProduct.id);
+                const thumb = typedProduct.imageUrls?.[0];
+                const lowStock =
+                  selectedVariant != null &&
+                  Number.isFinite(Number(selectedVariant.stock)) &&
+                  Number(selectedVariant.stock) < 5;
+                return (
+                  <div
+                    key={typedProduct.id}
+                    onClick={() => handleEditProduct(typedProduct.id)}
+                    className={cn(
+                      "flex items-center gap-4 p-3 rounded-lg transition-colors duration-150 group cursor-pointer",
+                      isSelected ? "bg-blue-50/70" : "hover:bg-slate-50"
+                    )}
+                  >
+                    {/* Selección */}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() =>
+                          handleProductSelection(typedProduct.id)
+                        }
+                        className="data-[state=checked]:bg-blue-900 data-[state=checked]:border-blue-900"
+                      />
+                    </div>
+
+                    {/* Icono / miniatura */}
+                    <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0 overflow-hidden">
+                      {thumb ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={thumb}
+                          alt={typedProduct.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Package className="h-4 w-4 text-blue-600" />
+                      )}
+                    </div>
+
+                    {/* Nombre + categorías */}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">
+                        {typedProduct.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {getCategoryNames(typedProduct.categories)}
+                      </p>
+                    </div>
+
+                    {/* Selector de medida */}
+                    <div
+                      className="hidden sm:block w-[150px] shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {typedProduct.variants &&
+                      typedProduct.variants.length > 0 ? (
+                        <Select
+                          value={selectedVariant?.size || ""}
+                          onValueChange={(value) => {
+                            setSelectedVariant((prev) => ({
+                              ...prev,
+                              [typedProduct.id]: value,
+                            }));
+                          }}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder="Medida" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-48 overflow-y-auto">
+                            {typedProduct.variants.map((variant) => (
+                              <SelectItem key={variant.id} value={variant.size}>
+                                {variant.size}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">-</span>
+                      )}
+                    </div>
+
+                    {/* Precio + stock */}
+                    <div className="text-right shrink-0 w-24">
+                      <p className="text-sm font-medium">
+                        {selectedVariant
+                          ? formatearPrecio(Number(selectedVariant.price))
+                          : "-"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedVariant ? (
+                          <span className={lowStock ? "text-red-500" : ""}>
+                            Stock:{" "}
+                            {selectedVariant.stock === Infinity
+                              ? "∞"
+                              : selectedVariant.stock}
+                          </span>
+                        ) : (
+                          "sin variantes"
+                        )}
+                      </p>
+                    </div>
+
+                    {/* Acciones */}
+                    <div
+                      className="shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            type="button"
+                            title="Acciones"
+                            className="h-8 w-8 text-slate-500 hover:text-slate-900"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-40 p-1">
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                            onClick={() => handleEditProduct(typedProduct.id)}
+                          >
+                            <Edit className="h-4 w-4" />
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-red-600 hover:bg-red-50"
+                            onClick={() =>
+                              handleDeleteProduct(
+                                typedProduct.id,
+                                typedProduct.name
+                              )
+                            }
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Eliminar
+                          </button>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No se encontraron productos
+            </div>
+          )}
+
+          {filteredProducts && filteredProducts.length > 0 && (
+            <div className="border-t">
+              <TablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={filteredProducts?.length ?? 0}
+                itemsPerPage={itemsPerPage}
+                onPageChange={setCurrentPage}
+                onItemsPerPageChange={(n) => {
+                  setItemsPerPage(n);
+                  setCurrentPage(1);
+                }}
+                pageSizeOptions={[10, 15, 25]}
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 

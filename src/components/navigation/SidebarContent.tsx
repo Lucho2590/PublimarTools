@@ -105,7 +105,7 @@ export function SidebarContent({
         <div className="mx-4 border-t border-blue-800/60" />
 
         {/* Navigation */}
-        <nav className="mt-3 flex-1 overflow-y-auto">
+        <nav className="mt-3 flex-1 overflow-y-auto sidebar-scroll">
           <ul className="space-y-1">
             {visibleNav.map((item, index) => (
               <React.Fragment key={item.name}>
