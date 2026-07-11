@@ -26,7 +26,7 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProductCategory, TProductGroup, TProductVariant } from "@/types/product";
-import { Trash2 } from "lucide-react";
+import { Trash2, PackageCheck, PackageX } from "lucide-react";
 import { generateSlug } from "@/lib/utils";
 import { recordPriceChanges } from "@/lib/priceHistory";
 import { EPriceChangeSource, TPriceChangeInput } from "@/types/priceHistory";
@@ -77,6 +77,7 @@ export default function NuevoProductoPage() {
       price: "",
       stock: "",
       sku: "-",
+      discountStock: true,
     }] as TProductVariant[],
   });
 
@@ -319,6 +320,7 @@ export default function NuevoProductoPage() {
                   price: "",
                   stock: "",
                   sku: "-",
+                  discountStock: true,
                 };
                 setFormData((prev) => ({
                   ...prev,
@@ -335,7 +337,34 @@ export default function NuevoProductoPage() {
             <div className="space-y-4">
               {formData.variants.map((variant, index) => (
                 <div key={variant.id} className="space-y-3 p-4 bg-gray-50 rounded-lg">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newVariants = [...formData.variants];
+                        newVariants[index] = {
+                          ...variant,
+                          discountStock: variant.discountStock === false,
+                        };
+                        setFormData((prev) => ({
+                          ...prev,
+                          variants: newVariants,
+                        }));
+                      }}
+                      className="shrink-0 mt-6 transition-all duration-200 hover:scale-110"
+                      title={
+                        variant.discountStock === false
+                          ? "No descuenta stock al vender (click para activar)"
+                          : "Descuenta stock al vender (click para desactivar)"
+                      }
+                    >
+                      {variant.discountStock === false ? (
+                        <PackageX className="h-5 w-5 text-gray-300 hover:text-gray-400" />
+                      ) : (
+                        <PackageCheck className="h-5 w-5 text-green-600" />
+                      )}
+                    </button>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 flex-1">
                     <div>
                       <Label className="text-sm font-medium text-gray-700">SKU</Label>
                       <Input
@@ -423,6 +452,7 @@ export default function NuevoProductoPage() {
                         placeholder="0"
                         required
                       />
+                    </div>
                     </div>
                   </div>
                   {formData.variants.length > 1 && (

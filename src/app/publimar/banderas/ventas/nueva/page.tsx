@@ -53,6 +53,7 @@ import { EClientSection } from "@/types/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { AccountSelect } from "@/components/admin/AccountSelect";
 import { createSale } from "@/lib/sales";
+import { variantDiscountsStock } from "@/lib/stock";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounts } from "@/hooks/useAccounts";
 import {
@@ -600,7 +601,10 @@ export default function NuevaVentaPage() {
     );
 
     if (existingItem) {
-      if (newQuantity > Number(existingItem.variant.stock)) {
+      if (
+        variantDiscountsStock(existingItem.variant) &&
+        newQuantity > Number(existingItem.variant.stock)
+      ) {
         toast.error("No hay suficiente stock disponible");
         return;
       }
@@ -1269,9 +1273,10 @@ export default function NuevaVentaPage() {
                   (v) => v.id === selectedVariants[typedProduct.id]
                 );
 
-                // Verificar si hay al menos una variante con stock
+                // Verificar si hay al menos una variante disponible
+                // (las que no descuentan stock siempre están disponibles).
                 const hasAvailableStock = typedProduct.variants?.some(
-                  (v) => Number(v.stock) > 0
+                  (v) => !variantDiscountsStock(v) || Number(v.stock) > 0
                 );
 
                 const stockColor = selectedVariant
@@ -1392,20 +1397,27 @@ export default function NuevaVentaPage() {
                             <SelectItem
                               key={variant.id}
                               value={variant.id}
-                              disabled={Number(variant.stock) === 0}
+                              disabled={
+                                variantDiscountsStock(variant) &&
+                                Number(variant.stock) === 0
+                              }
                             >
                               <div className="flex items-center justify-between w-full">
                                 <span>{variant.size}</span>
                                 <span
                                   className={`text-xs ml-2 ${
-                                    Number(variant.stock) === 0
+                                    !variantDiscountsStock(variant)
+                                      ? "text-gray-400"
+                                      : Number(variant.stock) === 0
                                       ? "text-red-500"
                                       : Number(variant.stock) <= 5
                                       ? "text-orange-500"
                                       : "text-green-600"
                                   }`}
                                 >
-                                  {variant.stock === Infinity
+                                  {!variantDiscountsStock(variant)
+                                    ? "libre"
+                                    : variant.stock === Infinity
                                     ? "∞"
                                     : variant.stock}
                                 </span>
@@ -1422,7 +1434,11 @@ export default function NuevaVentaPage() {
                         type="number"
                         min="0"
                         max={
-                          selectedVariant ? Number(selectedVariant.stock) : 1
+                          selectedVariant
+                            ? variantDiscountsStock(selectedVariant)
+                              ? Number(selectedVariant.stock)
+                              : undefined
+                            : 1
                         }
                         value={currentQuantity}
                         onChange={(e) => {
@@ -1433,7 +1449,8 @@ export default function NuevaVentaPage() {
 
                           if (
                             newValue >= 0 &&
-                            newValue <= Number(selectedVariant.stock)
+                            (!variantDiscountsStock(selectedVariant) ||
+                              newValue <= Number(selectedVariant.stock))
                           ) {
                             handleQuantityChange(
                               typedProduct.id,

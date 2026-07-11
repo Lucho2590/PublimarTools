@@ -60,6 +60,7 @@ import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
 import collections from "@/lib/collections";
 import { isDeleted } from "@/lib/softDelete";
+import { variantDiscountsStock } from "@/lib/stock";
 import { TProduct, TProductVariant } from "@/types/product";
 import { TClient } from "@/types/client";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -675,7 +676,8 @@ export default function OrderDetailsPage({
               // Si tiene variante, actualizar stock de la variante específica
               if (item.variantId && currentProduct.variants) {
                 const variant = currentProduct.variants.find((v: any) => v.id === item.variantId);
-                const shouldUpdateStock = variant && variant.stock != null;
+                const shouldUpdateStock =
+                  variant && variant.stock != null && variantDiscountsStock(variant);
                 await updateDoc(productRef, {
                   variants: shouldUpdateStock
                     ? currentProduct.variants.map((v: any) =>

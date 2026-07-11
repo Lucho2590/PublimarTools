@@ -34,6 +34,8 @@ export enum EProductCategory {
     sku?: string;
     /** Costo unitario de la variante. Opcional: habilita el margen real en Rentabilidad. */
     cost?: number;
+    /** Si false, esta variante NO descuenta stock al venderse. Ausente/undefined = descuenta (default). */
+    discountStock?: boolean;
   }
   
   export interface TProduct {

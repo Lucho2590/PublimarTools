@@ -14,6 +14,7 @@ import { TAccount } from "@/types/account";
 import { registerAccountMovement } from "@/lib/accountMovements";
 import { EMovementType } from "@/types/accountMovement";
 import { redondearTotal } from "@/lib/utils";
+import { variantDiscountsStock } from "@/lib/stock";
 import {
   buildChanges,
   describeSaleCreate,
@@ -118,35 +119,61 @@ export async function createSale(
     delta: number;
   }> = [];
 
+  // Agrupamos los renglones por producto para hacer UN solo updateDoc por
+  // documento. Si no, dos variantes del mismo producto (o la misma variante
+  // repetida) generarían writes concurrentes que reescriben el array `variants`
+  // completo desde el snapshot original y se pisan entre sí (last-write-wins),
+  // perdiendo uno de los descuentos.
+  const byProduct = new Map<string, { product: TProduct; lines: SaleLineItem[] }>();
+  for (const item of items) {
+    if (item.product.id.startsWith("manual-")) continue;
+    const entry = byProduct.get(item.product.id) ?? {
+      product: item.product,
+      lines: [],
+    };
+    entry.lines.push(item);
+    byProduct.set(item.product.id, entry);
+  }
+
   await Promise.all(
-    items.map(async (item) => {
-      const isManualItem = item.product.id.startsWith("manual-");
-      if (isManualItem) return;
+    Array.from(byProduct.values()).map(async ({ product, lines }) => {
+      const productRef = doc(firestore, collections.PRODUCTS, product.id);
 
-      const productRef = doc(firestore, collections.PRODUCTS, item.product.id);
+      // Cantidad total a descontar por variante (acumula variantes repetidas).
+      const qtyByVariant = new Map<string, number>();
+      for (const l of lines) {
+        qtyByVariant.set(
+          l.variant.id,
+          (qtyByVariant.get(l.variant.id) ?? 0) + l.quantity,
+        );
+      }
 
-      const stockBefore = Number(item.variant.stock ?? 0);
-      const stockAfter = stockBefore - item.quantity;
+      const newVariants = product.variants.map((v) =>
+        qtyByVariant.has(v.id) && variantDiscountsStock(v)
+          ? { ...v, stock: Number(v.stock) - (qtyByVariant.get(v.id) ?? 0) }
+          : v,
+      );
 
       await updateDoc(productRef, {
-        variants: item.product.variants.map((v) =>
-          v.id === item.variant.id
-            ? { ...v, stock: Number(v.stock) - item.quantity }
-            : v,
-        ),
-        salesCount: increment(1),
+        variants: newVariants,
+        salesCount: increment(lines.length),
         lastSaleDate: new Date(),
       });
 
-      stockEventPayloads.push({
-        productId: item.product.id,
-        productName: item.product.name,
-        variantId: item.variant.id,
-        variantName: item.variant.size,
-        stockBefore,
-        stockAfter,
-        delta: -item.quantity,
-      });
+      for (const l of lines) {
+        // Sin descuento de stock no hay cambio que auditar.
+        if (!variantDiscountsStock(l.variant)) continue;
+        const stockBefore = Number(l.variant.stock ?? 0);
+        stockEventPayloads.push({
+          productId: product.id,
+          productName: l.product.name,
+          variantId: l.variant.id,
+          variantName: l.variant.size,
+          stockBefore,
+          stockAfter: stockBefore - l.quantity,
+          delta: -l.quantity,
+        });
+      }
     }),
   );
 

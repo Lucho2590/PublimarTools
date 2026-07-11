@@ -33,6 +33,7 @@ import {
   getDefaultAccountId,
 } from "@/hooks/usePaymentAccountDefaults";
 import { createSale } from "@/lib/sales";
+import { variantDiscountsStock } from "@/lib/stock";
 import { formatearPrecio, redondearTotal } from "@/lib/utils";
 import { ProductCatalog } from "./ProductCatalog";
 import { ClientStep } from "./ClientStep";
@@ -148,7 +149,10 @@ export default function PuntoDeVentaPage() {
 
   const addToCart = (product: TProduct, variant: TProductVariant) => {
     const key = cartKey(product.id, variant.id);
-    const stock = Number(variant.stock ?? 0);
+    // Variantes sin descuento de stock se venden sin tope de cantidad.
+    const stock = variantDiscountsStock(variant)
+      ? Number(variant.stock ?? 0)
+      : Infinity;
     const price = Number(variant.price);
     setCart((prev) => {
       const existing = prev.find(
@@ -222,7 +226,9 @@ export default function PuntoDeVentaPage() {
       prev
         .map((it) => {
           if (cartKey(it.product.id, it.variant.id) !== key) return it;
-          const stock = Number(it.variant.stock ?? 0);
+          const stock = variantDiscountsStock(it.variant)
+            ? Number(it.variant.stock ?? 0)
+            : Infinity;
           const clamped = Math.max(0, Math.min(qty, stock));
           return {
             ...it,
@@ -516,6 +522,7 @@ export default function PuntoDeVentaPage() {
                             size="icon"
                             className="h-7 w-7"
                             disabled={
+                              variantDiscountsStock(item.variant) &&
                               item.quantity >= Number(item.variant.stock ?? 0)
                             }
                             onClick={() => updateQty(key, item.quantity + 1)}
