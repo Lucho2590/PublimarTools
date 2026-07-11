@@ -1,23 +1,16 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy, doc, updateDoc, where } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { formatCuit } from "@/lib/cuit";
 import { getTaxConditionLabel } from "@/lib/taxCondition";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -26,17 +19,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { SummaryCard } from "@/components/admin/SummaryCard";
+import { TablePagination } from "@/components/admin/TablePagination";
 import collections from "@/lib/collections";
 import { EQuoteStatus, TQuote } from "@/types/quote";
-import { Edit, Eye, Download } from "lucide-react";
+import { Eye, Download, FileText, Send, CheckCircle2, Coins, Plus, Search, Loader2, MoreVertical } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { toast } from "sonner";
@@ -129,41 +120,20 @@ export default function PresupuestosPage() {
   const currentItems = filteredQuotes?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredQuotes?.length || 0) / itemsPerPage);
 
-  // Generar números de página para mostrar
-  const getPageNumbers = () => {
-    const pageNumbers = [];
-    const maxPagesToShow = 5;
-    
-    if (totalPages <= maxPagesToShow) {
-      for (let i = 1; i <= totalPages; i++) {
-        pageNumbers.push(i);
-      }
-    } else {
-      if (currentPage <= 3) {
-        for (let i = 1; i <= 4; i++) {
-          pageNumbers.push(i);
-        }
-        pageNumbers.push(-1); // -1 representa elipsis
-        pageNumbers.push(totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        pageNumbers.push(1);
-        pageNumbers.push(-1);
-        for (let i = totalPages - 3; i <= totalPages; i++) {
-          pageNumbers.push(i);
-        }
-      } else {
-        pageNumbers.push(1);
-        pageNumbers.push(-1);
-        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-          pageNumbers.push(i);
-        }
-        pageNumbers.push(-1);
-        pageNumbers.push(totalPages);
-      }
+  // KPIs de resumen sobre TODOS los presupuestos de banderas (dashboard estable,
+  // no depende de la búsqueda ni del filtro de estado).
+  const stats = useMemo(() => {
+    const list = (quotesData ?? []) as DocumentData[];
+    let enviados = 0;
+    let confirmados = 0;
+    let montoTotal = 0;
+    for (const q of list) {
+      if (q.status === EQuoteStatus.SENT) enviados++;
+      if (q.status === EQuoteStatus.CONFIRMED) confirmados++;
+      montoTotal += Number(q.total) || 0;
     }
-    
-    return pageNumbers;
-  };
+    return { total: list.length, enviados, confirmados, montoTotal };
+  }, [quotesData]);
 
   // Formatear fecha
   const formatDate = (timestamp: any) => {
@@ -413,40 +383,76 @@ export default function PresupuestosPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Presupuestos</h1>
-        <Button
-          asChild
-          className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-        >
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Presupuestos</h1>
+          <p className="text-slate-600 text-sm mt-1">
+            Seguí el estado y el monto de tus presupuestos
+          </p>
+        </div>
+        <Button asChild className="bg-blue-900 hover:bg-blue-800 text-white">
           <Link href="/publimar/banderas/presupuestos/nuevo">
+            <Plus className="h-4 w-4 mr-2" />
             Nuevo presupuesto
           </Link>
         </Button>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <SummaryCard
+          title="Presupuestos"
+          value={stats.total}
+          icon={FileText}
+          variant="blue"
+        />
+        <SummaryCard
+          title="Enviados"
+          value={stats.enviados}
+          icon={Send}
+          variant="amber"
+        />
+        <SummaryCard
+          title="Confirmados"
+          value={stats.confirmados}
+          icon={CheckCircle2}
+          variant="green"
+        />
+        <SummaryCard
+          title="Monto total"
+          value={formatearPrecio(stats.montoTotal)}
+          icon={Coins}
+          variant="slate"
+        />
+      </div>
+
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end">
             <div className="flex-1">
-              <Input
-                placeholder="Buscar por número o cliente..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1); // Reset a la primera página cuando se busca
-                }}
-              />
+              <Label className="mb-2 block">Buscar</Label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  className="pl-9"
+                  placeholder="Buscar por número o cliente..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                />
+              </div>
             </div>
             <div>
+              <Label className="mb-2 block">Estado</Label>
               <Select
                 value={statusFilter}
                 onValueChange={(value) => {
                   setStatusFilter(value as EQuoteStatus | "all");
-                  setCurrentPage(1); // Reset a la primera página cuando se filtra
+                  setCurrentPage(1);
                 }}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full md:w-[200px]">
                   <SelectValue placeholder="Filtrar por estado" />
                 </SelectTrigger>
                 <SelectContent>
@@ -471,192 +477,183 @@ export default function PresupuestosPage() {
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-slate-900"></div>
         </div>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="p-4 overflow-x-auto">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Mostrar</span>
-                  <Select
-                    value={itemsPerPage.toString()}
-                    onValueChange={(value) => {
-                      setItemsPerPage(Number(value));
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <SelectTrigger className="w-[100px]">
-                      <SelectValue placeholder="10" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10</SelectItem>
-                      <SelectItem value="15">15</SelectItem>
-                      <SelectItem value="25">25</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span className="text-sm text-gray-500">por página</span>
-                </div>
-                <div className="text-sm text-gray-500">
-                  Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredQuotes?.length || 0)} de {filteredQuotes?.length || 0} presupuestos
-                </div>
-              </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Válido hasta</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {currentItems && currentItems.length > 0 ? (
-                    currentItems.map((quote) => {
-                      return (
-                        <TableRow key={quote.id}>
-                          <TableCell className="font-medium">
-                            {quote.number}
-                          </TableCell>
-                          <TableCell>{quote.client.name}</TableCell>
-                          <TableCell>{formatDate(quote.createdAt)}</TableCell>
-                          <TableCell>{formatDate(quote.validUntil)}</TableCell>
-                          <TableCell>{formatearPrecio(quote.total)}</TableCell>
-                          <TableCell>
-                            {quote.status === EQuoteStatus.CONFIRMED || quote.status === EQuoteStatus.REJECTED ? (
-                              // Badge estático para presupuestos confirmados o rechazados
-                              <span
-                                className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium min-w-[80px] h-6 w-24 ${
-                                  quote.status === EQuoteStatus.CONFIRMED
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                {quote.status === EQuoteStatus.CONFIRMED ? "Confirmado" : "Rechazado"}
-                              </span>
-                            ) : (
-                              // Select editable para presupuestos no finalizados
-                              <Select
-                                value={quote.status}
-                                onValueChange={(newStatus: EQuoteStatus) =>
-                                  handleStatusChange(quote.id, newStatus)
-                                }
-                              >
-                                <SelectTrigger
-                                  className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium border-none shadow-none cursor-pointer transition-colors min-w-[80px] h-6 ${
-                                    quote.status === EQuoteStatus.DRAFT
-                                      ? "bg-slate-100 text-slate-800 hover:bg-slate-200 w-24"
-                                      : "bg-blue-100 text-blue-800 hover:bg-blue-200 w-24"
-                                  } [&>svg]:hidden`}
-                                >
-                                  <SelectValue>
-                                    {quote.status === EQuoteStatus.DRAFT ? "Borrador" : "Enviado"}
-                                  </SelectValue>
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value={EQuoteStatus.DRAFT}>
-                                    Borrador
-                                  </SelectItem>
-                                  <SelectItem value={EQuoteStatus.SENT}>
-                                    Enviado
-                                  </SelectItem>
-                                  <SelectItem value={EQuoteStatus.CONFIRMED}>
-                                    Confirmado
-                                  </SelectItem>
-                                  <SelectItem value={EQuoteStatus.REJECTED}>
-                                    Rechazado
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex justify-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Ver presupuesto"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                onClick={() => handleViewQuote(quote.id, quote.number)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Descargar"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  handleDownload(quote);
-                                }}
-                                disabled={downloading === quote.id}
-                                type="button"
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell
-                        colSpan={7}
-                        className="text-center py-8 text-slate-500"
-                      >
-                        {searchTerm || statusFilter !== "all"
-                          ? "No se encontraron presupuestos con los filtros aplicados."
-                          : "No hay presupuestos disponibles. ¡Crea tu primer presupuesto!"}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-
-              {totalPages > 1 && (
-                <div className="mt-4">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                      
-                      {getPageNumbers().map((pageNumber, index) => (
-                        <PaginationItem key={index}>
-                          {pageNumber === -1 ? (
-                            <PaginationEllipsis />
-                          ) : (
-                            <PaginationLink
-                              onClick={() => setCurrentPage(pageNumber)}
-                              isActive={currentPage === pageNumber}
-                              className={currentPage === pageNumber ? "bg-blue-900 text-white" : ""}
-                            >
-                              {pageNumber}
-                            </PaginationLink>
-                          )}
-                        </PaginationItem>
-                      ))}
-
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold">
+                Presupuestos
+              </CardTitle>
+              <span className="text-sm text-muted-foreground">
+                {filteredQuotes?.length || 0} resultados
+              </span>
             </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {currentItems && currentItems.length > 0 ? (
+              <div className="space-y-1">
+                {currentItems.map((quote) => {
+                  const meta = [
+                    quote.number,
+                    `Vence ${formatDate(quote.validUntil)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ");
+                  return (
+                    <div
+                      key={quote.id}
+                      onClick={() => handleViewQuote(quote.id, quote.number)}
+                      className="flex items-center gap-4 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-150 group cursor-pointer"
+                    >
+                      {/* Icono */}
+                      <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                        <FileText className="h-4 w-4 text-blue-600" />
+                      </div>
+
+                      {/* Cliente + meta */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">
+                          {quote.client?.name || "-"}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {meta}
+                        </p>
+                      </div>
+
+                      {/* Total */}
+                      <div className="hidden sm:block text-right shrink-0 w-32">
+                        <p className="text-sm font-medium">
+                          {formatearPrecio(quote.total)}
+                        </p>
+                      </div>
+
+                      {/* Estado */}
+                      <div
+                        className="shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {quote.status === EQuoteStatus.CONFIRMED ||
+                        quote.status === EQuoteStatus.REJECTED ? (
+                          <span
+                            className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium h-6 w-24 ${
+                              quote.status === EQuoteStatus.CONFIRMED
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {quote.status === EQuoteStatus.CONFIRMED
+                              ? "Confirmado"
+                              : "Rechazado"}
+                          </span>
+                        ) : (
+                          <Select
+                            value={quote.status}
+                            onValueChange={(newStatus: EQuoteStatus) =>
+                              handleStatusChange(quote.id, newStatus)
+                            }
+                          >
+                            <SelectTrigger
+                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium border-none shadow-none cursor-pointer transition-colors h-6 w-24 ${
+                                quote.status === EQuoteStatus.DRAFT
+                                  ? "bg-slate-100 text-slate-800 hover:bg-slate-200"
+                                  : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                              } [&>svg]:hidden`}
+                            >
+                              <SelectValue>
+                                {quote.status === EQuoteStatus.DRAFT
+                                  ? "Borrador"
+                                  : "Enviado"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={EQuoteStatus.DRAFT}>
+                                Borrador
+                              </SelectItem>
+                              <SelectItem value={EQuoteStatus.SENT}>
+                                Enviado
+                              </SelectItem>
+                              <SelectItem value={EQuoteStatus.CONFIRMED}>
+                                Confirmado
+                              </SelectItem>
+                              <SelectItem value={EQuoteStatus.REJECTED}>
+                                Rechazado
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
+
+                      {/* Acciones */}
+                      <div
+                        className="shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              type="button"
+                              title="Acciones"
+                              className="h-8 w-8 text-slate-500 hover:text-slate-900"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-44 p-1">
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                              onClick={() =>
+                                handleViewQuote(quote.id, quote.number)
+                              }
+                            >
+                              <Eye className="h-4 w-4" />
+                              Ver presupuesto
+                            </button>
+                            <button
+                              type="button"
+                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+                              onClick={() => handleDownload(quote)}
+                              disabled={downloading === quote.id}
+                            >
+                              {downloading === quote.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Download className="h-4 w-4" />
+                              )}
+                              Descargar PDF
+                            </button>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                {searchTerm || statusFilter !== "all"
+                  ? "No se encontraron presupuestos con los filtros aplicados."
+                  : "No hay presupuestos disponibles. ¡Crea tu primer presupuesto!"}
+              </div>
+            )}
+
+            {filteredQuotes && filteredQuotes.length > 0 && (
+              <div className="border-t">
+                <TablePagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={filteredQuotes?.length ?? 0}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                  onItemsPerPageChange={(n) => {
+                    setItemsPerPage(n);
+                    setCurrentPage(1);
+                  }}
+                  pageSizeOptions={[10, 15, 25]}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

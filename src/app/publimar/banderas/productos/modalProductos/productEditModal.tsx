@@ -22,6 +22,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 import { storage } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
@@ -46,7 +47,7 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductGroup, TProductVariant } from "@/types/product";
-import { Trash2, Bell, ShoppingCartIcon, Upload, X, Image as ImageIcon, PackageCheck, PackageX } from "lucide-react";
+import { Trash2, Bell, ShoppingCartIcon, Upload, X, Image as ImageIcon, PackageCheck, PackageX, Plus } from "lucide-react";
 import { generateSlug } from "@/lib/utils";
 
 interface ProductEditModalProps {
@@ -482,43 +483,49 @@ export default function ProductEditModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <span>Editar producto: {formData.name}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          title="Cerrar"
+          className="absolute right-4 top-4 z-10 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <DialogHeader className="pr-8">
+          <DialogTitle className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="text-lg font-semibold">Editar producto</span>
+            {formData.name && (
+              <span className="text-lg font-normal text-slate-500 truncate">
+                {formData.name}
+              </span>
+            )}
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setFormData(prev => ({ ...prev, lowStock: !prev.lowStock }))}
-                className="transition-all duration-200 hover:scale-110"
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  formData.lowStock
+                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                    : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
+                }`}
                 title={formData.lowStock ? "Desactivar alerta de stock bajo" : "Activar alerta de stock bajo"}
               >
-                <Bell
-                  className={`h-5 w-5 ${
-                    formData.lowStock
-                      ? 'fill-amber-500 text-amber-500'
-                      : 'text-gray-300 hover:text-gray-400'
-                  }`}
-                />
+                <Bell className={`h-3.5 w-3.5 ${formData.lowStock ? "fill-amber-500 text-amber-500" : ""}`} />
+                Alerta de stock
               </button>
               <button
                 type="button"
                 onClick={() => setFormData(prev => ({ ...prev, ecommerce: !prev.ecommerce }))}
-                className="transition-all duration-200 hover:scale-110"
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  formData.ecommerce
+                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                    : "border-slate-200 bg-white text-slate-400 hover:text-slate-600"
+                }`}
                 title={formData.ecommerce ? "Desactivar ecommerce" : "Activar ecommerce"}
               >
-                <ShoppingCartIcon
-                  className={`h-5 w-5 ${formData.ecommerce ? 'fill-blue-500 text-blue-500' : 'text-gray-300 hover:text-gray-400'}`}
-                />
-              </button> 
-            </div>
-            <div className="flex gap-2">
-              <Button
-                className="bg-red-500 hover:bg-red-600 text-white"
-                variant="outline"
-                onClick={onClose}
-              >
-                Cancelar
-              </Button>
+                <ShoppingCartIcon className={`h-3.5 w-3.5 ${formData.ecommerce ? "fill-blue-500 text-blue-500" : ""}`} />
+                Ecommerce
+              </button>
             </div>
           </DialogTitle>
         </DialogHeader>
@@ -707,15 +714,25 @@ export default function ProductEditModal({
                   }));
                 }}
                 size="sm"
-                className="bg-blue-900 hover:bg-blue-900 hover:text-white text-white"
+                className="bg-blue-900 hover:bg-blue-800 text-white"
               >
-                +
+                <Plus className="h-4 w-4 mr-1" />
+                Agregar variante
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-4">
+              <div className="space-y-3">
+                {/* Encabezados de columna (solo desktop) */}
+                <div className="hidden md:flex items-center gap-4 px-4 text-xs font-medium text-slate-500">
+                  <span className="w-5 shrink-0" />
+                  <span className="w-32 shrink-0">SKU</span>
+                  <span className="flex-1">Medida</span>
+                  <span className="flex-1">Precio</span>
+                  <span className="flex-1">Stock</span>
+                  <span className="w-9 shrink-0" />
+                </div>
                 {formData.variants.map((variant, index) => (
-                  <div key={variant.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div key={variant.id} className="flex items-center gap-4 p-4 bg-slate-50 border border-slate-200 rounded-lg">
                     <button
                       type="button"
                       onClick={() => {
@@ -742,8 +759,7 @@ export default function ProductEditModal({
                         <PackageCheck className="h-5 w-5 text-green-600" />
                       )}
                     </button>
-                    <div>
-                      {/* <Label className="text-sm font-medium text-gray-700">SKU</Label> */}
+                    <div className="w-32 shrink-0">
                       <Input
                         value={variant.sku || "-"}
                         onChange={(e) => {
@@ -780,26 +796,23 @@ export default function ProductEditModal({
                     </div>
                     <div className="flex-1">
                       <div className="relative">
-                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-blue-500">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
                           $
                         </span>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={variant.price}
-                          onChange={(e) => {
+                        <MoneyInput
+                          value={Number(variant.price) || 0}
+                          onValueChange={(n) => {
                             const newVariants = [...formData.variants];
                             newVariants[index] = {
                               ...variant,
-                              price: e.target.value,
+                              price: String(n),
                             };
                             setFormData((prev) => ({
                               ...prev,
                               variants: newVariants,
                             }));
                           }}
-                          className="pl-8"
+                          className="pl-7"
                           placeholder="Precio"
                         />
                       </div>
@@ -824,41 +837,41 @@ export default function ProductEditModal({
                         placeholder="Stock"
                       />
                     </div>
-                    {formData.variants.length > 1 && (
-                      <Button
-                        onClick={() => handleRemoveVariant(variant.id)}
-                        variant="ghost"
-                        size="icon"
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                        title="Eliminar"
-                        type="button"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
+                    <div className="w-9 shrink-0">
+                      {formData.variants.length > 1 && (
+                        <Button
+                          onClick={() => handleRemoveVariant(variant.id)}
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          title="Eliminar"
+                          type="button"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
 
-          <div className="flex justify-end gap-2 pt-4">
-          <Button
+          <div className="flex justify-end gap-2 pt-4 border-t mt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+            >
+              Cancelar
+            </Button>
+            <Button
               className="bg-green-600 hover:bg-green-700 text-white"
               type="submit"
               disabled={loading}
             >
               {loading ? "Guardando..." : "Guardar cambios"}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="bg-red-500 hover:bg-red-600 text-white"
-            >
-              Cancelar
-            </Button>
-        
           </div>
         </form>
       </DialogContent>

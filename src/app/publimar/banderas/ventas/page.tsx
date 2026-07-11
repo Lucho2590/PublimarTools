@@ -4,18 +4,10 @@ import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy, where } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -23,22 +15,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SummaryCard } from "@/components/admin/SummaryCard";
+import { TablePagination } from "@/components/admin/TablePagination";
 import collections from "@/lib/collections";
 import { EPaymentMethod, TSale } from "@/types/sale";
 import { formatearPrecio, redondearADecena } from "@/lib/utils";
 // import { NuevaVentaModal } from "./modalVentas/newSaleModal";
 import { SaleDetailsModal } from "./modalVentas/saleDetailsModal";
-import { Eye, Trophy, ShoppingCart } from "lucide-react";
+import { Eye, Trophy, ShoppingCart, Plus, Coins, Receipt, FileText } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TProduct } from "@/types/product";
 
@@ -203,30 +194,25 @@ export default function VentasPage() {
     }, 0) || 0;
   }, [filteredSales]);
 
+  // KPIs de resumen sobre las ventas de la vista actual (respeta filtros/fechas).
+  const stats = useMemo(() => {
+    const list = (filteredSales ?? []) as unknown as TSale[];
+    let facturado = 0;
+    let sinFacturar = 0;
+    for (const s of list) {
+      const amount = Number(s.finalTotal ?? s.total) || 0;
+      const invoiced = s.isInvoiced || (s.facturas && s.facturas.length > 0);
+      if (invoiced) facturado += amount;
+      else sinFacturar += amount;
+    }
+    return { count: list.length, facturado, sinFacturar };
+  }, [filteredSales]);
+
   // Paginación
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredSales?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredSales?.length || 0) / itemsPerPage);
-
-  const getPageNumbers = () => {
-    const pageNumbers = [];
-    const maxPagesToShow = 5;
-    if (totalPages <= maxPagesToShow) {
-      for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
-    } else if (currentPage <= 3) {
-      for (let i = 1; i <= 4; i++) pageNumbers.push(i);
-      pageNumbers.push(-1, totalPages);
-    } else if (currentPage >= totalPages - 2) {
-      pageNumbers.push(1, -1);
-      for (let i = totalPages - 3; i <= totalPages; i++) pageNumbers.push(i);
-    } else {
-      pageNumbers.push(1, -1);
-      for (let i = currentPage - 1; i <= currentPage + 1; i++) pageNumbers.push(i);
-      pageNumbers.push(-1, totalPages);
-    }
-    return pageNumbers;
-  };
 
   // Limpiar todos los filtros y volver al día actual
   const limpiarFiltros = () => {
@@ -379,8 +365,13 @@ export default function VentasPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Ventas</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Ventas</h1>
+          <p className="text-slate-600 text-sm mt-1">
+            Historial de ventas por período, con montos y facturación
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline">
             <a href="/pos" target="_blank" rel="noopener noreferrer">
@@ -388,13 +379,40 @@ export default function VentasPage() {
               Punto de Venta
             </a>
           </Button>
-          <Button
-            asChild
-            className="bg-blue-900 hover:bg-blue-900 hover:text-white"
-          >
-            <Link href="/publimar/banderas/ventas/nueva">Nueva Venta</Link>
+          <Button asChild className="bg-blue-900 hover:bg-blue-800 text-white">
+            <Link href="/publimar/banderas/ventas/nueva">
+              <Plus className="w-4 h-4 mr-2" />
+              Nueva Venta
+            </Link>
           </Button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <SummaryCard
+          title="Ventas"
+          value={stats.count}
+          icon={ShoppingCart}
+          variant="blue"
+        />
+        <SummaryCard
+          title="Monto total"
+          value={formatearPrecio(totalVentas)}
+          icon={Coins}
+          variant="slate"
+        />
+        <SummaryCard
+          title="Facturado"
+          value={formatearPrecio(stats.facturado)}
+          icon={Receipt}
+          variant="green"
+        />
+        <SummaryCard
+          title="Sin facturar"
+          value={formatearPrecio(stats.sinFacturar)}
+          icon={FileText}
+          variant="amber"
+        />
       </div>
 
 
@@ -589,195 +607,203 @@ export default function VentasPage() {
                 </svg>
               </Button>
             </div>
-
-            {/* Resumen de totales */}
-            <div className="grid grid-cols-2 gap-4 p-4 bg-slate-50 rounded-lg">
-              <div>
-                <p className="text-sm text-slate-500">Total de ventas</p>
-                <p className="text-2xl font-bold">{formatearPrecio(totalVentas)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-500">Cantidad de ventas</p>
-                <p className="text-2xl font-bold">{filteredSales?.length || 0}</p>
-              </div>
-            </div>
           </div>
         </CardContent>
       </Card>
 
 
       {status === "loading" ? (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto p-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Método de Pago</TableHead>
-                    <TableHead>Facturado</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {[...Array(5)].map((_, i) => (
-                    <TableRow key={i}>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell className="text-center"><Skeleton className="h-8 w-20" /></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4 space-y-2">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 p-3">
+                <Skeleton className="h-9 w-9 rounded-lg" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-56" />
+                </div>
+                <Skeleton className="h-4 w-24" />
+              </div>
+            ))}
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto p-6">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Mostrar</span>
-                  <Select
-                    value={itemsPerPage.toString()}
-                    onValueChange={(value) => {
-                      setItemsPerPage(Number(value));
-                      setCurrentPage(1);
-                    }}
-                  >
-                    <SelectTrigger className="w-[100px]">
-                      <SelectValue placeholder="25" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10</SelectItem>
-                      <SelectItem value="25">25</SelectItem>
-                      <SelectItem value="50">50</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span className="text-sm text-gray-500">por página</span>
-                </div>
-                <div className="text-sm text-gray-500">
-                  Mostrando {indexOfFirstItem + 1} a {Math.min(indexOfLastItem, filteredSales?.length || 0)} de {filteredSales?.length || 0} ventas
-                </div>
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Número</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Método de Pago</TableHead>
-                    <TableHead>Facturado</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {currentItems && currentItems.length > 0 ? (
-                    currentItems.map((sale) => {
-                      const typedSale = sale as unknown as TSale;
-                      return (
-                        <TableRow key={typedSale.id}>
-                          <TableCell className="font-medium">
-                            #{typedSale.number}
-                          </TableCell>
-                          <TableCell>{formatDate(typedSale.createdAt)}</TableCell>
-                          <TableCell>
-                            {formatPaymentMethod(typedSale.paymentMethod)}
-                          </TableCell>
-                          <TableCell>
-                            {typedSale.isInvoiced ||(typedSale.facturas && typedSale.facturas.length > 0) ? (
-                              <span className="text-green-600">Sí</span>
-                            ) : (
-                              <span className="text-red-600">No</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatearPrecio(redondearADecena(typedSale.finalTotal ?? typedSale.total))}
-                            {typedSale.returns && typedSale.returns.length > 0 && (
-                              (() => {
-                                const hasExchanges = typedSale.returns?.some(r => r.isExchange);
-                                const hasReturnsOnly = typedSale.returns?.some(r => !r.isExchange);
-                                if (hasExchanges && hasReturnsOnly) {
-                                  return <span className="text-xs text-purple-600 ml-1" title="Tiene devoluciones y cambios">◆</span>;
-                                } else if (hasExchanges) {
-                                  return <span className="text-xs text-purple-600 ml-1" title="Tiene cambios">↔</span>;
-                                } else {
-                                  return <span className="text-xs text-orange-600 ml-1" title="Tiene devoluciones">↩</span>;
-                                }
-                              })()
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <div className="flex justify-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                title="Ver"
-                                className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
-                                onClick={() => typedSale.id && handleViewSale(typedSale.id)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  ) : (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="text-center py-8 text-slate-500"
-                      >
-                        No hay ventas registradas
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-
-              {totalPages > 1 && (
-                <div className="mt-4">
-                  <Pagination>
-                    <PaginationContent>
-                      <PaginationItem>
-                        <PaginationPrevious
-                          onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                          className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                      {getPageNumbers().map((pageNumber, index) => (
-                        <PaginationItem key={index}>
-                          {pageNumber === -1 ? (
-                            <PaginationEllipsis />
-                          ) : (
-                            <PaginationLink
-                              onClick={() => setCurrentPage(pageNumber)}
-                              isActive={currentPage === pageNumber}
-                              className={currentPage === pageNumber ? "bg-blue-900 text-white" : ""}
-                            >
-                              {pageNumber}
-                            </PaginationLink>
-                          )}
-                        </PaginationItem>
-                      ))}
-                      <PaginationItem>
-                        <PaginationNext
-                          onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : ""}
-                        />
-                      </PaginationItem>
-                    </PaginationContent>
-                  </Pagination>
-                </div>
-              )}
+        <Card className="border-0 shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base font-semibold">Ventas</CardTitle>
+              <span className="text-sm text-muted-foreground">
+                {filteredSales?.length || 0} resultados
+              </span>
             </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {currentItems && currentItems.length > 0 ? (
+              <TooltipProvider delayDuration={200}>
+              <div className="space-y-1">
+                {currentItems.map((sale) => {
+                  const typedSale = sale as unknown as TSale;
+                  const saleItems = typedSale.items ?? [];
+                  const invoiced =
+                    typedSale.isInvoiced ||
+                    (typedSale.facturas && typedSale.facturas.length > 0);
+                  const returnBadge = (() => {
+                    if (!typedSale.returns || typedSale.returns.length === 0)
+                      return null;
+                    const hasExchanges = typedSale.returns?.some((r) => r.isExchange);
+                    const hasReturnsOnly = typedSale.returns?.some(
+                      (r) => !r.isExchange
+                    );
+                    if (hasExchanges && hasReturnsOnly)
+                      return (
+                        <span
+                          className="text-xs text-purple-600 ml-1"
+                          title="Tiene devoluciones y cambios"
+                        >
+                          ◆
+                        </span>
+                      );
+                    if (hasExchanges)
+                      return (
+                        <span
+                          className="text-xs text-purple-600 ml-1"
+                          title="Tiene cambios"
+                        >
+                          ↔
+                        </span>
+                      );
+                    return (
+                      <span
+                        className="text-xs text-orange-600 ml-1"
+                        title="Tiene devoluciones"
+                      >
+                        ↩
+                      </span>
+                    );
+                  })();
+                  return (
+                    <Tooltip key={typedSale.id}>
+                    <TooltipTrigger asChild>
+                    <div
+                      onClick={() => typedSale.id && handleViewSale(typedSale.id)}
+                      className="flex items-center gap-4 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-150 group cursor-pointer"
+                    >
+                      {/* Icono */}
+                      <div className="h-9 w-9 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                        <Receipt className="h-4 w-4 text-blue-600" />
+                      </div>
+
+                      {/* Número + meta */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">
+                          #{typedSale.number}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {formatDate(typedSale.createdAt)} ·{" "}
+                          {formatPaymentMethod(typedSale.paymentMethod)}
+                        </p>
+                      </div>
+
+                      {/* Facturación */}
+                      <span
+                        className={`hidden sm:inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium shrink-0 ${
+                          invoiced
+                            ? "bg-green-100 text-green-800"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {invoiced ? "Facturada" : "Sin factura"}
+                      </span>
+
+                      {/* Total */}
+                      <div className="text-right shrink-0 w-32">
+                        <p className="text-sm font-medium">
+                          {formatearPrecio(
+                            redondearADecena(
+                              typedSale.finalTotal ?? typedSale.total
+                            )
+                          )}
+                          {returnBadge}
+                        </p>
+                      </div>
+
+                      {/* Ver */}
+                      <Eye className="h-4 w-4 text-muted-foreground opacity-100 md:opacity-0 md:group-hover:opacity-100 md:transition-opacity shrink-0" />
+                    </div>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      align="start"
+                      className="max-w-sm border bg-white p-3 text-slate-700 shadow-md"
+                    >
+                      {saleItems.length > 0 ? (
+                        <>
+                          <p className="mb-1.5 font-medium text-slate-900">
+                            Items vendidos
+                          </p>
+                          <ul className="space-y-1">
+                            {saleItems.slice(0, 12).map((item, i) => (
+                              <li
+                                key={i}
+                                className="flex items-baseline justify-between gap-3"
+                              >
+                                <span className="truncate">
+                                  <span className="font-medium">
+                                    {item.quantity}×
+                                  </span>{" "}
+                                  {item.productName || item.description || "Item"}
+                                  {item.variantName ? (
+                                    <span className="text-slate-400">
+                                      {" "}
+                                      · {item.variantName}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span className="shrink-0 tabular-nums text-slate-500">
+                                  {formatearPrecio(
+                                    item.total ?? item.unitPrice * item.quantity
+                                  )}
+                                </span>
+                              </li>
+                            ))}
+                            {saleItems.length > 12 && (
+                              <li className="text-slate-400">
+                                +{saleItems.length - 12} más…
+                              </li>
+                            )}
+                          </ul>
+                        </>
+                      ) : (
+                        <p className="text-slate-500">Sin items</p>
+                      )}
+                    </TooltipContent>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+              </TooltipProvider>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                No hay ventas registradas
+              </div>
+            )}
+
+            {filteredSales && filteredSales.length > 0 && (
+              <div className="border-t">
+                <TablePagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  totalItems={filteredSales?.length ?? 0}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                  onItemsPerPageChange={(n) => {
+                    setItemsPerPage(n);
+                    setCurrentPage(1);
+                  }}
+                  pageSizeOptions={[10, 25, 50]}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
