@@ -4,7 +4,9 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, doc, updateDoc, where } from "firebase/firestore";
+import { collection, query, orderBy, limit, doc, updateDoc, where } from "firebase/firestore";
+import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,8 +30,7 @@ import { TablePagination } from "@/components/admin/TablePagination";
 import collections from "@/lib/collections";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { Eye, Download, FileText, Send, CheckCircle2, Coins, Plus, Search, Loader2, MoreVertical } from "lucide-react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+// jsPDF y jspdf-autotable (~1.6MB) se cargan bajo demanda dentro de handleDownload.
 import { toast } from "sonner";
 import { DocumentData } from "firebase/firestore";
 import { formatearPrecio, generateSlug } from "@/lib/utils";
@@ -39,6 +40,7 @@ import { EClientSection } from "@/types/client";
 export default function PresupuestosPage() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState<EQuoteStatus | "all">("all");
   const [downloading, setDownloading] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -80,18 +82,18 @@ export default function PresupuestosPage() {
   // Consulta a Firestore
   const quotesCollection = collection(firestore, collections.QUOTES);
   const quotesQuery = query(quotesCollection, orderBy("createdAt", "desc"),
-  where("client.section", "==", EClientSection.BANDERAS));
+  where("client.section", "==", EClientSection.BANDERAS), limit(LIST_FETCH_CAP));
 
   const { status, data: quotesData } = useFirestoreCollectionData(quotesQuery, {
     idField: "id",
   });
 
   // Filtrar presupuestos según la búsqueda y estado
-  const filteredQuotes = quotesData
+  const filteredQuotes = useMemo(() => quotesData
     ?.filter((quote: DocumentData) => {
       const matchesSearch =
-        quote.number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        quote.client.name.toLowerCase().includes(searchTerm.toLowerCase());
+        quote.number.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        quote.client.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
 
       const matchesStatus =
         statusFilter === "all" || quote.status === statusFilter;
@@ -112,7 +114,7 @@ export default function PresupuestosPage() {
           createdAt:
             comment.createdAt?.toDate?.() || new Date(comment.createdAt),
         })) || [],
-    })) as (TQuote & { id: string })[];
+    })) as (TQuote & { id: string })[], [quotesData, debouncedSearchTerm, statusFilter]);
 
   // Calcular índices para la paginación
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -150,6 +152,10 @@ export default function PresupuestosPage() {
   const handleDownload = async (quote: TQuote) => {
     try {
       setDownloading(quote.id);
+
+      // Carga bajo demanda de las librerías de PDF (evita ~1.6MB en el bundle inicial)
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
 
       // Crear el PDF
       const pdf = new jsPDF("p", "mm", "a4");
@@ -485,6 +491,14 @@ export default function PresupuestosPage() {
               </CardTitle>
               <span className="text-sm text-muted-foreground">
                 {filteredQuotes?.length || 0} resultados
+                {quotesData?.length === LIST_FETCH_CAP && (
+                  <span
+                    className="ml-1 text-amber-600"
+                    title="Se muestran los últimos 500; refiná con los filtros."
+                  >
+                    · máx. {LIST_FETCH_CAP}
+                  </span>
+                )}
               </span>
             </div>
           </CardHeader>

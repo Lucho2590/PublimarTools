@@ -39,8 +39,7 @@ import { EClientSection } from "@/types/client";
 import { Eye, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { EBillingStatus } from "@/types/billing";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+// jsPDF y jspdf-autotable (~1.6MB) se cargan bajo demanda dentro de handleDownloadPDF.
 import { formatearPrecio } from "@/lib/utils";
 
 export default function PresupuestosViaPublicaPage() {
@@ -297,6 +296,10 @@ export default function PresupuestosViaPublicaPage() {
   const handleDownloadPDF = async (quote: TQuote) => {
     try {
       setDownloading(quote.id);
+
+      // Carga bajo demanda de las librerías de PDF (evita ~1.6MB en el bundle inicial)
+      const { default: jsPDF } = await import("jspdf");
+      const { default: autoTable } = await import("jspdf-autotable");
 
       const pdf = new jsPDF("p", "mm", "a4");
       const pageWidth = pdf.internal.pageSize.getWidth();

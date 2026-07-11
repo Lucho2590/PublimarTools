@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatearPrecio } from "@/lib/utils";
@@ -38,7 +39,7 @@ interface BarDistributionProps {
  * Reutilizable para: gastos por categoría/proveedor, plata por cuenta,
  * ingresos/gastos por departamento, etc.
  */
-export function BarDistribution({
+export const BarDistribution = memo(function BarDistribution({
   title,
   items,
   color = "blue",
@@ -95,4 +96,4 @@ export function BarDistribution({
       <CardContent>{body}</CardContent>
     </Card>
   );
-}
+});

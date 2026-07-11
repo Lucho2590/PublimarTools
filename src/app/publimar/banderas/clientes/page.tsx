@@ -3,7 +3,9 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where } from "firebase/firestore";
+import { collection, query, orderBy, where, limit } from "firebase/firestore";
+import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,6 +62,7 @@ const timestampToDate = (timestamp: any): Date | null => {
 
 export default function ClientesPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const firestore = useFirestore();
@@ -68,7 +71,8 @@ export default function ClientesPage() {
   const clientsQuery = query(
     clientsCollection,
     where("section", "==", EClientSection.BANDERAS),
-    orderBy("name")
+    orderBy("name"),
+    limit(LIST_FETCH_CAP)
   );
 
   const { status, data: clients } = useFirestoreCollectionData(clientsQuery, {
@@ -109,18 +113,18 @@ export default function ClientesPage() {
 
   const filteredClients = useMemo(() => {
     return clients?.filter((client) => {
-      const searchNormalized = normalizeText(searchTerm);
+      const searchNormalized = normalizeText(debouncedSearchTerm);
       const matchesSearch =
         normalizeText(client.name || "").includes(searchNormalized) ||
         normalizeText(client.email || "").includes(searchNormalized) ||
-        client.phone?.includes(searchTerm) ||
-        client.cuit?.includes(searchTerm);
+        client.phone?.includes(debouncedSearchTerm) ||
+        client.cuit?.includes(debouncedSearchTerm);
 
       const isActive = client.status === EClientStatus.ACTIVE;
 
       return matchesSearch && isActive;
     });
-  }, [clients, searchTerm]);
+  }, [clients, debouncedSearchTerm]);
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -279,6 +283,14 @@ export default function ClientesPage() {
               </CardTitle>
               <span className="text-sm text-muted-foreground">
                 {filteredClients?.length || 0} resultados
+                {clients?.length === LIST_FETCH_CAP && (
+                  <span
+                    className="ml-1 text-amber-600"
+                    title="Se muestran los primeros 500; refiná con la búsqueda."
+                  >
+                    · máx. {LIST_FETCH_CAP}
+                  </span>
+                )}
               </span>
             </div>
           </CardHeader>

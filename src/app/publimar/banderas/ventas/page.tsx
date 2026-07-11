@@ -2,7 +2,9 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where } from "firebase/firestore";
+import { collection, query, orderBy, where, limit } from "firebase/firestore";
+import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,6 +48,7 @@ export default function VentasPage() {
   });
   const [selectedBank, setSelectedBank] = useState<string>("all");
   const [searchProductTerm, setSearchProductTerm] = useState("");
+  const debouncedSearchProductTerm = useDebouncedValue(searchProductTerm);
   const [selectedProduct, setSelectedProduct] = useState<string>("all");
   const [selectedVariant, setSelectedVariant] = useState<string>("all");
   const [showProductDropdown, setShowProductDropdown] = useState(false);
@@ -89,6 +92,7 @@ export default function VentasPage() {
     }
 
     constraints.push(orderBy("createdAt", "desc"));
+    constraints.push(limit(LIST_FETCH_CAP));
 
     return query(salesCollection, ...constraints);
   }, [salesCollection, dateRange]);
@@ -151,8 +155,8 @@ export default function VentasPage() {
 
       // Filtrar por texto libre de producto
       let matchesProductSearch = true;
-      if (searchProductTerm.trim() !== "") {
-        const searchNormalized = normalizeText(searchProductTerm);
+      if (debouncedSearchProductTerm.trim() !== "") {
+        const searchNormalized = normalizeText(debouncedSearchProductTerm);
         matchesProductSearch = typedSale.items?.some((item) =>
           normalizeText(item.productName || '').includes(searchNormalized)
         ) || false;
@@ -184,7 +188,7 @@ export default function VentasPage() {
 
       return matchesPaymentMethod && matchesInvoiced && matchesBank && matchesProductSearch && matchesProductSelect && matchesVariantSelect && matchesReturns;
     });
-  }, [sales, selectedPaymentMethod, selectedInvoiced, selectedBank, searchProductTerm, selectedProduct, selectedVariant, selectedReturns]);
+  }, [sales, selectedPaymentMethod, selectedInvoiced, selectedBank, debouncedSearchProductTerm, selectedProduct, selectedVariant, selectedReturns]);
 
   // Calcular total de ventas filtradas (memoizado)
   const totalVentas = useMemo(() => {
@@ -634,6 +638,14 @@ export default function VentasPage() {
               <CardTitle className="text-base font-semibold">Ventas</CardTitle>
               <span className="text-sm text-muted-foreground">
                 {filteredSales?.length || 0} resultados
+                {sales?.length === LIST_FETCH_CAP && (
+                  <span
+                    className="ml-1 text-amber-600"
+                    title="Se muestran las últimas 500; refiná con los filtros y el rango de fechas."
+                  >
+                    · máx. {LIST_FETCH_CAP}
+                  </span>
+                )}
               </span>
             </div>
           </CardHeader>

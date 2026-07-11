@@ -3,7 +3,9 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { collection, query, orderBy, limit, where, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +38,7 @@ import { toast } from "sonner";
 
 export default function PedidosPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebouncedValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState<EOrderStatus | "all">("all");
   const [showModal, setShowModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -244,6 +247,7 @@ export default function PedidosPage() {
     }
 
     constraints.push(orderBy("createdAt", "desc"));
+    constraints.push(limit(LIST_FETCH_CAP));
 
     return query(ordersCollection, ...constraints);
   }, [ordersCollection, statusFilter]);
@@ -254,8 +258,8 @@ export default function PedidosPage() {
 
   // Filtrar solo por búsqueda de texto (estado ya filtrado en Firestore)
   const filteredOrders = useMemo(() => {
-    if (!searchTerm) return orders;
-    const search = searchTerm.toLowerCase();
+    if (!debouncedSearchTerm) return orders;
+    const search = debouncedSearchTerm.toLowerCase();
     return orders?.filter((order) => {
       return (
         order.number?.toLowerCase().includes(search) ||
@@ -265,7 +269,7 @@ export default function PedidosPage() {
         order.reference?.toLowerCase().includes(search)
       );
     });
-  }, [orders, searchTerm]);
+  }, [orders, debouncedSearchTerm]);
 
   // Calcular índices para la paginación
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -408,6 +412,14 @@ export default function PedidosPage() {
               <CardTitle className="text-base font-semibold">Órdenes</CardTitle>
               <span className="text-sm text-muted-foreground">
                 {filteredOrders?.length || 0} resultados
+                {orders?.length === LIST_FETCH_CAP && (
+                  <span
+                    className="ml-1 text-amber-600"
+                    title="Se muestran las últimas 500; refiná con los filtros."
+                  >
+                    · máx. {LIST_FETCH_CAP}
+                  </span>
+                )}
               </span>
             </div>
           </CardHeader>

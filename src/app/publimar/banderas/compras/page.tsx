@@ -3,7 +3,8 @@
 import { useState, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy } from "firebase/firestore";
+import { collection, query, orderBy, limit } from "firebase/firestore";
+import { LIST_FETCH_CAP } from "@/lib/queryLimits";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -142,7 +143,7 @@ export default function ComprasPage() {
   });
 
   const purchasesCollection = collection(firestore, "purchases");
-  const purchasesQuery = query(purchasesCollection, orderBy("date", "desc"));
+  const purchasesQuery = query(purchasesCollection, orderBy("date", "desc"), limit(LIST_FETCH_CAP));
   const { status: purStatus, data: purchases } = useFirestoreCollectionData(
     purchasesQuery,
     { idField: "id" }

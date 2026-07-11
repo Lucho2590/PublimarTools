@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useTransition } from "react";
 import { useFirestore } from "reactfire";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { TEcommerceOrder } from "@/types/ecommerceOrder";
-import { TAbandonedCart } from "@/types/abandonedCart";
+import {
+  collection,
+  query,
+  where,
+  getCountFromServer,
+} from "firebase/firestore";
 
 export function useUnviewedCount() {
   const firestore = useFirestore();
@@ -11,28 +14,34 @@ export function useUnviewedCount() {
 
   const loadUnviewedCount = useCallback(async () => {
     try {
-      // Contar pedidos no vistos
-      const ordersSnap = await getDocs(collection(firestore, "ecommerceOrders"));
-      const orders = ordersSnap.docs.map(
-        (doc) => ({ ...doc.data(), id: doc.id } as TEcommerceOrder)
+      // Conteo agregado en el servidor (no descarga documentos).
+      const unviewedOrdersQuery = query(
+        collection(firestore, "ecommerceOrders"),
+        where("viewed", "==", false)
       );
-      const unviewedOrders = orders.filter((order) => !order.viewed).length;
-
-      // Contar carritos no vistos
-      const cartsQuery = query(
+      const unviewedCartsQuery = query(
         collection(firestore, "abandonedCarts"),
         where("abandoned", "==", true),
-        where("converted", "==", false)
+        where("converted", "==", false),
+        where("viewed", "==", false)
       );
-      const cartsSnap = await getDocs(cartsQuery);
-      const carts = cartsSnap.docs.map(
-        (doc) => ({ ...doc.data(), id: doc.id } as TAbandonedCart)
-      );
-      const unviewedCarts = carts.filter((cart) => !cart.viewed).length;
+
+      // allSettled: si a una le falta el índice compuesto (aún no deployado),
+      // la otra sigue contando en vez de anular todo el badge.
+      const [ordersRes, cartsRes] = await Promise.allSettled([
+        getCountFromServer(unviewedOrdersQuery),
+        getCountFromServer(unviewedCartsQuery),
+      ]);
+
+      const ordersCount =
+        ordersRes.status === "fulfilled" ? ordersRes.value.data().count : 0;
+      const cartsCount =
+        cartsRes.status === "fulfilled" ? cartsRes.value.data().count : 0;
+      const total = ordersCount + cartsCount;
 
       // Actualizar en una transición para no bloquear la UI
       startTransition(() => {
-        setUnviewedCount(unviewedOrders + unviewedCarts);
+        setUnviewedCount(total);
       });
     } catch (error) {
       console.error("Error loading unviewed count:", error);
@@ -43,8 +52,8 @@ export function useUnviewedCount() {
     // Cargar después de un pequeño delay para no bloquear el render inicial
     const initialTimeout = setTimeout(loadUnviewedCount, 100);
 
-    // Actualizar cada 30 segundos
-    const interval = setInterval(loadUnviewedCount, 30000);
+    // Actualizar cada 60 segundos
+    const interval = setInterval(loadUnviewedCount, 60000);
 
     return () => {
       clearTimeout(initialTimeout);

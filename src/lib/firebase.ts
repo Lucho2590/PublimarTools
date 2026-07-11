@@ -1,5 +1,12 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getStorage } from "firebase/storage";
+import {
+  Firestore,
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -17,6 +24,24 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 // Initialize Storage
 const storage = getStorage(app);
 
+// Firestore con caché offline persistente (IndexedDB) en el navegador: hidrata
+// al instante desde el cache local y sincroniza en segundo plano. En SSR o si ya
+// estaba inicializado, cae al getFirestore por defecto.
+let firestore: Firestore;
+if (typeof window !== "undefined") {
+  try {
+    firestore = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch {
+    firestore = getFirestore(app);
+  }
+} else {
+  firestore = getFirestore(app);
+}
+
 // Solo inicializa analytics en el cliente
 let analytics: any = null;
 if (typeof window !== "undefined") {
@@ -25,4 +50,4 @@ if (typeof window !== "undefined") {
   });
 }
 
-export { app, storage, analytics }; 
+export { app, storage, analytics, firestore };

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatearPrecio } from "@/lib/utils";
 import type { MonthlyPoint } from "@/lib/rentabilidad";
@@ -13,7 +14,7 @@ interface MonthlyTrendProps {
  * Tendencia mensual de ingresos vs gastos con columnas (divs + Tailwind).
  * Cada mes muestra dos barras: ingresos (verde) y gastos (rojo).
  */
-export function MonthlyTrend({ title = "Tendencia mensual", data }: MonthlyTrendProps) {
+export const MonthlyTrend = memo(function MonthlyTrend({ title = "Tendencia mensual", data }: MonthlyTrendProps) {
   const max = Math.max(
     1,
     ...data.map((p) => Math.max(p.ingresos, p.gastos)),
@@ -68,4 +69,4 @@ export function MonthlyTrend({ title = "Tendencia mensual", data }: MonthlyTrend
       </CardContent>
     </Card>
   );
-}
+});
