@@ -46,7 +46,7 @@ import {
 import { toast } from "sonner";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductGroup, TProductVariant } from "@/types/product";
-import { Trash2, Bell, ShoppingCartIcon, Upload, X, Image as ImageIcon } from "lucide-react";
+import { Trash2, Bell, ShoppingCartIcon, Upload, X, Image as ImageIcon, PackageCheck, PackageX } from "lucide-react";
 import { generateSlug } from "@/lib/utils";
 
 interface ProductEditModalProps {
@@ -333,7 +333,8 @@ export default function ProductEditModal({
           size: variant.size,
           price: parseFloat(String(variant.price)) || 0,
           stock: variant.stock !== "" ? (parseInt(String(variant.stock)) || 0) : null,
-          sku: variant.sku || ""
+          sku: variant.sku || "",
+          discountStock: variant.discountStock !== false
         })),
         updatedAt: serverTimestamp(),
       };
@@ -698,6 +699,7 @@ export default function ProductEditModal({
                     price: "",
                     stock: "",
                     sku: "-",
+                    discountStock: true,
                   };
                   setFormData((prev) => ({
                     ...prev,
@@ -714,6 +716,32 @@ export default function ProductEditModal({
               <div className="space-y-4">
                 {formData.variants.map((variant, index) => (
                   <div key={variant.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newVariants = [...formData.variants];
+                        newVariants[index] = {
+                          ...variant,
+                          discountStock: variant.discountStock === false,
+                        };
+                        setFormData((prev) => ({
+                          ...prev,
+                          variants: newVariants,
+                        }));
+                      }}
+                      className="shrink-0 transition-all duration-200 hover:scale-110"
+                      title={
+                        variant.discountStock === false
+                          ? "No descuenta stock al vender (click para activar)"
+                          : "Descuenta stock al vender (click para desactivar)"
+                      }
+                    >
+                      {variant.discountStock === false ? (
+                        <PackageX className="h-5 w-5 text-gray-300 hover:text-gray-400" />
+                      ) : (
+                        <PackageCheck className="h-5 w-5 text-green-600" />
+                      )}
+                    </button>
                     <div>
                       {/* <Label className="text-sm font-medium text-gray-700">SKU</Label> */}
                       <Input

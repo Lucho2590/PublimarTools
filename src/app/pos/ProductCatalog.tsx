@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
 import { formatearPrecio } from "@/lib/utils";
+import { variantDiscountsStock } from "@/lib/stock";
 
 type ViewMode = "grid" | "list";
 
@@ -329,9 +330,10 @@ export function ProductCatalog({
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             {filtered.map((product) => {
               const variant = getVariant(product);
+              const tracksStock = variantDiscountsStock(variant);
               const stock = Number(variant?.stock ?? 0);
               const inCart = variant ? cartQty(product.id, variant.id) : 0;
-              const disabled = !variant || stock - inCart <= 0;
+              const disabled = !variant || (tracksStock && stock - inCart <= 0);
               return (
                 <div
                   key={product.id}
@@ -374,10 +376,12 @@ export function ProductCatalog({
                     </span>
                     <span
                       className={`text-xs ${
-                        stock - inCart <= 0 ? "text-red-500" : "text-gray-400"
+                        tracksStock && stock - inCart <= 0
+                          ? "text-red-500"
+                          : "text-gray-400"
                       }`}
                     >
-                      Stock: {stock - inCart}
+                      {tracksStock ? `Stock: ${stock - inCart}` : "Stock libre"}
                     </span>
                   </div>
                   <Button
@@ -397,9 +401,10 @@ export function ProductCatalog({
           <div className="divide-y rounded-lg border bg-white">
             {filtered.map((product) => {
               const variant = getVariant(product);
+              const tracksStock = variantDiscountsStock(variant);
               const stock = Number(variant?.stock ?? 0);
               const inCart = variant ? cartQty(product.id, variant.id) : 0;
-              const disabled = !variant || stock - inCart <= 0;
+              const disabled = !variant || (tracksStock && stock - inCart <= 0);
               return (
                 <div
                   key={product.id}
@@ -410,7 +415,7 @@ export function ProductCatalog({
                       {product.name}
                     </div>
                     <div className="text-xs text-gray-400">
-                      Stock: {stock - inCart}
+                      {tracksStock ? `Stock: ${stock - inCart}` : "Stock libre"}
                     </div>
                   </div>
                   {product.variants?.length > 1 && (

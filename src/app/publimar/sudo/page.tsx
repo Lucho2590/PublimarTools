@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDate } from "@/lib/utils";
+import { variantDiscountsStock } from "@/lib/stock";
 import { Trash2, RotateCcw, RefreshCw, ChevronDown, ChevronRight } from "lucide-react";
 import collections from "@/lib/collections";
 import { useAuth } from "@/contexts/AuthContext";
@@ -166,12 +167,18 @@ export default function SudoPage() {
                   const currentProduct = productDoc.data();
 
                   if (saleItem.variantId && currentProduct.variants) {
+                    const variant = currentProduct.variants.find(
+                      (v: any) => v.id === saleItem.variantId,
+                    );
+                    const shouldDiscount = variantDiscountsStock(variant);
                     await updateDoc(productRef, {
-                      variants: currentProduct.variants.map((v: any) =>
-                        v.id === saleItem.variantId
-                          ? { ...v, stock: Number(v.stock) - pendingQty }
-                          : v,
-                      ),
+                      variants: shouldDiscount
+                        ? currentProduct.variants.map((v: any) =>
+                            v.id === saleItem.variantId
+                              ? { ...v, stock: Number(v.stock) - pendingQty }
+                              : v,
+                          )
+                        : currentProduct.variants,
                       salesCount: increment(1),
                     });
                   } else {

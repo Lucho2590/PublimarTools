@@ -35,6 +35,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { formatearPrecio, generateSlug } from "@/lib/utils";
+import { variantDiscountsStock } from "@/lib/stock";
 import {
   Pagination,
   PaginationContent,
@@ -136,7 +137,8 @@ export default function PedidosPage() {
               // Si tiene variante, actualizar stock de la variante específica
               if (item.variantId && currentProduct.variants) {
                 const variant = currentProduct.variants.find((v: any) => v.id === item.variantId);
-                const shouldUpdateStock = variant && variant.stock != null;
+                const shouldUpdateStock =
+                  variant && variant.stock != null && variantDiscountsStock(variant);
                 await updateDoc(productRef, {
                   variants: shouldUpdateStock
                     ? currentProduct.variants.map((v: any) =>

@@ -53,6 +53,7 @@ import {
   formatDateString,
   formatDate,
 } from "@/lib/utils";
+import { variantDiscountsStock } from "@/lib/stock";
 import {
   Table,
   TableBody,
@@ -1085,12 +1086,19 @@ export function SaleDetailsModal({
               const isFullReturn = quantity === item.quantity;
 
               if (item.variantId && currentProduct.variants) {
+                // Si la variante no descuenta stock al vender, tampoco lo devuelve.
+                const variant = currentProduct.variants.find(
+                  (v: any) => v.id === item.variantId,
+                );
+                const shouldReturnStock = variantDiscountsStock(variant);
                 await updateDoc(productRef, {
-                  variants: currentProduct.variants.map((v: any) =>
-                    v.id === item.variantId
-                      ? { ...v, stock: Number(v.stock) + quantity }
-                      : v,
-                  ),
+                  variants: shouldReturnStock
+                    ? currentProduct.variants.map((v: any) =>
+                        v.id === item.variantId
+                          ? { ...v, stock: Number(v.stock) + quantity }
+                          : v,
+                      )
+                    : currentProduct.variants,
                   ...(isFullReturn ? { salesCount: increment(-1) } : {}),
                 });
               } else {
@@ -1138,18 +1146,25 @@ export function SaleDetailsModal({
                 const currentProduct = productDoc.data();
 
                 if (exchangeItem.variantId && currentProduct.variants) {
+                  // Si la variante no descuenta stock, no la tocamos.
+                  const variant = currentProduct.variants.find(
+                    (v: any) => v.id === exchangeItem.variantId,
+                  );
+                  const shouldDiscount = variantDiscountsStock(variant);
                   await updateDoc(productRef, {
-                    variants: currentProduct.variants.map((v: any) =>
-                      v.id === exchangeItem.variantId
-                        ? {
-                            ...v,
-                            stock: Math.max(
-                              0,
-                              Number(v.stock) - exchangeItem.quantity,
-                            ),
-                          }
-                        : v,
-                    ),
+                    variants: shouldDiscount
+                      ? currentProduct.variants.map((v: any) =>
+                          v.id === exchangeItem.variantId
+                            ? {
+                                ...v,
+                                stock: Math.max(
+                                  0,
+                                  Number(v.stock) - exchangeItem.quantity,
+                                ),
+                              }
+                            : v,
+                        )
+                      : currentProduct.variants,
                     salesCount: increment(1),
                   });
                 } else {

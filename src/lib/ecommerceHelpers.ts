@@ -12,6 +12,7 @@ import {
 import { TEcommerceOrder } from "@/types/ecommerceOrder";
 import { TSale, TSaleItem, EPaymentMethod, ESaleDepartment } from "@/types/sale";
 import collections from "./collections";
+import { variantDiscountsStock } from "./stock";
 import {
   TAuditActor,
   writeAuditLog,
@@ -74,6 +75,8 @@ async function decrementStock(
     const variantIndex = variants.findIndex((v: any) => v.id === variantId);
 
     if (variantIndex !== -1) {
+      // Variante marcada para no descontar stock: no tocamos nada.
+      if (!variantDiscountsStock(variants[variantIndex])) return;
       const currentStock = Number(variants[variantIndex].stock) || 0;
       const newStock = Math.max(0, currentStock - quantity);
       const variantName = variants[variantIndex].size ?? variants[variantIndex].name;
