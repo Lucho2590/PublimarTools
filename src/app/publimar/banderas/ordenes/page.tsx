@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, limit, where, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
-import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -247,7 +246,6 @@ export default function PedidosPage() {
     }
 
     constraints.push(orderBy("createdAt", "desc"));
-    constraints.push(limit(LIST_FETCH_CAP));
 
     return query(ordersCollection, ...constraints);
   }, [ordersCollection, statusFilter]);
@@ -276,6 +274,12 @@ export default function PedidosPage() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredOrders?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredOrders?.length || 0) / itemsPerPage);
+
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   // KPIs de resumen sobre las órdenes de la vista actual (respeta búsqueda y
   // filtro de estado). "Cobrado" = total − saldo pendiente.
@@ -412,14 +416,6 @@ export default function PedidosPage() {
               <CardTitle className="text-base font-semibold">Órdenes</CardTitle>
               <span className="text-sm text-muted-foreground">
                 {filteredOrders?.length || 0} resultados
-                {orders?.length === LIST_FETCH_CAP && (
-                  <span
-                    className="ml-1 text-amber-600"
-                    title="Se muestran las últimas 500; refiná con los filtros."
-                  >
-                    · máx. {LIST_FETCH_CAP}
-                  </span>
-                )}
               </span>
             </div>
           </CardHeader>

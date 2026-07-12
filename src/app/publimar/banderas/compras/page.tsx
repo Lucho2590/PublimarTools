@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, limit } from "firebase/firestore";
-import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { collection, query, orderBy } from "firebase/firestore";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,7 +142,7 @@ export default function ComprasPage() {
   });
 
   const purchasesCollection = collection(firestore, "purchases");
-  const purchasesQuery = query(purchasesCollection, orderBy("date", "desc"), limit(LIST_FETCH_CAP));
+  const purchasesQuery = query(purchasesCollection, orderBy("date", "desc"));
   const { status: purStatus, data: purchases } = useFirestoreCollectionData(
     purchasesQuery,
     { idField: "id" }
@@ -221,6 +220,12 @@ export default function ComprasPage() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredPurchases.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredPurchases.length / itemsPerPage);
+
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const getPageNumbers = () => {
     const pageNumbers: number[] = [];
