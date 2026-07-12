@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, limit, doc, updateDoc, where } from "firebase/firestore";
-import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { collection, query, orderBy, doc, updateDoc, where } from "firebase/firestore";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,7 +81,7 @@ export default function PresupuestosPage() {
   // Consulta a Firestore
   const quotesCollection = collection(firestore, collections.QUOTES);
   const quotesQuery = query(quotesCollection, orderBy("createdAt", "desc"),
-  where("client.section", "==", EClientSection.BANDERAS), limit(LIST_FETCH_CAP));
+  where("client.section", "==", EClientSection.BANDERAS));
 
   const { status, data: quotesData } = useFirestoreCollectionData(quotesQuery, {
     idField: "id",
@@ -121,6 +120,12 @@ export default function PresupuestosPage() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredQuotes?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredQuotes?.length || 0) / itemsPerPage);
+
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   // KPIs de resumen sobre TODOS los presupuestos de banderas (dashboard estable,
   // no depende de la búsqueda ni del filtro de estado).
@@ -491,14 +496,6 @@ export default function PresupuestosPage() {
               </CardTitle>
               <span className="text-sm text-muted-foreground">
                 {filteredQuotes?.length || 0} resultados
-                {quotesData?.length === LIST_FETCH_CAP && (
-                  <span
-                    className="ml-1 text-amber-600"
-                    title="Se muestran los últimos 500; refiná con los filtros."
-                  >
-                    · máx. {LIST_FETCH_CAP}
-                  </span>
-                )}
               </span>
             </div>
           </CardHeader>

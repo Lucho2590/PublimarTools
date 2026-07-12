@@ -1,10 +1,10 @@
 /**
- * Tope de documentos que las páginas de lista traen de Firestore.
+ * Tope de respaldo para queries de lista SIN filtro acotante.
  *
- * Las listas cargan la colección en el cliente para buscar/filtrar/paginar en el
- * navegador. Sin tope, colecciones grandes vuelven la carga muy lenta. Con este
- * límite se traen los N más recientes/relevantes (según el orderBy de cada query)
- * y la búsqueda de texto opera dentro de ese conjunto. Cuando una lista llega al
- * tope conviene mostrar un aviso para que el usuario refine con los filtros.
+ * Las listas cargan la colección completa para calcular KPIs exactos y buscar/
+ * paginar en el cliente. Cuando una query ya está acotada (ej. Ventas por rango
+ * de fechas) no se aplica ningún tope. Este límite se usa solo como red de
+ * seguridad para evitar descargar una colección entera cuando la query no tiene
+ * ningún `where` que la acote (ej. Ventas sin rango de fechas seleccionado).
  */
 export const LIST_FETCH_CAP = 500;

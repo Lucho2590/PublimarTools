@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy, where, limit } from "firebase/firestore";
@@ -92,7 +92,12 @@ export default function VentasPage() {
     }
 
     constraints.push(orderBy("createdAt", "desc"));
-    constraints.push(limit(LIST_FETCH_CAP));
+    // Con rango de fechas la query ya queda acotada, así que traemos TODO el
+    // período (KPIs y lista exactos). Solo aplicamos un tope de respaldo si no
+    // hay rango, para no descargar la colección entera por accidente.
+    if (!dateRange?.from && !dateRange?.to) {
+      constraints.push(limit(LIST_FETCH_CAP));
+    }
 
     return query(salesCollection, ...constraints);
   }, [salesCollection, dateRange]);
@@ -217,6 +222,14 @@ export default function VentasPage() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredSales?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredSales?.length || 0) / itemsPerPage);
+
+  // Si el set filtrado se achica y la página queda fuera de rango, corregirla
+  // (evita listas vacías por página fuera de rango).
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   // Limpiar todos los filtros y volver al día actual
   const limpiarFiltros = () => {
@@ -551,7 +564,10 @@ export default function VentasPage() {
               {selectedPaymentMethod === "transfer" && (
                 <Select
                   value={selectedBank}
-                  onValueChange={setSelectedBank}
+                  onValueChange={(value) => {
+                    setSelectedBank(value);
+                    setCurrentPage(1);
+                  }}
                 >
                   <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder="Banco" />
@@ -567,7 +583,10 @@ export default function VentasPage() {
 
               <Select
                 value={selectedInvoiced}
-                onValueChange={setSelectedInvoiced}
+                onValueChange={(value) => {
+                  setSelectedInvoiced(value);
+                  setCurrentPage(1);
+                }}
               >
                 <SelectTrigger className="w-[150px]">
                   <SelectValue placeholder="Facturación" />
@@ -581,7 +600,10 @@ export default function VentasPage() {
 
               <Select
                 value={selectedReturns}
-                onValueChange={setSelectedReturns}
+                onValueChange={(value) => {
+                  setSelectedReturns(value);
+                  setCurrentPage(1);
+                }}
               >
                 <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Dev/Cambios" />
@@ -597,7 +619,10 @@ export default function VentasPage() {
 
               <DateRangePicker
                 value={dateRange}
-                onChange={setDateRange}
+                onChange={(range) => {
+                  setDateRange(range);
+                  setCurrentPage(1);
+                }}
               />
 
               <Button
@@ -638,14 +663,6 @@ export default function VentasPage() {
               <CardTitle className="text-base font-semibold">Ventas</CardTitle>
               <span className="text-sm text-muted-foreground">
                 {filteredSales?.length || 0} resultados
-                {sales?.length === LIST_FETCH_CAP && (
-                  <span
-                    className="ml-1 text-amber-600"
-                    title="Se muestran las últimas 500; refiná con los filtros y el rango de fechas."
-                  >
-                    · máx. {LIST_FETCH_CAP}
-                  </span>
-                )}
               </span>
             </div>
           </CardHeader>

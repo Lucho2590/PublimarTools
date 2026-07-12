@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useMemo, useCallback, memo } from "react";
+import { useState, useMemo, useCallback, useEffect, memo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, limit, doc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { collection, query, orderBy, doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { softDelete, isDeleted } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
@@ -218,7 +217,7 @@ export default function ProductosPage() {
 
   // Consulta a Firestore para productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
-  const productsQuery = query(productsCollection, orderBy("name"), limit(LIST_FETCH_CAP));
+  const productsQuery = query(productsCollection, orderBy("name"));
 
   // Consulta a Firestore para categorías
   const categoriesCollection = collection(
@@ -273,6 +272,12 @@ export default function ProductosPage() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredProducts?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredProducts?.length || 0) / itemsPerPage);
+
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   // KPIs de resumen sobre los productos filtrados (respeta soft delete y filtros
   // activos). Criterio de stock alineado con el de la tabla: stock < 5 = bajo,
@@ -597,7 +602,6 @@ export default function ProductosPage() {
         <SummaryCard
           title="Total productos"
           value={stats.total}
-          subtitle={products?.length === LIST_FETCH_CAP ? `máx. ${LIST_FETCH_CAP}` : undefined}
           icon={Package}
           variant="blue"
         />

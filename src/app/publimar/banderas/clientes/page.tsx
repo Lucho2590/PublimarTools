@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, query, orderBy, where, limit } from "firebase/firestore";
-import { LIST_FETCH_CAP } from "@/lib/queryLimits";
+import { collection, query, orderBy, where } from "firebase/firestore";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,8 +70,7 @@ export default function ClientesPage() {
   const clientsQuery = query(
     clientsCollection,
     where("section", "==", EClientSection.BANDERAS),
-    orderBy("name"),
-    limit(LIST_FETCH_CAP)
+    orderBy("name")
   );
 
   const { status, data: clients } = useFirestoreCollectionData(clientsQuery, {
@@ -130,6 +128,12 @@ export default function ClientesPage() {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredClients?.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil((filteredClients?.length || 0) / itemsPerPage);
+
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
 
   const getPageNumbers = () => {
     const pageNumbers: number[] = [];
@@ -283,14 +287,6 @@ export default function ClientesPage() {
               </CardTitle>
               <span className="text-sm text-muted-foreground">
                 {filteredClients?.length || 0} resultados
-                {clients?.length === LIST_FETCH_CAP && (
-                  <span
-                    className="ml-1 text-amber-600"
-                    title="Se muestran los primeros 500; refiná con la búsqueda."
-                  >
-                    · máx. {LIST_FETCH_CAP}
-                  </span>
-                )}
               </span>
             </div>
           </CardHeader>
