@@ -103,6 +103,19 @@ export default function NuevoClientePage() {
     }));
   };
 
+  const handleTypeChange = (value: EClientType) => {
+    setFormData((prev) => {
+      const next = { ...prev, type: value };
+      if (value === EClientType.INDIVIDUAL && !prev.name && prev.businessName) {
+        next.name = prev.businessName;
+      }
+      if (value === EClientType.COMPANY && !prev.businessName && prev.name) {
+        next.businessName = prev.name;
+      }
+      return next;
+    });
+  };
+
   const handleContactChange = (
     index: number,
     field: keyof TClientContact,
@@ -259,9 +272,7 @@ export default function NuevoClientePage() {
                 <Select
                   value={formData.type}
                   onValueChange={(value) =>
-                    handleChange({
-                      target: { name: "type", value },
-                    } as any)
+                    handleTypeChange(value as EClientType)
                   }
                 >
                   <SelectTrigger className="w-full">
