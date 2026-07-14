@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { formatCuit } from "@/lib/cuit";
+import { CuitInput } from "@/components/cuit-input";
 import {
   Select,
   SelectContent,
@@ -221,12 +222,13 @@ export default function ProveedoresPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cuit">CUIT/CUIL</Label>
-                  <Input
+                  <CuitInput
                     id="cuit"
                     name="cuit"
                     value={form.cuit || ""}
-                    onChange={handleChange}
-                    placeholder="20-12345678-9"
+                    onValueChange={(digits) =>
+                      setForm((prev) => ({ ...prev, cuit: digits }))
+                    }
                   />
                 </div>
                 <div className="space-y-2">
