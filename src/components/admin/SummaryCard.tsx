@@ -68,21 +68,24 @@ export const SummaryCard = React.forwardRef<HTMLDivElement, SummaryCardProps>(
     const card = (
       <Card ref={ref} className={cn("overflow-hidden", classes)} onClick={onClick} {...rest}>
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className={cn("shrink-0 p-3 rounded-full text-white", styles.icon)}>
-                <Icon className="h-6 w-6" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-slate-600 font-medium truncate">{title}</p>
-                <div className={cn("text-xl font-bold break-words", styles.value)}>
-                  {value}
-                </div>
-              </div>
+          {/* El subtitle va debajo del valor, no al costado: al costado le robaba
+              el ancho y en grillas de 3-4 columnas el monto terminaba partido
+              letra por letra y el título truncado. */}
+          <div className="flex items-center gap-3">
+            <div className={cn("shrink-0 p-3 rounded-full text-white", styles.icon)}>
+              <Icon className="h-6 w-6" />
             </div>
-            {subtitle && (
-              <div className="shrink-0 text-right text-sm text-slate-600">{subtitle}</div>
-            )}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-slate-600 font-medium truncate">{title}</p>
+              <div className={cn("text-xl font-bold break-words", styles.value)}>
+                {value}
+              </div>
+              {subtitle && (
+                <p className="text-xs text-slate-500 mt-0.5 break-words">
+                  {subtitle}
+                </p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

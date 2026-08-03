@@ -677,6 +677,185 @@ export function monthlyMarginByDepartment(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Series diarias (¿qué días se vende más?)
+// ---------------------------------------------------------------------------
+
+/** Nombres de día indexados por `Date.getDay()` (0 = domingo). */
+const WEEKDAY_LABELS = [
+  "Domingo",
+  "Lunes",
+  "Martes",
+  "Miércoles",
+  "Jueves",
+  "Viernes",
+  "Sábado",
+];
+
+/** Orden de presentación: lunes primero, domingo último. */
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+/** Clave de día para agrupar: `2026-08-01` (hora local). */
+export function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+/** Enumera todos los días calendario entre `from` y `to` (inclusive). */
+function enumerateDays(from: Date, to: Date): Date[] {
+  const days: Date[] = [];
+  const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const last = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  while (cursor <= last) {
+    days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+export interface DailyRevenuePoint {
+  day: string; // YYYY-MM-DD
+  label: string; // ej "01/08"
+  date: Date;
+  weekday: number; // 0 = domingo
+  weekdayLabel: string;
+  ventas: number; // monto
+  cantidad: number; // # de operaciones
+}
+
+/**
+ * Serie día a día del rango. Incluye los días sin ventas (en 0): un día flojo
+ * es parte de la respuesta a "¿qué días vendemos más?".
+ */
+export function dailyRevenueSeries(
+  rev: RevenueEntry[],
+  from: Date,
+  to: Date,
+): DailyRevenuePoint[] {
+  const totals = new Map<string, { ventas: number; cantidad: number }>();
+  rev.forEach((r) => {
+    const k = dayKey(r.date);
+    const row = totals.get(k) || { ventas: 0, cantidad: 0 };
+    row.ventas += r.amount;
+    row.cantidad += 1;
+    totals.set(k, row);
+  });
+
+  return enumerateDays(from, to).map((d) => {
+    const k = dayKey(d);
+    const row = totals.get(k) || { ventas: 0, cantidad: 0 };
+    return {
+      day: k,
+      label: `${String(d.getDate()).padStart(2, "0")}/${String(
+        d.getMonth() + 1,
+      ).padStart(2, "0")}`,
+      date: d,
+      weekday: d.getDay(),
+      weekdayLabel: WEEKDAY_LABELS[d.getDay()],
+      ventas: row.ventas,
+      cantidad: row.cantidad,
+    };
+  });
+}
+
+export interface WeekdayRevenue {
+  weekday: number; // 0 = domingo
+  label: string;
+  total: number;
+  cantidad: number;
+  ocurrencias: number; // cuántos días de ese nombre hubo en el rango
+  promedio: number; // total / ocurrencias
+}
+
+/**
+ * Ranking por día de la semana, devuelto en orden lunes → domingo.
+ *
+ * `ocurrencias` se cuenta sobre el calendario del rango (no sobre las ventas):
+ * si el rango tiene 5 lunes y solo 2 tuvieron ventas, el promedio igual divide
+ * por 5. De lo contrario un día flojo aparentaría rendir igual que uno fuerte.
+ */
+export function revenueByWeekday(
+  rev: RevenueEntry[],
+  from: Date,
+  to: Date,
+): WeekdayRevenue[] {
+  const totals = new Map<number, { total: number; cantidad: number }>();
+  rev.forEach((r) => {
+    const w = r.date.getDay();
+    const row = totals.get(w) || { total: 0, cantidad: 0 };
+    row.total += r.amount;
+    row.cantidad += 1;
+    totals.set(w, row);
+  });
+
+  const ocurrencias = new Map<number, number>();
+  enumerateDays(from, to).forEach((d) => {
+    ocurrencias.set(d.getDay(), (ocurrencias.get(d.getDay()) || 0) + 1);
+  });
+
+  return WEEKDAY_ORDER.map((w) => {
+    const row = totals.get(w) || { total: 0, cantidad: 0 };
+    const n = ocurrencias.get(w) || 0;
+    return {
+      weekday: w,
+      label: WEEKDAY_LABELS[w],
+      total: row.total,
+      cantidad: row.cantidad,
+      ocurrencias: n,
+      promedio: n > 0 ? row.total / n : 0,
+    };
+  });
+}
+
+export interface HourBucketRevenue {
+  key: string;
+  label: string;
+  total: number;
+  cantidad: number;
+}
+
+const HOUR_BUCKETS: { key: string; label: string; from: number; to: number }[] =
+  [
+    { key: "madrugada", label: "Madrugada (00–06)", from: 0, to: 6 },
+    { key: "manana", label: "Mañana (06–13)", from: 6, to: 13 },
+    { key: "tarde", label: "Tarde (13–20)", from: 13, to: 20 },
+    { key: "noche", label: "Noche (20–24)", from: 20, to: 24 },
+  ];
+
+/**
+ * Distribución por franja horaria.
+ *
+ * Solo considera entradas con `source === "sale"`: los cobros de Vía Pública
+ * vienen de un string `YYYY-MM-DD` normalizado a mediodía (ver `dateFromYMD`),
+ * así que no tienen hora real y ensuciarían la franja "Tarde".
+ */
+export function revenueByHourBucket(rev: RevenueEntry[]): HourBucketRevenue[] {
+  const totals = new Map<string, { total: number; cantidad: number }>();
+
+  rev
+    .filter((r) => r.source === "sale")
+    .forEach((r) => {
+      const h = r.date.getHours();
+      const bucket = HOUR_BUCKETS.find((b) => h >= b.from && h < b.to);
+      if (!bucket) return;
+      const row = totals.get(bucket.key) || { total: 0, cantidad: 0 };
+      row.total += r.amount;
+      row.cantidad += 1;
+      totals.set(bucket.key, row);
+    });
+
+  return HOUR_BUCKETS.map((b) => {
+    const row = totals.get(b.key) || { total: 0, cantidad: 0 };
+    return {
+      key: b.key,
+      label: b.label,
+      total: row.total,
+      cantidad: row.cantidad,
+    };
+  });
+}
+
 export interface MonthlyAverages {
   avgIngresos: number;
   avgGastos: number;

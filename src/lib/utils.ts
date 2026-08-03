@@ -14,6 +14,15 @@ export const formatearPrecio = (valor: number): string => {
   }).format(valor);
 };
 
+/** Abrevia montos grandes para ejes y celdas chicas: 1,2M / 350k / 900. */
+export const formatearPrecioCompacto = (valor: number): string => {
+  const abs = Math.abs(valor);
+  if (abs >= 1_000_000)
+    return `${(valor / 1_000_000).toFixed(1).replace(".", ",")}M`;
+  if (abs >= 1_000) return `${Math.round(valor / 1_000)}k`;
+  return String(Math.round(valor));
+};
+
 export const formatDate = (timestamp: any) => {
   if (!timestamp) return "-";
   // Manejar Firebase Timestamp como objeto {seconds, nanoseconds} (para Firebase 9+)

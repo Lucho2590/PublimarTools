@@ -12,7 +12,7 @@ import {
   Legend,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatearPrecio } from "@/lib/utils";
+import { formatearPrecio, formatearPrecioCompacto } from "@/lib/utils";
 
 export interface LineSeries {
   key: string;
@@ -27,14 +27,6 @@ interface MonthlyLineChartProps {
   series: LineSeries[];
   formatValue?: (v: number) => string;
   height?: number;
-}
-
-/** Abrevia montos grandes para el eje Y: 1.2M / 350k / 900. */
-function compactNumber(v: number): string {
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${Math.round(v / 1_000)}k`;
-  return String(Math.round(v));
 }
 
 /**
@@ -59,7 +51,7 @@ export const MonthlyLineChart = memo(function MonthlyLineChart({
           tickMargin={8}
         />
         <YAxis
-          tickFormatter={compactNumber}
+          tickFormatter={formatearPrecioCompacto}
           tick={{ fontSize: 12, fill: "#64748b" }}
           width={56}
         />

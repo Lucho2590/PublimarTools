@@ -40,10 +40,10 @@ const SECTIONS: AdminSection[] = [
     icon: TrendingUp,
   },
   {
-    title: "Rentabilidad",
+    title: "Analíticas",
     description:
-      "Ingresos vs gastos, márgenes por departamento, liquidez y proyección a futuro.",
-    href: "/publimar/administracion/rentabilidad",
+      "Ritmo de ventas, márgenes por departamento, gastos, liquidez y proyección a futuro.",
+    href: "/publimar/administracion/analiticas",
     icon: BarChart3,
   },
   {

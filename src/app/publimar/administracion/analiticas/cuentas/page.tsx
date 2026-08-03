@@ -109,7 +109,7 @@ export default function RentabilidadCuentasPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Cuentas y liquidez</h1>
         <Button asChild variant="outline">
-          <Link href="/publimar/administracion/rentabilidad">
+          <Link href="/publimar/administracion/analiticas">
             <ArrowLeft className="h-4 w-4 mr-1" /> Volver
           </Link>
         </Button>
