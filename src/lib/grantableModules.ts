@@ -34,9 +34,9 @@ export const GRANTABLE_MODULES: TGrantableModule[] = [
     icon: TrendingUp,
   },
   {
-    key: "admin-rentabilidad",
-    label: "Rentabilidad",
-    href: "/publimar/administracion/rentabilidad",
+    key: "admin-analiticas",
+    label: "Analíticas",
+    href: "/publimar/administracion/analiticas",
     group: "Administración",
     icon: BarChart3,
   },

@@ -25,6 +25,7 @@ import {
   Wallet,
   Scale,
   Building2,
+  CalendarDays,
   Receipt,
   Package,
   LineChart,
@@ -34,7 +35,7 @@ import { startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 const N_MONTHS = 6;
 
-export default function RentabilidadDashboardPage() {
+export default function AnaliticasDashboardPage() {
   const { now, from, to, monthStart, monthEnd } = useMemo(() => {
     const now = new Date();
     return {
@@ -81,9 +82,10 @@ export default function RentabilidadDashboardPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Rentabilidad</h1>
+          <h1 className="text-2xl font-bold">Analíticas</h1>
           <p className="text-slate-600 text-sm mt-1">
-            Ingresos vs gastos, márgenes por departamento, liquidez y proyección.
+            Ritmo de ventas, ingresos vs gastos, márgenes por departamento,
+            liquidez y proyección.
           </p>
         </div>
         <Button asChild variant="outline">
@@ -144,31 +146,37 @@ export default function RentabilidadDashboardPage() {
             <SectionCard
               title="Departamentos"
               description="Ingresos vs gastos y margen por departamento. Dónde se gana y dónde se fuga el capital."
-              href="/publimar/administracion/rentabilidad/departamentos"
+              href="/publimar/administracion/analiticas/departamentos"
               icon={Building2}
+            />
+            <SectionCard
+              title="Ritmo de ventas"
+              description="Cuándo se vende: mapa de calor del mes, serie diaria, día de la semana y franja horaria."
+              href="/publimar/administracion/analiticas/ritmo-de-ventas"
+              icon={CalendarDays}
             />
             <SectionCard
               title="Gastos"
               description="En qué se gasta: por tipo y ranking de proveedores. Filtrable por departamento y período."
-              href="/publimar/administracion/rentabilidad/gastos"
+              href="/publimar/administracion/analiticas/gastos"
               icon={Receipt}
             />
             <SectionCard
               title="Productos"
               description="Ranking de productos por facturación y volumen (Banderas) y margen real (Vía Pública)."
-              href="/publimar/administracion/rentabilidad/productos"
+              href="/publimar/administracion/analiticas/productos"
               icon={Package}
             />
             <SectionCard
               title="Cuentas y liquidez"
               description="Dónde termina la plata: distribución por cuenta y flujo de entradas/salidas."
-              href="/publimar/administracion/rentabilidad/cuentas"
+              href="/publimar/administracion/analiticas/cuentas"
               icon={Wallet}
             />
             <SectionCard
               title="Proyección"
               description="Promedio mensual de ingresos/gastos, balance a futuro y cuánto facturar para no perder."
-              href="/publimar/administracion/rentabilidad/proyeccion"
+              href="/publimar/administracion/analiticas/proyeccion"
               icon={LineChart}
             />
           </div>

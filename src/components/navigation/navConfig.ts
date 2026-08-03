@@ -163,8 +163,8 @@ export const navConfig: NavItem[] = [
         icon: TrendingUp,
       },
       {
-        name: "Rentabilidad",
-        href: "/publimar/administracion/rentabilidad",
+        name: "Analíticas",
+        href: "/publimar/administracion/analiticas",
         icon: BarChart3,
       },
       {

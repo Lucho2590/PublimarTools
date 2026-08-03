@@ -8,6 +8,24 @@ const RESTRICTED_PREFIXES: Array<{ prefix: string; allowed: EUserRole[] }> = [
   },
 ];
 
+/**
+ * Rutas renombradas. `users.permissions` guarda el href literal del módulo
+ * (ver PermissionsTab), así que un rename de ruta dejaría afuera a quien ya
+ * tenía el permiso otorgado. Se normaliza al leer en vez de migrar Firestore.
+ */
+const LEGACY_PATHS: Record<string, string> = {
+  "/publimar/administracion/rentabilidad": "/publimar/administracion/analiticas",
+};
+
+function normalizeLegacyPath(p: string): string {
+  for (const [legacy, current] of Object.entries(LEGACY_PATHS)) {
+    if (p === legacy || p.startsWith(`${legacy}/`)) {
+      return current + p.slice(legacy.length);
+    }
+  }
+  return p;
+}
+
 export function canAccessRoute(
   role: EUserRole | null,
   pathname: string,
@@ -21,9 +39,9 @@ export function canAccessRoute(
   // no alcance. `pathname.startsWith(p)` cubre el submódulo concreto y rutas
   // más profundas; `p.startsWith(pathname)` habilita la landing padre
   // (ej. "/publimar/administracion") cuando el permiso es un hijo.
-  return permissions.some(
-    (p) => pathname.startsWith(p) || p.startsWith(pathname)
-  );
+  return permissions
+    .map(normalizeLegacyPath)
+    .some((p) => pathname.startsWith(p) || p.startsWith(pathname));
 }
 
 export function isAdminOrAbove(role: EUserRole | null): boolean {
