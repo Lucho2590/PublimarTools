@@ -1,16 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useFirestore, useFirestoreCollectionData } from "reactfire";
+import { useFirestore, useFirestoreCollectionData, useUser } from "reactfire";
 import { collection, orderBy, query, where } from "firebase/firestore";
+import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, MessageSquare, Smartphone } from "lucide-react";
+import { ArrowLeft, MessageSquare, Send, Smartphone } from "lucide-react";
 import collections from "@/lib/collections";
+import { isWithinServiceWindow } from "@/lib/whatsapp/outboundHelpers";
 import {
   EWhatsappContactStatus,
   EWhatsappMessageDirection,
@@ -38,6 +40,7 @@ type Contact = {
   unreadCount?: number;
   lastMessagePreview?: string | null;
   lastMessageAt?: any;
+  lastInboundAt?: any;
   status?: EWhatsappContactStatus;
 };
 
@@ -195,6 +198,10 @@ function ConversationThread({
   onBack: () => void;
 }) {
   const firestore = useFirestore();
+  const { data: user } = useUser();
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
   const messagesQuery = useMemo(
     () =>
       query(
@@ -209,6 +216,36 @@ function ConversationThread({
   });
   const messages = (data as any[] | undefined) || [];
   const statusBadge = contact.status ? STATUS_BADGE[contact.status] : undefined;
+
+  const lastInboundMs = toDate(contact.lastInboundAt)?.getTime() ?? null;
+  const windowOpen = isWithinServiceWindow(lastInboundMs, Date.now());
+
+  async function handleSend() {
+    const body = text.trim();
+    if (!body || !user || sending) return;
+    setSending(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/whatsapp/messages/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ contactId: contact.id, text: body }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(json.error || "No se pudo enviar");
+      } else {
+        setText(""); // el mensaje aparece solo por el listener en tiempo real
+      }
+    } catch {
+      toast.error("Error de red al enviar");
+    } finally {
+      setSending(false);
+    }
+  }
 
   return (
     <>
@@ -291,12 +328,32 @@ function ConversationThread({
         </div>
       </ScrollArea>
 
-      {/* Composer (deshabilitado hasta la Fase 4) */}
+      {/* Composer */}
       <div className="border-t p-3">
-        <Input
-          disabled
-          placeholder="Responder desde la app — disponible en la próxima fase"
-        />
+        {windowOpen ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="flex gap-2"
+          >
+            <Input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Escribí un mensaje…"
+              disabled={sending}
+            />
+            <Button type="submit" disabled={sending || !text.trim()} size="icon">
+              <Send className="h-4 w-4" />
+            </Button>
+          </form>
+        ) : (
+          <div className="text-center text-xs text-slate-500 py-1.5">
+            Pasaron más de 24 h desde el último mensaje del cliente. Para volver a
+            escribir hace falta una plantilla aprobada (Fase 5).
+          </div>
+        )}
       </div>
     </>
   );

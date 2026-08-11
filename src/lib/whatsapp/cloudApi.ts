@@ -4,6 +4,7 @@
 // distinguirlos por código (no por substring del mensaje) — gotcha del brief.
 
 import { GRAPH_BASE_URL } from "./constants";
+import { buildTextPayload } from "./outboundHelpers";
 
 export class CloudApiError extends Error {
   constructor(
@@ -73,4 +74,19 @@ export async function listPhoneNumbers(
  */
 export async function subscribeApps(wabaId: string, token: string): Promise<any> {
   return graphFetch(`/${wabaId}/subscribed_apps`, token, { method: "POST" });
+}
+
+/** POST /{phoneNumberId}/messages — envía un mensaje de texto. Devuelve el wamid. */
+export async function sendTextMessage(
+  phoneNumberId: string,
+  to: string,
+  body: string,
+  token: string
+): Promise<{ wamid: string | null }> {
+  const json = await graphFetch(`/${phoneNumberId}/messages`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(buildTextPayload(to, body)),
+  });
+  return { wamid: json?.messages?.[0]?.id ?? null };
 }
