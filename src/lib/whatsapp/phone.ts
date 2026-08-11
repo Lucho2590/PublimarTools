@@ -7,7 +7,7 @@
 // SIEMPRE con el 9 para que matchee contra lo que guarda src/lib/phone.ts
 // (que también produce "549…" para Argentina).
 
-import { onlyDigits } from "@/lib/phone";
+import { onlyDigits } from "../phone";
 
 export function canonicalizeWaId(waId: string | undefined | null): string {
   let d = onlyDigits(waId);

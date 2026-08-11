@@ -10,6 +10,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/apiAuth";
 import collections from "@/lib/collections";
 import { classifyEventType, verifyMetaSignature } from "@/lib/whatsapp/webhookVerify";
+import { processInboundPayload } from "@/lib/whatsapp/inbound";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -58,9 +59,10 @@ export async function POST(request: NextRequest) {
   }
 
   // 3. Persistir el evento crudo ANTES de procesar (idempotencia + reproceso).
+  const db = getFirestoreAdmin();
+  let eventRef: FirebaseFirestore.DocumentReference | null = null;
   try {
-    const db = getFirestoreAdmin();
-    await db.collection(collections.WHATSAPP_WEBHOOK_EVENTS).add({
+    eventRef = await db.collection(collections.WHATSAPP_WEBHOOK_EVENTS).add({
       eventType: classifyEventType(payload),
       payload,
       signatureValid: true,
@@ -69,11 +71,32 @@ export async function POST(request: NextRequest) {
       receivedAt: FieldValue.serverTimestamp(),
       processedAt: null,
     });
-    // Fase 2 engancha acá el pipeline entrante (siempre con await).
   } catch (error) {
     // Aun si falla la persistencia, respondemos 200 para no gatillar reintentos
     // que terminen deshabilitando la suscripción. Queda logueado para revisar.
     console.error("[whatsapp webhook] error persistiendo evento:", error);
+  }
+
+  // 4. Procesar el pipeline entrante (siempre con await; nunca 500 hacia Meta).
+  //    Si falla, el evento queda 'failed' para que el job de reproceso lo reintente.
+  try {
+    await processInboundPayload(payload);
+    if (eventRef) {
+      await eventRef.update({
+        status: "processed",
+        processedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    console.error("[whatsapp webhook] error procesando evento:", error);
+    if (eventRef) {
+      await eventRef
+        .update({
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        })
+        .catch(() => {});
+    }
   }
 
   return new NextResponse(null, { status: 200 });
