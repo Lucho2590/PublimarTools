@@ -501,10 +501,12 @@ export default function NuevoPresupuestoPage() {
       // Calcular totales
       const subtotal = sanitizedItems.reduce((sum: number, item: any) => sum + item.subtotal, 0);
       const applyIVATax = data.applyIVA || false;
-      const taxRate = applyIVATax ? 21 : 0;
-      const subtotalSinIVA = subtotal / 1.21;
-      const taxAmount = applyIVATax ? subtotal - subtotalSinIVA : 0;
-      const total = subtotal;
+      const taxRate = applyIVATax ? (parseFloat(formData.taxRate.toString()) || 21) : 0;
+      const taxAmount = applyIVATax ? subtotal * (taxRate / (100 + taxRate)) : 0;
+      const subtotalSinIVA = subtotal - taxAmount;
+      const dp = Number(data.discountPercentage) || 0;
+      const md = Number(data.manualDiscount) || 0;
+      const total = subtotal - ((subtotalSinIVA * dp) / 100 + md);
 
       // Client data
       const clientData = data.clientId
@@ -576,8 +578,8 @@ export default function NuevoPresupuestoPage() {
         taxAmount: redondearTotal(taxAmount),
         total: redondearTotal(total),
         applyIVA: applyIVATax,
-        discountPercentage: data.discountPercentage || 0,
-        manualDiscount: data.manualDiscount || 0,
+        discountPercentage: dp,
+        manualDiscount: md,
         validUntil: validUntil,
         notes: "",
         comments: [],
@@ -1716,7 +1718,7 @@ export default function NuevoPresupuestoPage() {
                     />
                   </div>
                   <p className="text-red-600">
-                    -{formatearPrecio(redondearTotal(totalDiscountAmount))}
+                    -{formatearPrecio(redondearTotal(generalDiscountAmount))}
                   </p>
                 </div>
 

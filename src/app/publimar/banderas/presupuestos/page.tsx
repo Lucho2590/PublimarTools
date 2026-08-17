@@ -32,7 +32,7 @@ import { Eye, Download, FileText, Send, CheckCircle2, Coins, Plus, Search, Loade
 // jsPDF y jspdf-autotable (~1.6MB) se cargan bajo demanda dentro de handleDownload.
 import { toast } from "sonner";
 import { DocumentData } from "firebase/firestore";
-import { formatearPrecio, generateSlug } from "@/lib/utils";
+import { formatearPrecio, generateSlug, redondearTotal } from "@/lib/utils";
 import QuoteDetailsModal from "./modalPresupuestos/quoteDetailsModal";
 import { EClientSection } from "@/types/client";
 
@@ -365,22 +365,63 @@ export default function PresupuestosPage() {
       });
 
       // Agregar totales después de la tabla (solo se ejecuta una vez al final)
-      const finalY = (pdf as any).lastAutoTable.finalY + 10;
       const totalsX = pageWidth - margins.right - 60;
+      const valuesX = pageWidth - margins.right;
+
+      // Descuentos generales del presupuesto. Cuando se desglosa IVA, el subtotal guardado
+      // ya es el neto, que es la misma base sobre la que se calcula el descuento porcentual.
+      const pdfSubtotal = Number(quote.subtotal) || 0;
+      const pdfTax = Number(quote.taxAmount ?? quote.tax) || 0;
+      const discountPercentage = Number(quote.discountPercentage) || 0;
+      const manualDiscount = Number(quote.manualDiscount) || 0;
+      const percentageDiscountAmount = (pdfSubtotal * discountPercentage) / 100;
+      // Recalculamos el total en vez de confiar en el guardado: hay presupuestos viejos
+      // cuyo total quedó sin restar el descuento.
+      const pdfTotal = redondearTotal(
+        pdfSubtotal + pdfTax - (percentageDiscountAmount + manualDiscount)
+      );
+
+      const totalsRows: { label: string; value: string }[] = [
+        { label: "Subtotal:", value: formatearPrecio(pdfSubtotal) },
+        { label: `IVA (${quote.taxRate}%):`, value: formatearPrecio(pdfTax) },
+      ];
+
+      if (discountPercentage > 0) {
+        totalsRows.push({
+          label: `Descuento (${discountPercentage}%):`,
+          value: `-${formatearPrecio(redondearTotal(percentageDiscountAmount))}`,
+        });
+      }
+
+      if (manualDiscount > 0) {
+        totalsRows.push({
+          label: "Descuento:",
+          value: `-${formatearPrecio(redondearTotal(manualDiscount))}`,
+        });
+      }
+
+      // Alto del bloque: una fila cada 6mm + la línea separadora y el Total
+      const totalsHeight = totalsRows.length * 6 + 8;
+      let ty = (pdf as any).lastAutoTable.finalY + 10;
+
+      if (ty + totalsHeight > pageHeight - margins.bottom) {
+        pdf.addPage();
+        ty = margins.top + 10;
+      }
 
       pdf.setFontSize(10);
       pdf.setFont("helvetica", "normal");
 
-      pdf.text("Subtotal:", totalsX, finalY, { align: "left" });
-      pdf.text(formatearPrecio(quote.subtotal), pageWidth - margins.right, finalY, { align: "right" });
-
-      pdf.text(`IVA (${quote.taxRate}%):`, totalsX, finalY + 6, { align: "left" });
-      pdf.text(formatearPrecio(quote.tax), pageWidth - margins.right, finalY + 6, { align: "right" });
+      totalsRows.forEach((row) => {
+        pdf.text(row.label, totalsX, ty, { align: "left" });
+        pdf.text(row.value, valuesX, ty, { align: "right" });
+        ty += 6;
+      });
 
       pdf.setFont("helvetica", "bold");
-      pdf.line(totalsX, finalY + 9, pageWidth - margins.right, finalY + 9);
-      pdf.text("Total:", totalsX, finalY + 14, { align: "left" });
-      pdf.text(formatearPrecio(quote.total), pageWidth - margins.right, finalY + 14, { align: "right" });
+      pdf.line(totalsX, ty - 3, valuesX, ty - 3);
+      pdf.text("Total:", totalsX, ty + 2, { align: "left" });
+      pdf.text(formatearPrecio(pdfTotal), valuesX, ty + 2, { align: "right" });
 
       // Descargar el PDF
       pdf.save(`presupuesto-${quote.number}.pdf`);

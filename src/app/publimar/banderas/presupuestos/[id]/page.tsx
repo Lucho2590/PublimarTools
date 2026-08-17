@@ -154,6 +154,7 @@ export default function QuoteDetailsPage({
         ...editedQuote,
         subtotal: redondearTotal(applyIVA ? totals.subtotalSinIVA : totals.subtotal),
         taxAmount: redondearTotal(totals.taxAmount),
+        tax: redondearTotal(totals.taxAmount),
         total: redondearTotal(totals.total),
         applyIVA,
         discountPercentage,
@@ -941,7 +942,7 @@ export default function QuoteDetailsPage({
                   />
                 </div>
                 <p className="text-red-600">
-                  -{formatearPrecio(redondearTotal((totals.subtotalSinIVA * discountPercentage) / 100 + manualDiscount))}
+                  -{formatearPrecio(redondearTotal((totals.subtotalSinIVA * discountPercentage) / 100))}
                 </p>
               </div>
 
