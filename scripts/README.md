@@ -65,3 +65,35 @@ Después de ejecutar el script, puedes verificar en Firebase Console que las ven
 
 3. **Error: ts-node not found**
    - Solución: Instala ts-node: `pnpm add -D ts-node`
+
+---
+
+## Reparación de Totales de Presupuestos
+
+### Descripción
+
+`fixQuoteTotals.ts` recalcula el campo `total` de los presupuestos que tienen descuentos
+generales (`discountPercentage` / `manualDiscount`) y quedaron guardados sin restarlos.
+
+El bug estaba en el alta de presupuesto con cliente nuevo, que guardaba `total = subtotal`
+ignorando el descuento. El descuento sí se persistía, así que el PDF imprimía un total mayor
+al real. El código ya está corregido; este script arregla los documentos previos.
+
+### Cómo Ejecutar
+
+Usa `firebase-service-account.json` de la raíz del proyecto (no `serviceAccountKey.json`).
+
+```bash
+# Simulación: lista qué presupuestos cambiarían, sin escribir nada
+pnpm dlx ts-node --compiler-options '{"module":"commonjs"}' scripts/fixQuoteTotals.ts
+
+# Aplicar los cambios
+pnpm dlx ts-node --compiler-options '{"module":"commonjs"}' scripts/fixQuoteTotals.ts --apply
+```
+
+El script es idempotente: los presupuestos con el total ya correcto se omiten (tolerancia de
+$1 para diferencias de redondeo).
+
+### Estado
+
+✅ Ejecutado el 17/8/2026 — 1 presupuesto reparado (`P-2026-1497`: $2.016.000 → $1.867.800).

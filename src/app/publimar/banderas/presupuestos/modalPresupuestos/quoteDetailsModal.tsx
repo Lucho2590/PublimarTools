@@ -344,7 +344,11 @@ export default function QuoteDetailsModal({
     try {
       const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
       const tax = items.reduce((sum, item) => sum + item.taxAmount, 0);
-      const total = subtotal + tax;
+      // El modal no edita los descuentos generales: se preservan tal cual y se restan
+      // del total para no pisarlos al guardar.
+      const dp = Number(quote.discountPercentage) || 0;
+      const md = Number(quote.manualDiscount) || 0;
+      const total = subtotal + tax - ((subtotal * dp) / 100 + md);
 
       const quoteItems: TQuoteItem[] = items.map((item) => ({
         id: item.id,
@@ -369,6 +373,8 @@ export default function QuoteDetailsModal({
         taxRate: Number(formData.taxRate),
         tax: tax,
         taxAmount: tax,
+        discountPercentage: dp,
+        manualDiscount: md,
         total: total,
         notes: formData.notes,
         status: formData.status,
@@ -419,7 +425,11 @@ export default function QuoteDetailsModal({
   // Calcular totales
   const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
   const tax = items.reduce((sum, item) => sum + item.taxAmount, 0);
-  const total = subtotal + tax;
+  // Descuentos generales del presupuesto (no editables desde este modal)
+  const discountPercentage = Number(quote?.discountPercentage) || 0;
+  const manualDiscount = Number(quote?.manualDiscount) || 0;
+  const percentageDiscountAmount = (subtotal * discountPercentage) / 100;
+  const total = subtotal + tax - (percentageDiscountAmount + manualDiscount);
 
   if (status === "loading") {
     return (
@@ -865,6 +875,18 @@ export default function QuoteDetailsModal({
                     <span>IVA ({formData.taxRate}%):</span>
                     <span>{formatearPrecio(tax)}</span>
                   </div>
+                  {discountPercentage > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Descuento ({discountPercentage}%):</span>
+                      <span>-{formatearPrecio(percentageDiscountAmount)}</span>
+                    </div>
+                  )}
+                  {manualDiscount > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Descuento:</span>
+                      <span>-{formatearPrecio(manualDiscount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-lg font-bold border-t pt-2">
                     <span>Total:</span>
                     <span>{formatearPrecio(total)}</span>
@@ -1046,9 +1068,32 @@ export default function QuoteDetailsModal({
                     <span>IVA ({quote.taxRate}%):</span>
                     <span>{formatearPrecio(quote.taxAmount || 0)}</span>
                   </div>
+                  {discountPercentage > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Descuento ({discountPercentage}%):</span>
+                      <span>
+                        -{formatearPrecio(
+                          ((Number(quote.subtotal) || 0) * discountPercentage) / 100
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {manualDiscount > 0 && (
+                    <div className="flex justify-between text-red-600">
+                      <span>Descuento:</span>
+                      <span>-{formatearPrecio(manualDiscount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-lg font-bold border-t pt-2">
                     <span>Total:</span>
-                    <span>{formatearPrecio(quote.total || 0)}</span>
+                    <span>
+                      {formatearPrecio(
+                        (Number(quote.subtotal) || 0) +
+                          (Number(quote.taxAmount) || 0) -
+                          (((Number(quote.subtotal) || 0) * discountPercentage) / 100 +
+                            manualDiscount)
+                      )}
+                    </span>
                   </div>
                 </div>
               </CardContent>

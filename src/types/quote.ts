@@ -83,6 +83,11 @@ export type TQuote = {
   notes?: string;
   publicUrl?: string;
 
+  // Totales: descuentos generales aplicados sobre el subtotal
+  applyIVA?: boolean;              // Si se desglosa el IVA del precio final
+  discountPercentage?: number;     // Descuento general en %
+  manualDiscount?: number;         // Descuento general en $
+
   // Campos específicos para Vía Pública
   periodos?: TQuotePeriodo[];      // Períodos con dispositivos anidados (Vía Pública)
   fecha?: Date;                    // Fecha de inicio del servicio
