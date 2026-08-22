@@ -175,8 +175,10 @@ export default function NuevaVentaPage() {
     subtotalSinIVA = redondearTotal(subtotal - taxAmount);
   }
 
+  // Sobre el neto, igual que el submit (línea ~823) y que presupuestos/órdenes.
+  // Sin IVA desglosado, subtotalSinIVA === subtotal.
   const discountAmount = redondearTotal(
-    subtotal * (discountPercentage / 100)
+    subtotalSinIVA * (discountPercentage / 100)
   );
   const calculatedTotal = redondearTotal(
     subtotal - discountAmount - manualDiscount
@@ -318,9 +320,26 @@ export default function NuevaVentaPage() {
     });
 
     setItems(importedItems);
+
+    // Los descuentos y el IVA son del presupuesto, no de los items: si no se copian
+    // acá, la venta queda con el precio sin descontar.
+    const quoteDiscountPercentage = Number(quote.discountPercentage) || 0;
+    const quoteManualDiscount = Number(quote.manualDiscount) || 0;
+
+    setApplyIVA(quote.applyIVA ?? false);
+    setDiscountPercentage(quoteDiscountPercentage);
+    setManualDiscount(quoteManualDiscount);
+    // El total manual tiene prioridad sobre el calculado: si quedó uno de antes,
+    // el descuento importado no se vería reflejado.
+    setManualTotal(null);
+
     setSelectedQuoteId(quoteId);
     setShowQuoteSelector(false);
-    toast.success(`Items importados del presupuesto ${quote.number}`);
+    toast.success(
+      quoteDiscountPercentage > 0 || quoteManualDiscount > 0
+        ? `Items y descuentos importados del presupuesto ${quote.number}`
+        : `Items importados del presupuesto ${quote.number}`
+    );
   };
 
   // Handlers de formas de pago
