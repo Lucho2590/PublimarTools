@@ -383,9 +383,24 @@ export default function NuevasOrdenesPage() {
     }));
 
     setItems(importedItems);
+
+    // Los descuentos y el IVA son del presupuesto, no de los items: si no se copian
+    // acá, la orden queda con el precio sin descontar.
+    const quoteDiscountPercentage = Number(quote.discountPercentage) || 0;
+    const quoteManualDiscount = Number(quote.manualDiscount) || 0;
+
+    setApplyIVA(quote.applyIVA ?? false);
+    if (quote.applyIVA && quote.taxRate) setIva(String(quote.taxRate));
+    setDiscountPercentage(quoteDiscountPercentage);
+    setManualDiscount(quoteManualDiscount);
+
     setSelectedQuoteId(quoteId);
     setShowQuoteSelector(false);
-    toast.success(`Items importados del presupuesto ${quote.number}`);
+    toast.success(
+      quoteDiscountPercentage > 0 || quoteManualDiscount > 0
+        ? `Items y descuentos importados del presupuesto ${quote.number}`
+        : `Items importados del presupuesto ${quote.number}`,
+    );
   };
 
   // Manejar cuando se escribe manualmente un cliente (sin seleccionar del dropdown)
@@ -866,7 +881,8 @@ export default function NuevasOrdenesPage() {
       // Preparar datos de la orden usando el helper del hook
       const baseOrderData = {
         number: generateOrderNumber(),
-        quoteId: `quote-${Date.now()}`, // O usar un presupuesto real
+        // Referencia al presupuesto de origen, solo si la orden se importó de uno
+        ...(selectedQuoteId && { quoteId: selectedQuoteId }),
         invoiceType: facturas.length > 0 ? facturas[0].tipo : "sin factura",
         status: estado,
         subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal),

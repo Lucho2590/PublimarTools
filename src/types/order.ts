@@ -48,7 +48,7 @@ export type TOrder = {
   invoiceType: string;
   id: string;
   number: string; // Número de orden para mostrar al cliente
-  quoteId: string;
+  quoteId?: string; // ID del presupuesto de origen (solo si la orden se importó de uno)
   // Cliente: estructura normalizada (solo referencias)
   client?: TClient; // Estructura antigua (objeto completo) - mantener para compatibilidad
   clientId?: string | null; // ID del cliente en la DB (referencia)

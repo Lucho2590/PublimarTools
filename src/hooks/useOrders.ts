@@ -63,7 +63,6 @@ import {
   
     const createOrder = useCallback(async (orderData: Partial<TOrder> & {
       number: string;
-      quoteId: string;
       invoiceType: string;
       status: EOrderStatus;
       items: TOrderItem[];
@@ -144,7 +143,6 @@ import {
 
       // Asegurar que los campos requeridos estén presentes
       if (!defaults.number) defaults.number = generateOrderNumber()
-      if (!defaults.quoteId) defaults.quoteId = `quote-${Date.now()}`
 
       return defaults
     }, [generateOrderNumber])
