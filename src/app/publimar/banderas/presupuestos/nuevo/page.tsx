@@ -60,6 +60,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatearPrecio, redondearTotal } from "@/lib/utils";
+import {
+  calcDocumentTotals,
+  calcItemDiscountAmount,
+  calcItemGross,
+  calcItemNet,
+  formatItemDiscount,
+  TDiscountType,
+} from "@/lib/totals";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 import { useClients } from "@/hooks/useClients";
 
 // Tipo para los items del presupuesto
@@ -69,7 +78,10 @@ type QuoteItem = {
   variant?: TProductVariant;
   quantity: number;
   unitPrice: number;
+  /** Descuento de la línea: % o $ según `discountType` (default: %). */
   discount: number;
+  discountType: TDiscountType;
+  /** Importe de la línea ya descontado. */
   subtotal: number;
   notes: string;
 };
@@ -110,6 +122,8 @@ export default function NuevoPresupuestoPage() {
   const [selectedVariant, setSelectedVariant] = useState<TProductVariant | null>(null);
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
+  const [itemDiscountType, setItemDiscountType] =
+    useState<TDiscountType>("percent");
   const [itemNotes, setItemNotes] = useState("");
   const [customUnitPrice, setCustomUnitPrice] = useState<number | null>(null);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -199,25 +213,25 @@ export default function NuevoPresupuestoPage() {
     );
   });
 
-  // Calculate totals
-  const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-
-  // Calcular IVA desde precio final cuando aplica
-  let taxAmount = 0;
-  let subtotalSinIVA = subtotal;
-
-  if (applyIVA) {
-    const taxRate = parseFloat(formData.taxRate.toString());
-    taxAmount = subtotal * (taxRate / (100 + taxRate));
-    subtotalSinIVA = subtotal - taxAmount;
-  }
-
-  // Calcular descuentos
-  const generalDiscountAmount = subtotalSinIVA * (discountPercentage / 100);
-  const totalDiscountAmount = generalDiscountAmount + manualDiscount;
-
-  // Total final
-  const total = subtotal - totalDiscountAmount;
+  // Cálculo canónico compartido: primero el descuento de cada ítem (ya dentro
+  // de `subtotal`), después el general sobre ese subtotal ya descontado.
+  const totals = calcDocumentTotals({
+    items,
+    applyIVA,
+    taxRate: parseFloat(formData.taxRate.toString()) || 21,
+    discountPercentage,
+    manualDiscount,
+  });
+  const grossSubtotal = totals.grossSubtotal;
+  const itemsDiscountAmount = totals.itemsDiscountAmount;
+  const subtotal = totals.subtotal;
+  const taxAmount = totals.taxAmount;
+  const subtotalSinIVA = totals.subtotalSinIVA;
+  const generalDiscountAmount = totals.generalDiscountAmount;
+  const totalDiscountAmount = redondearTotal(
+    generalDiscountAmount + manualDiscount
+  );
+  const total = totals.total;
 
   // Calcular precio con IVA
   const calculatePriceWithTax = (price: number, taxRate: number) => {
@@ -260,10 +274,6 @@ export default function NuevoPresupuestoPage() {
       ? customUnitPrice
       : Number(selectedVariant ? selectedVariant.price : selectedProduct.price || 0);
 
-    const discountAmount = (price * itemDiscount) / 100;
-    const priceAfterDiscount = price - discountAmount;
-    const subtotal = priceAfterDiscount * itemQuantity;
-
     const newItem: QuoteItem = {
       id: editingItemId || Date.now().toString(),
       product: selectedProduct,
@@ -271,7 +281,13 @@ export default function NuevoPresupuestoPage() {
       quantity: itemQuantity,
       unitPrice: price,
       discount: itemDiscount,
-      subtotal: subtotal,
+      discountType: itemDiscountType,
+      subtotal: calcItemNet({
+        quantity: itemQuantity,
+        unitPrice: price,
+        discount: itemDiscount,
+        discountType: itemDiscountType,
+      }),
       notes: itemNotes,
     };
 
@@ -290,6 +306,7 @@ export default function NuevoPresupuestoPage() {
     setSelectedVariant(null);
     setItemQuantity(1);
     setItemDiscount(0);
+    setItemDiscountType("percent");
     setItemNotes("");
     setCustomUnitPrice(null);
     setProductSearchTerm("");
@@ -303,6 +320,7 @@ export default function NuevoPresupuestoPage() {
     setSelectedVariant(item.variant || null);
     setItemQuantity(item.quantity);
     setItemDiscount(item.discount);
+    setItemDiscountType(item.discountType || "percent");
     setItemNotes(item.notes);
     setCustomUnitPrice(item.unitPrice); // Cargar precio actual del item
     setEditingItemId(item.id);
@@ -350,6 +368,7 @@ export default function NuevoPresupuestoPage() {
       quantity: manualItemQuantity,
       unitPrice: manualItemPrice,
       discount: 0,
+      discountType: "percent",
       subtotal: itemSubtotal,
       notes: "",
     };
@@ -494,19 +513,27 @@ export default function NuevoPresupuestoPage() {
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         discount: item.discount || 0,
+        discountType: item.discountType || "percent",
         subtotal: item.subtotal,
         notes: item.notes || "",
       }));
 
-      // Calcular totales
-      const subtotal = sanitizedItems.reduce((sum: number, item: any) => sum + item.subtotal, 0);
+      // Calcular totales con la fórmula canónica compartida
       const applyIVATax = data.applyIVA || false;
-      const taxRate = applyIVATax ? (parseFloat(formData.taxRate.toString()) || 21) : 0;
-      const taxAmount = applyIVATax ? subtotal * (taxRate / (100 + taxRate)) : 0;
-      const subtotalSinIVA = subtotal - taxAmount;
       const dp = Number(data.discountPercentage) || 0;
       const md = Number(data.manualDiscount) || 0;
-      const total = subtotal - ((subtotalSinIVA * dp) / 100 + md);
+      const submitTotals = calcDocumentTotals({
+        items,
+        applyIVA: applyIVATax,
+        taxRate: parseFloat(formData.taxRate.toString()) || 21,
+        discountPercentage: dp,
+        manualDiscount: md,
+      });
+      const subtotal = submitTotals.subtotal;
+      const taxRate = applyIVATax ? submitTotals.taxRate : 0;
+      const taxAmount = submitTotals.taxAmount;
+      const subtotalSinIVA = submitTotals.subtotalSinIVA;
+      const total = submitTotals.total;
 
       // Client data
       const clientData = data.clientId
@@ -683,6 +710,7 @@ export default function NuevoPresupuestoPage() {
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         discount: item.discount || 0,
+        discountType: item.discountType || "percent",
         subtotal: item.subtotal,
         notes: item.notes || "",
       }));
@@ -878,6 +906,7 @@ export default function NuevoPresupuestoPage() {
     setSelectedVariant(null);
     setItemQuantity(1);
     setItemDiscount(0);
+    setItemDiscountType("percent");
     setItemNotes("");
     setCustomUnitPrice(null);
   };
@@ -1490,16 +1519,13 @@ export default function NuevoPresupuestoPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="discount">Descuento (%)</Label>
-                          <Input
-                            id="discount"
-                            type="number"
-                            min="0"
-                            max="100"
+                          <Label htmlFor="discount">Descuento</Label>
+                          <DiscountInput
                             value={itemDiscount}
-                            onChange={(e) =>
-                              setItemDiscount(parseInt(e.target.value) || 0)
-                            }
+                            type={itemDiscountType}
+                            onValueChange={setItemDiscount}
+                            onTypeChange={setItemDiscountType}
+                            inputClassName="flex-1"
                           />
                         </div>
                       </div>
@@ -1512,22 +1538,40 @@ export default function NuevoPresupuestoPage() {
                             </p>
                             {itemDiscount > 0 && (
                               <p className="text-sm">
-                                Descuento: {itemDiscount}% ({formatearPrecio(
-                                  ((customUnitPrice || 0) * itemDiscount) / 100
-                                )})
+                                Descuento:{" "}
+                                {formatItemDiscount({
+                                  quantity: itemQuantity,
+                                  unitPrice: customUnitPrice || 0,
+                                  discount: itemDiscount,
+                                  discountType: itemDiscountType,
+                                })}{" "}
+                                (
+                                {formatearPrecio(
+                                  calcItemDiscountAmount({
+                                    quantity: itemQuantity,
+                                    unitPrice: customUnitPrice || 0,
+                                    discount: itemDiscount,
+                                    discountType: itemDiscountType,
+                                  })
+                                )}
+                                )
                               </p>
                             )}
                             <p className="text-sm">Cantidad: {itemQuantity}</p>
                           </div>
                           <div>
                             <p className="text-lg font-semibold">
-                              Subtotal: {formatearPrecio(
-                                itemQuantity *
-                                ((customUnitPrice || 0) -
-                                  ((customUnitPrice || 0) * itemDiscount) / 100)
+                              Subtotal:{" "}
+                              {formatearPrecio(
+                                calcItemNet({
+                                  quantity: itemQuantity,
+                                  unitPrice: customUnitPrice || 0,
+                                  discount: itemDiscount,
+                                  discountType: itemDiscountType,
+                                })
                               )}
                             </p>
-         
+
                           </div>
                         </div>
                       </div>
@@ -1615,9 +1659,21 @@ export default function NuevoPresupuestoPage() {
                         <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>
-                          {item.discount > 0 ? `${item.discount}%` : "-"}
+                          {item.discount > 0 ? (
+                            <span className="text-green-600">
+                              {formatItemDiscount(item)} (−
+                              {formatearPrecio(calcItemDiscountAmount(item))})
+                            </span>
+                          ) : (
+                            "-"
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
+                          {item.discount > 0 && (
+                            <span className="mr-2 text-xs text-slate-400 line-through">
+                              {formatearPrecio(calcItemGross(item))}
+                            </span>
+                          )}
                           {formatearPrecio(item.subtotal)}
                         </TableCell>
                         <TableCell>
@@ -1663,8 +1719,26 @@ export default function NuevoPresupuestoPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <p className="text-gray-700">Subtotal</p>
-                  <p className="font-semibold">{formatearPrecio(subtotal)}</p>
+                  <p className="font-semibold">
+                    {formatearPrecio(grossSubtotal)}
+                  </p>
                 </div>
+
+                {itemsDiscountAmount > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <p className="text-gray-700">Descuento en ítems</p>
+                    <p className="text-red-600">
+                      -{formatearPrecio(itemsDiscountAmount)}
+                    </p>
+                  </div>
+                )}
+
+                {itemsDiscountAmount > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <p className="text-gray-700">Subtotal con descuentos</p>
+                    <p className="font-medium">{formatearPrecio(subtotal)}</p>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between border-b pb-2">
                   <div className="flex items-center gap-3">
@@ -1702,7 +1776,7 @@ export default function NuevoPresupuestoPage() {
                       htmlFor="discount"
                       className="text-sm text-gray-700 w-24"
                     >
-                      Descuento (%)
+                      Desc. general (%)
                     </Label>
                     <Input
                       id="discount"
@@ -1728,7 +1802,7 @@ export default function NuevoPresupuestoPage() {
                       htmlFor="manualDiscount"
                       className="text-sm text-gray-700 w-24"
                     >
-                      Descuento ($)
+                      Desc. general ($)
                     </Label>
                     <MoneyInput
                       id="manualDiscount"

@@ -49,6 +49,15 @@ import { EQuoteStatus, TQuote, TQuoteItem } from "@/types/quote";
 import { TClient } from "@/types/client";
 import { TProduct, TProductVariant } from "@/types/product";
 import { formatDate, formatearPrecio } from "@/lib/utils";
+import {
+  calcItemDiscountAmount,
+  calcItemGross,
+  calcItemNet,
+  formatItemDiscount,
+  resolveItemDiscount,
+  TDiscountType,
+} from "@/lib/totals";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 
 // Tipo para los items del presupuesto
 type QuoteItem = {
@@ -58,7 +67,10 @@ type QuoteItem = {
   variant?: TProductVariant;
   quantity: number;
   unitPrice: number;
+  /** Descuento de la línea: % o $ según `discountType` (default: %). */
   discount: number;
+  discountType: TDiscountType;
+  /** Importe de la línea ya descontado. */
   subtotal: number;
   notes: string;
 };
@@ -88,6 +100,8 @@ export default function QuoteDetailsModal({
     useState<TProductVariant | null>(null);
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
+  const [itemDiscountType, setItemDiscountType] =
+    useState<TDiscountType>("percent");
   const [itemNotes, setItemNotes] = useState("");
   const firestore = useFirestore();
 
@@ -192,7 +206,9 @@ export default function QuoteDetailsModal({
             } : undefined,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
-            discount: item.discount || 0,
+            // Los presupuestos viejos guardaban el neto sin declarar el
+            // descuento de línea: se reconstruye para no alterar el total.
+            ...resolveItemDiscount(item, item.subtotal),
             subtotal: item.subtotal,
             taxAmount: item.taxAmount || 0,
             notes: item.notes || "",
@@ -295,7 +311,12 @@ export default function QuoteDetailsModal({
       ? Number(selectedVariant.price)
       : Number(selectedProduct.price);
 
-    const subtotal = price * itemQuantity * (1 - itemDiscount / 100);
+    const subtotal = calcItemNet({
+      quantity: itemQuantity,
+      unitPrice: price,
+      discount: itemDiscount,
+      discountType: itemDiscountType,
+    });
     const taxAmount = subtotal * (Number(formData.taxRate) / 100);
 
     const newItem: QuoteItem = {
@@ -305,6 +326,7 @@ export default function QuoteDetailsModal({
       quantity: itemQuantity,
       unitPrice: price,
       discount: itemDiscount,
+      discountType: itemDiscountType,
       subtotal: subtotal,
       taxAmount: taxAmount,
       notes: itemNotes,
@@ -327,6 +349,7 @@ export default function QuoteDetailsModal({
     setSelectedVariant(item.variant || null);
     setItemQuantity(item.quantity);
     setItemDiscount(item.discount);
+    setItemDiscountType(item.discountType || "percent");
     setItemNotes(item.notes);
     setEditingItemId(item.id);
     setIsAddingProduct(true);
@@ -358,6 +381,7 @@ export default function QuoteDetailsModal({
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         discount: item.discount,
+        discountType: item.discountType || "percent",
         subtotal: item.subtotal,
         tax: item.taxAmount,
         taxAmount: item.taxAmount,
@@ -416,6 +440,7 @@ export default function QuoteDetailsModal({
     setSelectedVariant(null);
     setItemQuantity(1);
     setItemDiscount(0);
+    setItemDiscountType("percent");
     setItemNotes("");
     setProductSearchTerm("");
     setIsAddingProduct(false);
@@ -719,17 +744,13 @@ export default function QuoteDetailsModal({
                             />
                           </div>
                           <div>
-                            <Label htmlFor="discount">Descuento (%)</Label>
-                            <Input
-                              id="discount"
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
+                            <Label htmlFor="discount">Descuento</Label>
+                            <DiscountInput
                               value={itemDiscount}
-                              onChange={(e) =>
-                                setItemDiscount(Number(e.target.value))
-                              }
+                              type={itemDiscountType}
+                              onValueChange={setItemDiscount}
+                              onTypeChange={setItemDiscountType}
+                              inputClassName="flex-1"
                             />
                           </div>
                           <div className="md:col-span-2">
@@ -826,9 +847,23 @@ export default function QuoteDetailsModal({
                         <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>
-                          {item.discount > 0 ? `${item.discount}%` : "-"}
+                          {item.discount > 0 ? (
+                            <span className="text-green-600">
+                              {formatItemDiscount(item)} (−
+                              {formatearPrecio(calcItemDiscountAmount(item))})
+                            </span>
+                          ) : (
+                            "-"
+                          )}
                         </TableCell>
-                        <TableCell>{formatearPrecio(item.subtotal)}</TableCell>
+                        <TableCell>
+                          {item.discount > 0 && (
+                            <span className="mr-2 text-xs text-slate-400 line-through">
+                              {formatearPrecio(calcItemGross(item))}
+                            </span>
+                          )}
+                          {formatearPrecio(item.subtotal)}
+                        </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
                             <Button
@@ -1029,9 +1064,13 @@ export default function QuoteDetailsModal({
                         <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>
-                          {item.discount && item.discount > 0
-                            ? `${item.discount}%`
-                            : "-"}
+                          {item.discount && item.discount > 0 ? (
+                            <span className="text-green-600">
+                              {formatItemDiscount(item)}
+                            </span>
+                          ) : (
+                            "-"
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatearPrecio(item.subtotal)}

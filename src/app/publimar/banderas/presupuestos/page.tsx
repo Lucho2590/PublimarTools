@@ -33,6 +33,7 @@ import { Eye, Download, FileText, Send, CheckCircle2, Coins, Plus, Search, Loade
 import { toast } from "sonner";
 import { DocumentData } from "firebase/firestore";
 import { formatearPrecio, generateSlug, redondearTotal } from "@/lib/utils";
+import { formatItemDiscount } from "@/lib/totals";
 import QuoteDetailsModal from "./modalPresupuestos/quoteDetailsModal";
 import { EClientSection } from "@/types/client";
 
@@ -277,7 +278,8 @@ export default function PresupuestosPage() {
         ];
 
         if (hasDiscounts) {
-          row.push(item.discount ? `${item.discount}%` : "-");
+          // El descuento de línea puede ser % o monto fijo.
+          row.push(item.discount ? formatItemDiscount(item) : "-");
         }
 
         row.push(formatearPrecio(item.subtotal));

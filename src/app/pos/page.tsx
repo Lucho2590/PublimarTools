@@ -13,8 +13,15 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 import collections from "@/lib/collections";
 import { TProduct, TProductCategory, TProductVariant } from "@/types/product";
 import {
@@ -35,6 +42,13 @@ import {
 import { createSale } from "@/lib/sales";
 import { variantDiscountsStock } from "@/lib/stock";
 import { formatearPrecio, redondearTotal } from "@/lib/utils";
+import {
+  calcDocumentTotals,
+  calcItemGross,
+  calcItemNet,
+  formatItemDiscount,
+  TDiscountType,
+} from "@/lib/totals";
 import { ProductCatalog } from "./ProductCatalog";
 import { ClientStep } from "./ClientStep";
 import { PaymentStep } from "./PaymentStep";
@@ -89,23 +103,25 @@ export default function PuntoDeVentaPage() {
   const [submitting, setSubmitting] = useState(false);
   const defaultsAppliedRef = useRef(false);
 
-  const subtotal = useMemo(
-    () => cart.reduce((s, it) => s + it.total, 0),
-    [cart],
-  );
-  const discountAmount = useMemo(
+  // Cascada: primero el descuento de cada ítem (queda dentro de `subtotal`),
+  // después el general sobre ese subtotal ya descontado. El POS no desglosa IVA.
+  const totals = useMemo(
     () =>
-      redondearTotal(
-        discountMode === "percent"
-          ? subtotal * (discountValue / 100)
-          : discountValue,
-      ),
-    [subtotal, discountMode, discountValue],
+      calcDocumentTotals({
+        items: cart,
+        applyIVA: false,
+        discountPercentage: discountMode === "percent" ? discountValue : 0,
+        manualDiscount: discountMode === "amount" ? discountValue : 0,
+      }),
+    [cart, discountMode, discountValue],
   );
-  const discountedTotal = useMemo(
-    () => Math.max(0, redondearTotal(subtotal - discountAmount)),
-    [subtotal, discountAmount],
+  const grossSubtotal = totals.grossSubtotal;
+  const itemsDiscountAmount = totals.itemsDiscountAmount;
+  const subtotal = totals.subtotal;
+  const discountAmount = redondearTotal(
+    totals.generalDiscountAmount + totals.manualDiscount,
   );
+  const discountedTotal = totals.total;
   const cartCount = useMemo(
     () => cart.reduce((s, it) => s + it.quantity, 0),
     [cart],
@@ -163,19 +179,23 @@ export default function PuntoDeVentaPage() {
           toast.error("No hay más stock disponible");
           return prev;
         }
-        return prev.map((it) =>
-          cartKey(it.product.id, it.variant.id) === key
-            ? {
-                ...it,
-                quantity: it.quantity + 1,
-                total: redondearTotal(price * (it.quantity + 1)),
-              }
-            : it,
-        );
+        return prev.map((it) => {
+          if (cartKey(it.product.id, it.variant.id) !== key) return it;
+          const next = { ...it, quantity: it.quantity + 1 };
+          return { ...next, total: calcItemNet(next) };
+        });
       }
       return [
         ...prev,
-        { product, variant, quantity: 1, unitPrice: price, total: redondearTotal(price) },
+        {
+          product,
+          variant,
+          quantity: 1,
+          unitPrice: price,
+          discount: 0,
+          discountType: "percent" as TDiscountType,
+          total: redondearTotal(price),
+        },
       ];
     });
   };
@@ -216,6 +236,8 @@ export default function PuntoDeVentaPage() {
       } as unknown as TProductVariant,
       quantity: qty,
       unitPrice: price,
+      discount: 0,
+      discountType: "percent",
       total: redondearTotal(price * qty),
     };
     setCart((prev) => [...prev, item]);
@@ -230,13 +252,24 @@ export default function PuntoDeVentaPage() {
             ? Number(it.variant.stock ?? 0)
             : Infinity;
           const clamped = Math.max(0, Math.min(qty, stock));
-          return {
-            ...it,
-            quantity: clamped,
-            total: redondearTotal(it.unitPrice * clamped),
-          };
+          const next = { ...it, quantity: clamped };
+          return { ...next, total: calcItemNet(next) };
         })
         .filter((it) => it.quantity > 0),
+    );
+  };
+
+  /** Descuento de una línea del carrito (% o $ sobre el total de la línea). */
+  const updateItemDiscount = (
+    key: string,
+    patch: { discount?: number; discountType?: TDiscountType },
+  ) => {
+    setCart((prev) =>
+      prev.map((it) => {
+        if (cartKey(it.product.id, it.variant.id) !== key) return it;
+        const next = { ...it, ...patch };
+        return { ...next, total: calcItemNet(next) };
+      }),
     );
   };
 
@@ -341,6 +374,8 @@ export default function PuntoDeVentaPage() {
           variantName: item.variant.size,
           quantity: item.quantity,
           unitPrice: redondearTotal(item.unitPrice),
+          discount: Number(item.discount || 0),
+          discountType: item.discountType || "percent",
           total: redondearTotal(item.total),
         })),
         subtotal: redondearTotal(subtotal),
@@ -350,7 +385,8 @@ export default function PuntoDeVentaPage() {
         taxRate: 21,
         taxAmount: 0,
         discountPercentage: discountMode === "percent" ? discountValue : 0,
-        discountAmount: discountMode === "percent" ? discountAmount : 0,
+        discountAmount:
+          discountMode === "percent" ? totals.generalDiscountAmount : 0,
         manualDiscount: discountMode === "amount" ? discountValue : 0,
         paymentMethod: derivedPaymentMethod,
         bank: derivedBank,
@@ -481,6 +517,8 @@ export default function PuntoDeVentaPage() {
               <ul className="divide-y">
                 {cart.map((item) => {
                   const key = cartKey(item.product.id, item.variant.id);
+                  const hasDiscount = Number(item.discount || 0) > 0;
+                  const gross = calcItemGross(item);
                   return (
                     <li key={key} className="p-3">
                       <div className="flex items-start justify-between gap-2">
@@ -529,11 +567,75 @@ export default function PuntoDeVentaPage() {
                           >
                             <Plus className="w-3 h-3" />
                           </Button>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                type="button"
+                                variant={hasDiscount ? "default" : "outline"}
+                                size="icon"
+                                className="h-7 w-7"
+                                aria-label="Descuento del ítem"
+                              >
+                                <Tag className="w-3 h-3" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              align="start"
+                              className="w-64 space-y-2"
+                            >
+                              <div className="text-xs font-medium text-gray-700">
+                                Descuento de {item.product.name}
+                              </div>
+                              <DiscountInput
+                                size="sm"
+                                value={item.discount || 0}
+                                type={item.discountType || "percent"}
+                                onValueChange={(discount) =>
+                                  updateItemDiscount(key, { discount })
+                                }
+                                onTypeChange={(discountType) =>
+                                  updateItemDiscount(key, { discountType })
+                                }
+                                inputClassName="flex-1"
+                              />
+                              <div className="flex items-center justify-between text-xs text-gray-500">
+                                <span>Queda en</span>
+                                <span className="font-semibold text-gray-900">
+                                  {formatearPrecio(item.total)}
+                                </span>
+                              </div>
+                              {hasDiscount && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="w-full h-7 text-xs text-red-600 hover:text-red-700"
+                                  onClick={() =>
+                                    updateItemDiscount(key, { discount: 0 })
+                                  }
+                                >
+                                  Quitar descuento
+                                </Button>
+                              )}
+                            </PopoverContent>
+                          </Popover>
                         </div>
-                        <span className="text-sm font-semibold text-gray-900">
-                          {formatearPrecio(item.total)}
-                        </span>
+                        <div className="text-right">
+                          {hasDiscount && (
+                            <div className="text-xs text-gray-400 line-through">
+                              {formatearPrecio(gross)}
+                            </div>
+                          )}
+                          <span className="text-sm font-semibold text-gray-900">
+                            {formatearPrecio(item.total)}
+                          </span>
+                        </div>
                       </div>
+                      {hasDiscount && (
+                        <div className="mt-1 text-xs text-green-600">
+                          Descuento {formatItemDiscount(item)}
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -553,15 +655,21 @@ export default function PuntoDeVentaPage() {
                 </span>
               </div>
             )}
-            {discountAmount > 0 && (
+            {(itemsDiscountAmount > 0 || discountAmount > 0) && (
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>Subtotal</span>
-                <span>{formatearPrecio(subtotal)}</span>
+                <span>{formatearPrecio(grossSubtotal)}</span>
+              </div>
+            )}
+            {itemsDiscountAmount > 0 && (
+              <div className="flex items-center justify-between text-xs text-green-600">
+                <span>Descuento en ítems</span>
+                <span>−{formatearPrecio(itemsDiscountAmount)}</span>
               </div>
             )}
             {discountAmount > 0 && (
               <div className="flex items-center justify-between text-xs text-green-600">
-                <span>Descuento</span>
+                <span>Descuento general</span>
                 <span>−{formatearPrecio(discountAmount)}</span>
               </div>
             )}
