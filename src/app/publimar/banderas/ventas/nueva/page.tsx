@@ -48,6 +48,16 @@ import { EPaymentMethod, ESaleDepartment, PAYMENT_METHOD_ACCOUNT_TYPES, TFactura
 import { useQuotes } from "@/hooks/useQuotes";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { formatearPrecio, redondearADecena, redondearTotal, formatDateString } from "@/lib/utils";
+import {
+  calcDocumentTotals,
+  calcItemDiscountAmount,
+  calcItemGross,
+  calcItemNet,
+  formatItemDiscount,
+  resolveItemDiscount,
+  TDiscountType,
+} from "@/lib/totals";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 import { useClients } from "@/hooks/useClients";
 import { EClientSection } from "@/types/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
@@ -67,6 +77,10 @@ interface SaleItem {
   variant: TProductVariant;
   quantity: number;
   unitPrice: number;
+  /** Descuento de la línea: % o $ según `discountType` (default: %). */
+  discount?: number;
+  discountType?: TDiscountType;
+  /** Importe de la línea ya descontado. */
   total: number;
 }
 
@@ -138,6 +152,7 @@ export default function NuevaVentaPage() {
     quantity: 1,
     unitPrice: 0,
     discount: 0,
+    discountType: "percent" as TDiscountType,
     notes: "",
   });
 
@@ -160,29 +175,22 @@ export default function NuevaVentaPage() {
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
   const [showQuoteSelector, setShowQuoteSelector] = useState(false);
 
-  // Cálculos simples sin useMemo para evitar problemas
-  const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-  const taxRate = 21; // IVA
-
-  // Calcular IVA desde precio final cuando aplica
-  let taxAmount = 0;
-  let subtotalSinIVA = subtotal;
-
-  if (applyIVA) {
-    // Si aplicamos IVA, los precios son finales (con IVA incluido)
-    // Calculamos el IVA que está incluido en el precio
-    taxAmount = redondearTotal(subtotal * (taxRate / (100 + taxRate)));
-    subtotalSinIVA = redondearTotal(subtotal - taxAmount);
-  }
-
-  // Sobre el neto, igual que el submit (línea ~823) y que presupuestos/órdenes.
-  // Sin IVA desglosado, subtotalSinIVA === subtotal.
-  const discountAmount = redondearTotal(
-    subtotalSinIVA * (discountPercentage / 100)
-  );
-  const calculatedTotal = redondearTotal(
-    subtotal - discountAmount - manualDiscount
-  );
+  // Cálculo canónico compartido: primero el descuento de cada ítem (ya dentro
+  // de `subtotal`), después el general sobre ese subtotal ya descontado.
+  const totals = calcDocumentTotals({
+    items,
+    applyIVA,
+    discountPercentage,
+    manualDiscount,
+  });
+  const taxRate = totals.taxRate;
+  const grossSubtotal = totals.grossSubtotal;
+  const itemsDiscountAmount = totals.itemsDiscountAmount;
+  const subtotal = totals.subtotal;
+  const taxAmount = totals.taxAmount;
+  const subtotalSinIVA = totals.subtotalSinIVA;
+  const discountAmount = totals.generalDiscountAmount;
+  const calculatedTotal = totals.total;
   const total = manualTotal !== null ? manualTotal : calculatedTotal;
 
   // Suma de las formas de pago que NO son la primera.
@@ -302,10 +310,17 @@ export default function NuevaVentaPage() {
 
       const quantity = item.quantity || 1;
       const unitPrice = item.unitPrice || 0;
-      const lineTotal =
-        typeof item.subtotal === "number"
-          ? item.subtotal
-          : quantity * unitPrice;
+      // El subtotal del presupuesto ya viene con el descuento de línea adentro;
+      // si el presupuesto es viejo y no declara el descuento, se reconstruye.
+      const { discount, discountType } = resolveItemDiscount(
+        {
+          quantity,
+          unitPrice,
+          discount: Number(item.discount) || 0,
+          discountType: item.discountType,
+        },
+        typeof item.subtotal === "number" ? item.subtotal : null,
+      );
 
       return {
         id: `imported_${Date.now()}_${index}`,
@@ -315,7 +330,9 @@ export default function NuevaVentaPage() {
         variant,
         quantity,
         unitPrice,
-        total: redondearTotal(lineTotal),
+        discount,
+        discountType,
+        total: calcItemNet({ quantity, unitPrice, discount, discountType }),
       };
     });
 
@@ -628,15 +645,11 @@ export default function NuevaVentaPage() {
         return;
       }
       setItems((prev) =>
-        prev.map((item) =>
-          item.id === existingItem.id
-            ? {
-                ...item,
-                quantity: newQuantity,
-                total: newQuantity * item.unitPrice,
-              }
-            : item
-        )
+        prev.map((item) => {
+          if (item.id !== existingItem.id) return item;
+          const next = { ...item, quantity: newQuantity };
+          return { ...next, total: calcItemNet(next) };
+        })
       );
     } else {
       // Si no está en la lista, actualizamos la cantidad temporal
@@ -669,7 +682,9 @@ export default function NuevaVentaPage() {
               variant: selectedVariant,
               quantity: quantity,
               unitPrice: Number(selectedVariant.price),
-              total: Number(selectedVariant.price) * quantity,
+              discount: 0,
+              discountType: "percent",
+              total: redondearTotal(Number(selectedVariant.price) * quantity),
             };
             setItems((prev) => [...prev, newItem]);
           }
@@ -685,6 +700,20 @@ export default function NuevaVentaPage() {
 
   const handleRemoveItem = (itemId: string) => {
     setItems((prev) => prev.filter((item) => item.id !== itemId));
+  };
+
+  /** Descuento de una línea (% o $ sobre el total de la línea). */
+  const updateItemDiscount = (
+    itemId: string,
+    patch: { discount?: number; discountType?: TDiscountType }
+  ) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const next = { ...item, ...patch };
+        return { ...next, total: calcItemNet(next) };
+      })
+    );
   };
 
   // Funciones para manejar facturas
@@ -765,11 +794,6 @@ export default function NuevaVentaPage() {
       return;
     }
 
-    const itemSubtotal =
-      manualItem.unitPrice *
-      manualItem.quantity *
-      (1 - manualItem.discount / 100);
-
     const newItem: SaleItem = {
       id: crypto.randomUUID(),
       product: {
@@ -797,7 +821,11 @@ export default function NuevaVentaPage() {
       } as TProductVariant,
       quantity: manualItem.quantity,
       unitPrice: manualItem.unitPrice,
-      total: itemSubtotal,
+      // El descuento se persiste, no se disuelve en el total: así se puede
+      // ver y editar después desde el detalle de la venta.
+      discount: manualItem.discount,
+      discountType: manualItem.discountType,
+      total: calcItemNet(manualItem),
     };
 
     setItems((prev) => [...prev, newItem]);
@@ -810,6 +838,7 @@ export default function NuevaVentaPage() {
       quantity: 1,
       unitPrice: 0,
       discount: 0,
+      discountType: "percent",
       notes: "",
     });
     setShowManualItemDialog(false);
@@ -827,26 +856,19 @@ export default function NuevaVentaPage() {
     setLoading(true);
 
     try {
-      // Calcular valores en el momento del submit para asegurar que están actualizados
-      const currentSubtotal = items.reduce((sum, item) => sum + item.total, 0);
-      let currentTaxAmount = 0;
-      let currentSubtotalSinIVA = currentSubtotal;
-
-      if (applyIVA) {
-        currentTaxAmount = redondearTotal(currentSubtotal * (21 / (100 + 21)));
-        currentSubtotalSinIVA = redondearTotal(
-          currentSubtotal - currentTaxAmount
-        );
-      }
-
-      const currentDiscountAmount = redondearTotal(
-        currentSubtotalSinIVA * (discountPercentage / 100)
-      );
-      const currentCalculatedTotal = redondearTotal(
-        currentSubtotal - currentDiscountAmount - manualDiscount
-      );
+      // Recalcular al momento del submit para asegurar que están actualizados
+      const currentTotals = calcDocumentTotals({
+        items,
+        applyIVA,
+        discountPercentage,
+        manualDiscount,
+      });
+      const currentSubtotal = currentTotals.subtotal;
+      const currentTaxAmount = currentTotals.taxAmount;
+      const currentSubtotalSinIVA = currentTotals.subtotalSinIVA;
+      const currentDiscountAmount = currentTotals.generalDiscountAmount;
       const currentTotal =
-        manualTotal !== null ? manualTotal : currentCalculatedTotal;
+        manualTotal !== null ? manualTotal : currentTotals.total;
 
       // Construir objeto de datos del cliente solo si hay información
       const clientData: any = {};
@@ -909,6 +931,8 @@ export default function NuevaVentaPage() {
           variantName: item.variant.size,
           quantity: item.quantity,
           unitPrice: redondearTotal(item.unitPrice),
+          discount: Number(item.discount || 0),
+          discountType: item.discountType || "percent",
           total: redondearTotal(item.total),
         })),
         subtotal: redondearTotal(
@@ -1554,73 +1578,120 @@ export default function NuevaVentaPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between"
-                  >
-                    <div>
-                      <p className="font-medium">{item.product.name}</p>
-                      <p className="text-sm text-gray-500">
-                        {item.variant.size} | {formatearPrecio(item.unitPrice)}{" "}
-                        c/u
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            handleQuantityChange(
-                              item.product.id,
-                              item.variant.id,
-                              item.quantity - 1
-                            )
-                          }
-                          disabled={item.quantity <= 1}
-                        >
-                          -
-                        </Button>
-                        <span className="w-8 text-center">{item.quantity}</span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() =>
-                            handleQuantityChange(
-                              item.product.id,
-                              item.variant.id,
-                              item.quantity + 1
-                            )
-                          }
-                        >
-                          +
-                        </Button>
+                {items.map((item) => {
+                  const hasDiscount = Number(item.discount || 0) > 0;
+                  return (
+                    <div key={item.id} className="border-b pb-3 last:border-b-0">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium">{item.product.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {item.variant.size} |{" "}
+                            {formatearPrecio(item.unitPrice)} c/u
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                handleQuantityChange(
+                                  item.product.id,
+                                  item.variant.id,
+                                  item.quantity - 1
+                                )
+                              }
+                              disabled={item.quantity <= 1}
+                            >
+                              -
+                            </Button>
+                            <span className="w-8 text-center">
+                              {item.quantity}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                handleQuantityChange(
+                                  item.product.id,
+                                  item.variant.id,
+                                  item.quantity + 1
+                                )
+                              }
+                            >
+                              +
+                            </Button>
+                          </div>
+                          <div className="w-24 text-right">
+                            {hasDiscount && (
+                              <p className="text-xs text-gray-400 line-through">
+                                {formatearPrecio(calcItemGross(item))}
+                              </p>
+                            )}
+                            <p>{formatearPrecio(item.total)}</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveItem(item.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <p className="w-24 text-right">
-                        {formatearPrecio(item.total)}
-                      </p>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveItem(item.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="mt-2 flex items-center gap-3">
+                        <span className="text-xs text-gray-500">Descuento</span>
+                        <DiscountInput
+                          size="sm"
+                          value={item.discount || 0}
+                          type={item.discountType || "percent"}
+                          onValueChange={(discount) =>
+                            updateItemDiscount(item.id, { discount })
+                          }
+                          onTypeChange={(discountType) =>
+                            updateItemDiscount(item.id, { discountType })
+                          }
+                          inputClassName="w-28"
+                        />
+                        {hasDiscount && (
+                          <span className="text-xs text-green-600">
+                            −{formatearPrecio(calcItemDiscountAmount(item))}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 <div className="border-t pt-4">
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <p className="text-gray-700">Subtotal</p>
                       <p className="font-semibold">
-                        {formatearPrecio(subtotal)}
+                        {formatearPrecio(grossSubtotal)}
                       </p>
                     </div>
+
+                    {itemsDiscountAmount > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <p className="text-gray-700">Descuento en ítems</p>
+                        <p className="text-red-600">
+                          -{formatearPrecio(itemsDiscountAmount)}
+                        </p>
+                      </div>
+                    )}
+
+                    {itemsDiscountAmount > 0 && (
+                      <div className="flex justify-between items-center text-sm">
+                        <p className="text-gray-700">Subtotal con descuentos</p>
+                        <p className="font-medium">
+                          {formatearPrecio(subtotal)}
+                        </p>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between border-b pb-2">
                       <div className="flex items-center gap-3">
@@ -1659,7 +1730,7 @@ export default function NuevaVentaPage() {
                           htmlFor="discount"
                           className="text-sm text-gray-700 w-24"
                         >
-                          Descuento (%)
+                          Desc. general (%)
                         </Label>
                         <Input
                           id="discount"
@@ -1685,7 +1756,7 @@ export default function NuevaVentaPage() {
                           htmlFor="manualDiscount"
                           className="text-sm text-gray-700 w-24"
                         >
-                          Descuento ($)
+                          Desc. general ($)
                         </Label>
                         <MoneyInput
                           id="manualDiscount"
@@ -1793,22 +1864,20 @@ export default function NuevaVentaPage() {
                 </div>
               </div>
               <div>
-                <Label>Descuento (%)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  placeholder="0"
-                  value={manualItem.discount || ""}
-                  onChange={(e) =>
-                    setManualItem((prev) => ({
-                      ...prev,
-                      discount: parseFloat(e.target.value) || 0,
-                    }))
+                <Label>Descuento</Label>
+                <DiscountInput
+                  value={manualItem.discount || 0}
+                  type={manualItem.discountType}
+                  onValueChange={(discount) =>
+                    setManualItem((prev) => ({ ...prev, discount }))
                   }
+                  onTypeChange={(discountType) =>
+                    setManualItem((prev) => ({ ...prev, discountType }))
+                  }
+                  inputClassName="flex-1"
                 />
               </div>
-            
+
               {/* Preview del subtotal */}
               {manualItem.unitPrice > 0 && (
                 <div className="bg-gray-50 p-3 rounded">
@@ -1819,15 +1888,13 @@ export default function NuevaVentaPage() {
                       {formatearPrecio(manualItem.unitPrice)}
                     </div>
                     {manualItem.discount > 0 && (
-                      <div>Descuento: {manualItem.discount}%</div>
+                      <div>
+                        Descuento: {formatItemDiscount(manualItem)} (−
+                        {formatearPrecio(calcItemDiscountAmount(manualItem))})
+                      </div>
                     )}
                     <div className="font-bold">
-                      Subtotal:{" "}
-                      {formatearPrecio(
-                        manualItem.unitPrice *
-                          manualItem.quantity *
-                          (1 - manualItem.discount / 100)
-                      )}
+                      Subtotal: {formatearPrecio(calcItemNet(manualItem))}
                     </div>
                   </div>
                 </div>

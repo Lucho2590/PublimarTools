@@ -44,6 +44,16 @@ import {
   Search,
 } from "lucide-react";
 import { formatearPrecio, formatDate, redondearTotal, extractIdFromSlug } from "@/lib/utils";
+import {
+  calcDocumentTotals,
+  calcItemDiscountAmount,
+  calcItemGross,
+  calcItemNet,
+  formatItemDiscount,
+  normalizeItemDiscount,
+  TDiscountType,
+} from "@/lib/totals";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 import { toast } from "sonner";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { EClientTaxCondition } from "@/types/client";
@@ -93,6 +103,8 @@ export default function QuoteDetailsPage({
   const [selectedVariant, setSelectedVariant] = useState<TProductVariant | null>(null);
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
+  const [itemDiscountType, setItemDiscountType] =
+    useState<TDiscountType>("percent");
   const [customUnitPrice, setCustomUnitPrice] = useState<number | null>(null);
   const [productSearchTerm, setProductSearchTerm] = useState("");
 
@@ -112,7 +124,14 @@ export default function QuoteDetailsPage({
   // Sincronizar editedQuote cuando llega el presupuesto
   useEffect(() => {
     if (quote) {
-      setEditedQuote(quote);
+      // Los presupuestos viejos guardaban el neto en `subtotal` sin declarar el
+      // descuento de línea: se reconstruye para no alterar el total al abrir.
+      setEditedQuote({
+        ...quote,
+        items: (quote.items || []).map((item: any) =>
+          normalizeItemDiscount(item, item.subtotal),
+        ),
+      });
       // Cargar estados de totales si existen
       if (quote.applyIVA !== undefined) setApplyIVA(quote.applyIVA);
       if (quote.discountPercentage !== undefined) setDiscountPercentage(quote.discountPercentage);
@@ -120,29 +139,15 @@ export default function QuoteDetailsPage({
     }
   }, [quote]);
 
-  // Calcular totales automáticamente
-  const calculateTotals = () => {
-    if (!editedQuote) return { subtotal: 0, taxAmount: 0, total: 0, subtotalSinIVA: 0 };
-
-    const subtotal = editedQuote.items.reduce((sum: number, item: any) => sum + (item.subtotal || 0), 0);
-
-    let taxAmount = 0;
-    let subtotalSinIVA = subtotal;
-
-    if (applyIVA) {
-      const taxRate = parseFloat(editedQuote.taxRate?.toString() || "21");
-      taxAmount = subtotal * (taxRate / (100 + taxRate));
-      subtotalSinIVA = subtotal - taxAmount;
-    }
-
-    const generalDiscountAmount = subtotalSinIVA * (discountPercentage / 100);
-    const totalDiscountAmount = generalDiscountAmount + manualDiscount;
-    const total = subtotal - totalDiscountAmount;
-
-    return { subtotal, taxAmount, total, subtotalSinIVA };
-  };
-
-  const totals = calculateTotals();
+  // Cálculo canónico compartido: primero el descuento de cada ítem (ya dentro
+  // de `subtotal`), después el general sobre ese subtotal ya descontado.
+  const totals = calcDocumentTotals({
+    items: editedQuote?.items || [],
+    applyIVA,
+    taxRate: parseFloat(editedQuote?.taxRate?.toString() || "21") || 21,
+    discountPercentage,
+    manualDiscount,
+  });
 
   // Manejar guardado
   const handleSave = async () => {
@@ -201,10 +206,6 @@ export default function QuoteDetailsPage({
       ? customUnitPrice
       : Number(selectedVariant ? selectedVariant.price : selectedProduct.price || 0);
 
-    const discountAmount = (price * itemDiscount) / 100;
-    const priceAfterDiscount = price - discountAmount;
-    const subtotal = priceAfterDiscount * itemQuantity;
-
     const newItem: any = {
       id: editingItemId || crypto.randomUUID(),
       product: {
@@ -226,7 +227,13 @@ export default function QuoteDetailsPage({
       quantity: itemQuantity,
       unitPrice: price,
       discount: itemDiscount,
-      subtotal: subtotal,
+      discountType: itemDiscountType,
+      subtotal: calcItemNet({
+        quantity: itemQuantity,
+        unitPrice: price,
+        discount: itemDiscount,
+        discountType: itemDiscountType,
+      }),
       productName: selectedProduct.name,
       variantName: selectedVariant?.size || "",
       description: selectedProduct.description || "",
@@ -251,6 +258,7 @@ export default function QuoteDetailsPage({
     setSelectedVariant(null);
     setItemQuantity(1);
     setItemDiscount(0);
+    setItemDiscountType("percent");
     setCustomUnitPrice(null);
     setProductSearchTerm("");
     setEditingItemId(null);
@@ -262,6 +270,7 @@ export default function QuoteDetailsPage({
     setSelectedVariant(item.variant || null);
     setItemQuantity(item.quantity);
     setItemDiscount(item.discount || 0);
+    setItemDiscountType(item.discountType || "percent");
     setCustomUnitPrice(item.unitPrice);
     setEditingItemId(item.id);
     setIsAddingProduct(true);
@@ -299,6 +308,7 @@ export default function QuoteDetailsPage({
       quantity: manualItemQuantity,
       unitPrice: manualItemPrice,
       discount: 0,
+      discountType: "percent",
       subtotal: itemSubtotal,
       productName: manualItemName,
       variantName: manualItemMeasure || "Sin medida",
@@ -757,14 +767,13 @@ export default function QuoteDetailsPage({
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="discount">Descuento (%)</Label>
-                          <Input
-                            id="discount"
-                            type="number"
-                            min="0"
-                            max="100"
+                          <Label htmlFor="discount">Descuento</Label>
+                          <DiscountInput
                             value={itemDiscount}
-                            onChange={(e) => setItemDiscount(parseInt(e.target.value) || 0)}
+                            type={itemDiscountType}
+                            onValueChange={setItemDiscount}
+                            onTypeChange={setItemDiscountType}
+                            inputClassName="flex-1"
                           />
                         </div>
                       </div>
@@ -775,14 +784,38 @@ export default function QuoteDetailsPage({
                             <p className="text-sm">Precio unitario: {formatearPrecio(customUnitPrice || 0)}</p>
                             {itemDiscount > 0 && (
                               <p className="text-sm">
-                                Descuento: {itemDiscount}% ({formatearPrecio(((customUnitPrice || 0) * itemDiscount) / 100)})
+                                Descuento:{" "}
+                                {formatItemDiscount({
+                                  quantity: itemQuantity,
+                                  unitPrice: customUnitPrice || 0,
+                                  discount: itemDiscount,
+                                  discountType: itemDiscountType,
+                                })}{" "}
+                                (
+                                {formatearPrecio(
+                                  calcItemDiscountAmount({
+                                    quantity: itemQuantity,
+                                    unitPrice: customUnitPrice || 0,
+                                    discount: itemDiscount,
+                                    discountType: itemDiscountType,
+                                  })
+                                )}
+                                )
                               </p>
                             )}
                             <p className="text-sm">Cantidad: {itemQuantity}</p>
                           </div>
                           <div>
                             <p className="text-lg font-semibold">
-                              Subtotal: {formatearPrecio(itemQuantity * ((customUnitPrice || 0) - ((customUnitPrice || 0) * itemDiscount) / 100))}
+                              Subtotal:{" "}
+                              {formatearPrecio(
+                                calcItemNet({
+                                  quantity: itemQuantity,
+                                  unitPrice: customUnitPrice || 0,
+                                  discount: itemDiscount,
+                                  discountType: itemDiscountType,
+                                })
+                              )}
                             </p>
                             <p className="text-sm text-slate-400 text-right">+ IVA</p>
                           </div>
@@ -849,9 +882,21 @@ export default function QuoteDetailsPage({
                     <TableCell>{item.quantity}</TableCell>
                     <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
                     <TableCell>
-                      {item.discount ? `${item.discount}%` : "-"}
+                      {item.discount ? (
+                        <span className="text-green-600">
+                          {formatItemDiscount(item)} (−
+                          {formatearPrecio(calcItemDiscountAmount(item))})
+                        </span>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
+                      {item.discount > 0 && (
+                        <span className="mr-2 text-xs text-gray-400 line-through">
+                          {formatearPrecio(calcItemGross(item))}
+                        </span>
+                      )}
                       {formatearPrecio(item.subtotal)}
                     </TableCell>
                     <TableCell>
@@ -898,8 +943,28 @@ export default function QuoteDetailsPage({
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <p className="text-gray-700">Subtotal</p>
-                <p className="font-semibold">{formatearPrecio(totals.subtotal)}</p>
+                <p className="font-semibold">
+                  {formatearPrecio(totals.grossSubtotal)}
+                </p>
               </div>
+
+              {totals.itemsDiscountAmount > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <p className="text-gray-700">Descuento en ítems</p>
+                  <p className="text-red-600">
+                    -{formatearPrecio(totals.itemsDiscountAmount)}
+                  </p>
+                </div>
+              )}
+
+              {totals.itemsDiscountAmount > 0 && (
+                <div className="flex justify-between items-center text-sm">
+                  <p className="text-gray-700">Subtotal con descuentos</p>
+                  <p className="font-medium">
+                    {formatearPrecio(totals.subtotal)}
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center justify-between border-b pb-2">
                 <div className="flex items-center gap-3">
@@ -928,7 +993,7 @@ export default function QuoteDetailsPage({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Label htmlFor="discount" className="text-sm text-gray-700 w-24">
-                    Descuento (%)
+                    Desc. general (%)
                   </Label>
                   <Input
                     id="discount"
@@ -942,14 +1007,14 @@ export default function QuoteDetailsPage({
                   />
                 </div>
                 <p className="text-red-600">
-                  -{formatearPrecio(redondearTotal((totals.subtotalSinIVA * discountPercentage) / 100))}
+                  -{formatearPrecio(totals.generalDiscountAmount)}
                 </p>
               </div>
 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Label htmlFor="manualDiscount" className="text-sm text-gray-700 w-24">
-                    Descuento ($)
+                    Desc. general ($)
                   </Label>
                   <MoneyInput
                     id="manualDiscount"

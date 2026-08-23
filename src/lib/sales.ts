@@ -14,6 +14,7 @@ import { TAccount } from "@/types/account";
 import { registerAccountMovement } from "@/lib/accountMovements";
 import { EMovementType } from "@/types/accountMovement";
 import { redondearTotal } from "@/lib/utils";
+import type { TDiscountType } from "@/lib/totals";
 import { variantDiscountsStock } from "@/lib/stock";
 import {
   buildChanges,
@@ -37,6 +38,10 @@ export interface SaleLineItem {
   variant: TProductVariant;
   quantity: number;
   unitPrice: number;
+  /** Descuento de la línea: % o $ según `discountType` (default: %). */
+  discount?: number;
+  discountType?: TDiscountType;
+  /** Importe de la línea ya descontado. */
   total: number;
 }
 

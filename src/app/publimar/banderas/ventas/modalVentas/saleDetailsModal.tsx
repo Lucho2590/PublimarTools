@@ -53,6 +53,16 @@ import {
   formatDateString,
   formatDate,
 } from "@/lib/utils";
+import {
+  calcDocumentTotals,
+  calcItemDiscountAmount,
+  calcItemGross,
+  calcItemNet,
+  formatItemDiscount,
+  normalizeItemDiscount,
+  TDiscountType,
+} from "@/lib/totals";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 import { variantDiscountsStock } from "@/lib/stock";
 import {
   Table,
@@ -143,6 +153,9 @@ export function SaleDetailsModal({
   const { defaults: paymentDefaults } = usePaymentAccountDefaults();
   const [total, setTotal] = useState(0);
   const [subtotal, setSubtotal] = useState(0);
+  /** Subtotal sin descuentos de ítem (para mostrar el desglose). */
+  const [grossSubtotal, setGrossSubtotal] = useState(0);
+  const [itemsDiscountAmount, setItemsDiscountAmount] = useState(0);
   const [taxAmount, setTaxAmount] = useState(0);
   const [subtotalSinIVA, setSubtotalSinIVA] = useState(0);
   const [applyIVA, setApplyIVA] = useState(false);
@@ -172,6 +185,7 @@ export function SaleDetailsModal({
     quantity: 1,
     unitPrice: 0,
     discount: 0,
+    discountType: "percent" as TDiscountType,
     notes: "",
   });
 
@@ -295,7 +309,12 @@ export function SaleDetailsModal({
       }
 
       if (typedSale?.items) {
-        setItems(typedSale.items);
+        // Las ventas viejas guardaban el neto en `total` sin registrar el
+        // descuento: se rearma como monto fijo para no alterar el total.
+        const loadedItems = typedSale.items.map((item) =>
+          normalizeItemDiscount(item, item.total),
+        );
+        setItems(loadedItems);
 
         // Inicializar valores desde la venta guardada
         setApplyIVA(typedSale.applyIVA || false);
@@ -304,7 +323,7 @@ export function SaleDetailsModal({
 
         // Calcular totales usando la misma lógica que newSaleModal
         calculateTotals(
-          typedSale.items,
+          loadedItems,
           typedSale.applyIVA || false,
           typedSale.discountPercentage || 0,
           typedSale.manualDiscount || 0,
@@ -450,37 +469,37 @@ export function SaleDetailsModal({
     discountPerc: number,
     manualDisc: number,
   ) => {
-    const initialSubtotal = calculateSubtotal(itemsToCalculate);
-    const taxRate = 21; // IVA del 21%
+    // Cálculo canónico compartido: el % general va sobre el neto sin IVA,
+    // igual que en el alta de venta (antes acá iba sobre el subtotal con IVA,
+    // así que abrir y guardar una venta le cambiaba el total).
+    const totals = calcDocumentTotals({
+      items: itemsToCalculate,
+      applyIVA: shouldApplyIVA,
+      discountPercentage: discountPerc,
+      manualDiscount: manualDisc,
+    });
 
-    // El IVA siempre se calcula sobre el subtotal ORIGINAL (antes de descuentos)
-    let calculatedTaxAmount = 0;
-    let calculatedSubtotalSinIVA = initialSubtotal;
+    setGrossSubtotal(totals.grossSubtotal);
+    setItemsDiscountAmount(totals.itemsDiscountAmount);
+    setSubtotal(totals.subtotal);
+    setTaxAmount(totals.taxAmount);
+    setSubtotalSinIVA(totals.subtotalSinIVA);
+    setDiscountAmount(totals.generalDiscountAmount);
+    setTotal(totals.total);
+  };
 
-    if (shouldApplyIVA) {
-      // Si aplicamos IVA, los precios son finales (con IVA incluido)
-      // Calculamos el IVA que está incluido en el subtotal ORIGINAL
-      calculatedTaxAmount = redondearTotal(
-        initialSubtotal * (taxRate / (100 + taxRate)),
-      );
-      calculatedSubtotalSinIVA = redondearTotal(
-        initialSubtotal - calculatedTaxAmount,
-      );
-    }
-
-    // Los descuentos se calculan sobre el subtotal completo (con IVA incluido)
-    const calculatedDiscountAmount = redondearTotal(
-      initialSubtotal * (discountPerc / 100),
-    );
-    const totalAfterDiscounts = redondearTotal(
-      initialSubtotal - calculatedDiscountAmount - manualDisc,
-    );
-
-    setSubtotal(initialSubtotal);
-    setTaxAmount(calculatedTaxAmount);
-    setSubtotalSinIVA(calculatedSubtotalSinIVA);
-    setDiscountAmount(calculatedDiscountAmount);
-    setTotal(totalAfterDiscounts);
+  /** Descuento de una línea (% o $ sobre el total de la línea). */
+  const handleItemDiscountChange = (
+    index: number,
+    patch: { discount?: number; discountType?: TDiscountType },
+  ) => {
+    const newItems = items.map((item, i) => {
+      if (i !== index) return item;
+      const next = { ...item, ...patch };
+      return { ...next, total: calcItemNet(next) };
+    });
+    calculateTotals(newItems, applyIVA, discountPercentage, manualDiscount);
+    setItems(newItems);
   };
 
   const handleAddItem = () => {
@@ -495,7 +514,9 @@ export function SaleDetailsModal({
       variantName: getVariantSize(selectedVariant),
       quantity,
       unitPrice,
-      total: quantity * unitPrice,
+      discount: 0,
+      discountType: "percent",
+      total: redondearTotal(quantity * unitPrice),
 
       // variantName: undefined
     };
@@ -515,11 +536,6 @@ export function SaleDetailsModal({
       return;
     }
 
-    const itemSubtotal =
-      manualItem.unitPrice *
-      manualItem.quantity *
-      (1 - manualItem.discount / 100);
-
     const newItem: TSaleItem = {
       productId: `manual-${Date.now()}`,
       variantId: `manual-variant-${Date.now()}`,
@@ -528,7 +544,10 @@ export function SaleDetailsModal({
       variantName: manualItem.variantName || "N/A",
       quantity: manualItem.quantity,
       unitPrice: manualItem.unitPrice,
-      total: itemSubtotal,
+      // El descuento se persiste, no se disuelve en el total.
+      discount: manualItem.discount,
+      discountType: manualItem.discountType,
+      total: calcItemNet(manualItem),
       isManual: true,
     };
 
@@ -544,6 +563,7 @@ export function SaleDetailsModal({
       quantity: 1,
       unitPrice: 0,
       discount: 0,
+      discountType: "percent",
       notes: "",
     });
     setShowManualItemDialog(false);
@@ -2334,8 +2354,26 @@ export function SaleDetailsModal({
                     <div className="space-y-4">
                       <div className="flex justify-between items-center">
                         <p>Subtotal</p>
-                        <p>{formatearPrecio(subtotal)}</p>
+                        <p>{formatearPrecio(grossSubtotal)}</p>
                       </div>
+
+                      {itemsDiscountAmount > 0 && (
+                        <div className="flex justify-between items-center text-sm">
+                          <p>Descuento en ítems</p>
+                          <p className="text-red-600">
+                            -{formatearPrecio(itemsDiscountAmount)}
+                          </p>
+                        </div>
+                      )}
+
+                      {itemsDiscountAmount > 0 && (
+                        <div className="flex justify-between items-center text-sm">
+                          <p>Subtotal con descuentos</p>
+                          <p className="font-medium">
+                            {formatearPrecio(subtotal)}
+                          </p>
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between border-b pb-2">
                         <div className="flex items-center gap-3">
@@ -2367,7 +2405,7 @@ export function SaleDetailsModal({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <Label htmlFor="discount" className="text-sm w-24">
-                            Descuento (%)
+                            Desc. general (%)
                           </Label>
                           <Input
                             id="discount"
@@ -2396,7 +2434,7 @@ export function SaleDetailsModal({
                             htmlFor="manualDiscount"
                             className="text-sm w-24"
                           >
-                            Descuento ($)
+                            Desc. general ($)
                           </Label>
                           <MoneyInput
                             id="manualDiscount"
@@ -2567,6 +2605,9 @@ export function SaleDetailsModal({
                         <TableHead className="text-right">
                           Precio Unitario
                         </TableHead>
+                        <TableHead className={isEditing ? "" : "text-right"}>
+                          Desc.
+                        </TableHead>
                         <TableHead className="text-right">Total</TableHead>
                         {isEditing && (
                           <TableHead className="text-right">Acciones</TableHead>
@@ -2577,7 +2618,7 @@ export function SaleDetailsModal({
                       {isLoading ? (
                         <TableRow>
                           <TableCell
-                            colSpan={isEditing ? 7 : 6}
+                            colSpan={isEditing ? 8 : 7}
                             className="text-center py-4"
                           >
                             Cargando productos...
@@ -2586,7 +2627,7 @@ export function SaleDetailsModal({
                       ) : items.length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={isEditing ? 7 : 6}
+                            colSpan={isEditing ? 8 : 7}
                             className="text-center py-4"
                           >
                             No hay productos en esta venta
@@ -2622,7 +2663,44 @@ export function SaleDetailsModal({
                             <TableCell className="text-right">
                               {formatearPrecio(item.unitPrice)}
                             </TableCell>
+                            <TableCell
+                              className={isEditing ? "" : "text-right"}
+                            >
+                              {isEditing ? (
+                                <DiscountInput
+                                  size="sm"
+                                  value={item.discount || 0}
+                                  type={item.discountType || "percent"}
+                                  onValueChange={(discount) =>
+                                    handleItemDiscountChange(index, {
+                                      discount,
+                                    })
+                                  }
+                                  onTypeChange={(discountType) =>
+                                    handleItemDiscountChange(index, {
+                                      discountType,
+                                    })
+                                  }
+                                  inputClassName="w-24"
+                                />
+                              ) : Number(item.discount || 0) > 0 ? (
+                                <span className="text-green-600">
+                                  {formatItemDiscount(item)} (−
+                                  {formatearPrecio(
+                                    calcItemDiscountAmount(item),
+                                  )}
+                                  )
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
                             <TableCell className="text-right">
+                              {Number(item.discount || 0) > 0 && (
+                                <span className="mr-2 text-xs text-gray-400 line-through">
+                                  {formatearPrecio(calcItemGross(item))}
+                                </span>
+                              )}
                               {formatearPrecio(item.total)}
                             </TableCell>
                             {isEditing && (
@@ -2959,19 +3037,17 @@ export function SaleDetailsModal({
               </div>
             </div>
             <div>
-              <Label>Descuento (%)</Label>
-              <Input
-                type="number"
-                min="0"
-                max="100"
-                placeholder="0"
-                value={manualItem.discount || ""}
-                onChange={(e) =>
-                  setManualItem((prev) => ({
-                    ...prev,
-                    discount: parseFloat(e.target.value) || 0,
-                  }))
+              <Label>Descuento</Label>
+              <DiscountInput
+                value={manualItem.discount || 0}
+                type={manualItem.discountType}
+                onValueChange={(discount) =>
+                  setManualItem((prev) => ({ ...prev, discount }))
                 }
+                onTypeChange={(discountType) =>
+                  setManualItem((prev) => ({ ...prev, discountType }))
+                }
+                inputClassName="flex-1"
               />
             </div>
 
@@ -2984,15 +3060,13 @@ export function SaleDetailsModal({
                     Precio unitario: {formatearPrecio(manualItem.unitPrice)}
                   </div>
                   {manualItem.discount > 0 && (
-                    <div>Descuento: {manualItem.discount}%</div>
+                    <div>
+                      Descuento: {formatItemDiscount(manualItem)} (−
+                      {formatearPrecio(calcItemDiscountAmount(manualItem))})
+                    </div>
                   )}
                   <div className="font-bold">
-                    Subtotal:{" "}
-                    {formatearPrecio(
-                      manualItem.unitPrice *
-                        manualItem.quantity *
-                        (1 - manualItem.discount / 100),
-                    )}
+                    Subtotal: {formatearPrecio(calcItemNet(manualItem))}
                   </div>
                 </div>
               </div>

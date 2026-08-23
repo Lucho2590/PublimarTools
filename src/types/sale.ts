@@ -1,5 +1,6 @@
 import { TClient } from "./client";
 import { EAccountType } from "./account";
+import type { TDiscountType } from "@/lib/totals";
 
 export enum EPaymentMethod {
   CASH = "cash",
@@ -65,6 +66,10 @@ export interface TSaleItem {
   variantId: string;
   quantity: number;
   unitPrice: number;
+  /** Descuento de la línea: % o $ según `discountType` (default: %). */
+  discount?: number;
+  discountType?: TDiscountType;
+  /** Importe de la línea ya descontado (cantidad × precio − descuento). */
   total: number;
 }
 

@@ -2,9 +2,9 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoneyInput } from "@/components/ui/money-input";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 import {
   Select,
   SelectContent,
@@ -20,11 +20,12 @@ import {
   TSaleFormaPago,
 } from "@/types/sale";
 import { formatearPrecio, redondearTotal } from "@/lib/utils";
+import type { TDiscountType } from "@/lib/totals";
 
-type DiscountMode = "percent" | "amount";
+type DiscountMode = TDiscountType;
 
 interface PaymentStepProps {
-  /** Suma de items (antes de descuento). */
+  /** Suma de items (ya netos del descuento por ítem, antes del general). */
   subtotal: number;
   /** Total con descuento aplicado (ya calculado en page). */
   total: number;
@@ -69,59 +70,22 @@ export function PaymentStep({
     <div className="flex flex-col h-full max-w-3xl mx-auto w-full">
       <h2 className="text-lg font-semibold text-gray-900 mb-1">Pago</h2>
       <p className="text-sm text-gray-500 mb-4">
-        Aplicá un descuento si corresponde y elegí una o más formas de pago.
+        Aplicá un descuento general si corresponde y elegí una o más formas de
+        pago. El descuento por producto se carga desde el carrito.
       </p>
 
       {/* Descuento + desglose */}
       <div className="rounded-lg border bg-white p-4 mb-4">
         <div className="flex flex-col sm:flex-row sm:items-end gap-3">
           <div className="flex-1">
-            <Label className="text-xs">Descuento</Label>
-            <div className="flex gap-2">
-              <div className="flex rounded-md border bg-gray-50 p-0.5">
-                <Button
-                  type="button"
-                  variant={discountMode === "percent" ? "default" : "ghost"}
-                  size="sm"
-                  className="px-3"
-                  onClick={() => onDiscountModeChange("percent")}
-                >
-                  %
-                </Button>
-                <Button
-                  type="button"
-                  variant={discountMode === "amount" ? "default" : "ghost"}
-                  size="sm"
-                  className="px-3"
-                  onClick={() => onDiscountModeChange("amount")}
-                >
-                  $
-                </Button>
-              </div>
-              {discountMode === "percent" ? (
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={discountValue || ""}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    onDiscountValueChange(
-                      isNaN(v) ? 0 : Math.min(100, Math.max(0, v)),
-                    );
-                  }}
-                  placeholder="0"
-                  className="w-28"
-                />
-              ) : (
-                <MoneyInput
-                  value={discountValue || 0}
-                  onValueChange={onDiscountValueChange}
-                  placeholder="0"
-                  className="w-40"
-                />
-              )}
-            </div>
+            <Label className="text-xs">Descuento general</Label>
+            <DiscountInput
+              value={discountValue}
+              type={discountMode}
+              onValueChange={onDiscountValueChange}
+              onTypeChange={onDiscountModeChange}
+              inputClassName={discountMode === "percent" ? "w-28" : "w-40"}
+            />
           </div>
           <div className="text-sm text-gray-600 space-y-0.5 sm:text-right">
             <div>Subtotal: {formatearPrecio(subtotal)}</div>

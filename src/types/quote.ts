@@ -1,5 +1,6 @@
 import { TClient } from "./client";
 import { TProduct, TProductCategory, TProductVariant } from "./product";
+import type { TDiscountType } from "@/lib/totals";
 
 export enum EQuoteStatus {
   DRAFT = "draft",
@@ -23,7 +24,10 @@ export type TQuoteItem = {
   // Datos de la cotización/orden
   quantity: number;
   unitPrice: number;
+  /** Descuento de la línea: % o $ según `discountType` (default: %). */
   discount?: number;
+  discountType?: TDiscountType;
+  /** Importe de la línea ya descontado (cantidad × precio − descuento). */
   subtotal: number;
   tax: number;
   taxAmount: number;

@@ -52,6 +52,16 @@ import { Badge } from "@/components/ui/badge";
 import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
 import { applyCreditNoteToDocument } from "@/lib/creditNotes";
 import { formatearPrecio, formatDate, formatDateString, extractIdFromSlug } from "@/lib/utils";
+import {
+  calcDocumentTotals,
+  calcItemDiscountAmount,
+  calcItemGross,
+  calcItemNet,
+  formatItemDiscount,
+  normalizeItemDiscount,
+  TDiscountType,
+} from "@/lib/totals";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 import { toast } from "sonner";
 import { EOrderStatus, TPaymentHistory, TFactura } from "@/types/order";
 import { EPaymentMethod, ESaleDepartment } from "@/types/sale";
@@ -149,6 +159,7 @@ export default function OrderDetailsPage({
     quantity: 1,
     unitPrice: 0,
     discount: 0,
+    discountType: "percent" as TDiscountType,
     notes: "",
   });
 
@@ -160,6 +171,8 @@ export default function OrderDetailsPage({
   const [productSearchTerm, setProductSearchTerm] = useState("");
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
+  const [itemDiscountType, setItemDiscountType] =
+    useState<TDiscountType>("percent");
 
   // Estado para colapso de contacto
   const [showContactDetails, setShowContactDetails] = useState(false);
@@ -397,7 +410,14 @@ export default function OrderDetailsPage({
   // Actualizar editedOrder cuando cambie order
   useEffect(() => {
     if (order && !saving) {
-      setEditedOrder(order);
+      // Las órdenes viejas guardaban el neto en `subtotal` sin declarar el
+      // descuento de línea: se reconstruye para no alterar el total al abrir.
+      setEditedOrder({
+        ...order,
+        items: (order.items || []).map((item: any) =>
+          normalizeItemDiscount(item, item.subtotal)
+        ),
+      });
       // Cargar facturas existentes
       if (order.facturas && order.facturas.length > 0) {
         setFacturas(order.facturas);
@@ -432,21 +452,22 @@ export default function OrderDetailsPage({
     c.id === order?.clientId || c.id === order?.client?.id
   );
 
-  // Cálculos
-  const subtotal =
-    editedOrder?.items?.reduce(
-      (sum: number, item: any) => sum + (item.subtotal || 0),
-      0
-    ) || 0;
-
-  // Desglose de IVA: si está marcado, el subtotal incluye IVA y hay que desglosarlo
-  const total =
-    subtotal -
-    // (editedOrder?.discountAmount || 0) -
-    (editedOrder?.manualDiscount || 0) -
-    ((editedOrder?.discountPercentage || 0) * subtotal) / 100;
-  const baseImponible = editedOrder?.applyIVA ? total - total * 0.21 : total;
-  const taxAmount = editedOrder?.applyIVA ? total * 0.21 : 0;
+  // Cálculo canónico compartido: primero el descuento de cada ítem (ya dentro
+  // de `subtotal`), después el general sobre ese subtotal ya descontado.
+  // El % va sobre el neto sin IVA, igual que en el alta de órdenes.
+  const totals = calcDocumentTotals({
+    items: editedOrder?.items || [],
+    applyIVA: editedOrder?.applyIVA,
+    taxRate: Number(editedOrder?.taxRate) || 21,
+    discountPercentage: editedOrder?.discountPercentage,
+    manualDiscount: editedOrder?.manualDiscount,
+  });
+  const grossSubtotal = totals.grossSubtotal;
+  const itemsDiscountAmount = totals.itemsDiscountAmount;
+  const subtotal = totals.subtotal;
+  const total = totals.total;
+  const baseImponible = totals.subtotalSinIVA;
+  const taxAmount = totals.taxAmount;
 
   // Productos filtrados para búsqueda
   const filteredProducts =
@@ -627,8 +648,18 @@ export default function OrderDetailsPage({
         variantName: item.variantName || undefined,
         quantity: Number(item.quantity) || 0,
         unitPrice: Number(item.unitPrice) || 0,
+        discount: Number(item.discount) || 0,
+        discountType: item.discountType || "percent",
         total: Number(item.subtotal) || 0,
       }));
+
+      const saleTotals = calcDocumentTotals({
+        items: saleItems,
+        applyIVA: orderData.applyIVA || false,
+        taxRate: Number(orderData.taxRate) || 21,
+        discountPercentage: orderData.discountPercentage,
+        manualDiscount: orderData.manualDiscount,
+      });
 
       // Crear la venta basada en la orden
       const saleData = {
@@ -639,10 +670,12 @@ export default function OrderDetailsPage({
         subtotal: orderData.subtotal,
         total: orderData.total,
         applyIVA: orderData.applyIVA || false,
-        taxRate: orderData.applyIVA ? 0.21 : 0,
-        taxAmount: orderData.applyIVA ? orderData.total * 0.21 : 0,
+        // Mismo criterio que el resto de la app: la tasa se guarda en puntos
+        // (21, no 0.21) y el IVA se desglosa del subtotal, no del total.
+        taxRate: Number(orderData.taxRate) || 21,
+        taxAmount: saleTotals.taxAmount,
         discountPercentage: orderData.discountPercentage || 0,
-        discountAmount: orderData.discountAmount || 0,
+        discountAmount: saleTotals.generalDiscountAmount,
         manualDiscount: orderData.manualDiscount || 0,
         paymentMethod: (orderData.paymentMethod as EPaymentMethod)
           || (orderData.paymentHistory?.length > 0
@@ -721,16 +754,9 @@ export default function OrderDetailsPage({
 
     setSaving(true);
     try {
-      // Recalcular totales
-      const newSubtotal =
-        editedOrder.items?.reduce(
-          (sum: number, item: any) => sum + (item.subtotal || 0),
-          0
-        ) || 0;
-      const newBaseImponible = editedOrder.applyIVA
-        ? newSubtotal / 1.21
-        : newSubtotal;
-      const newTaxAmount = editedOrder.applyIVA ? newBaseImponible * 0.21 : 0;
+      // Recalcular totales (misma fórmula canónica que la pantalla)
+      const newSubtotal = totals.subtotal;
+      const newTaxAmount = totals.taxAmount;
       const newTotal = total;
       const newBalance =
         total -
@@ -739,12 +765,7 @@ export default function OrderDetailsPage({
           (sum: number, payment: any) => sum + payment.amount,
           0
         ) || 0);
-      const newDiscountAmount =(editedOrder?.manualDiscount || 0) +
-      ((editedOrder?.discountPercentage || 0) *
-        subtotal) /
-        100
-      
-       
+      const newDiscountAmount = totals.generalDiscountAmount;
 
       const { createdAt, updatedAt, ...rest } = editedOrder;
       // Preparar datos de actualización
@@ -1174,11 +1195,6 @@ export default function OrderDetailsPage({
       return;
     }
 
-    const itemSubtotal =
-      manualItem.unitPrice *
-      manualItem.quantity *
-      (1 - manualItem.discount / 100);
-
     const newItem = {
       id: `${Date.now()}-${Math.random()}`,
       productId: undefined,
@@ -1190,7 +1206,8 @@ export default function OrderDetailsPage({
       quantity: manualItem.quantity,
       unitPrice: manualItem.unitPrice,
       discount: manualItem.discount,
-      subtotal: itemSubtotal,
+      discountType: manualItem.discountType,
+      subtotal: calcItemNet(manualItem),
       tax: 0,
       taxAmount: 0,
       notes: manualItem.notes,
@@ -1210,6 +1227,7 @@ export default function OrderDetailsPage({
       quantity: 1,
       unitPrice: 0,
       discount: 0,
+      discountType: "percent",
       notes: "",
     });
     setShowManualItemDialog(false);
@@ -1223,7 +1241,6 @@ export default function OrderDetailsPage({
     if (!selectedProduct) return;
 
     const price = Number(selectedVariant?.price || selectedProduct.price || 0);
-    const itemSubtotal = price * itemQuantity * (1 - itemDiscount / 100);
 
     const newItem = {
       id: `${Date.now()}-${Math.random()}`,
@@ -1236,7 +1253,13 @@ export default function OrderDetailsPage({
       quantity: itemQuantity,
       unitPrice: price,
       discount: itemDiscount,
-      subtotal: itemSubtotal,
+      discountType: itemDiscountType,
+      subtotal: calcItemNet({
+        quantity: itemQuantity,
+        unitPrice: price,
+        discount: itemDiscount,
+        discountType: itemDiscountType,
+      }),
       tax: 0,
       taxAmount: 0,
       notes: "",
@@ -1253,6 +1276,7 @@ export default function OrderDetailsPage({
     setSelectedVariant(null);
     setItemQuantity(1);
     setItemDiscount(0);
+    setItemDiscountType("percent");
     setProductSearchTerm("");
     setShowAddItemDialog(false);
     toast.success("Producto agregado");
@@ -1263,6 +1287,7 @@ export default function OrderDetailsPage({
     setSelectedVariant(null);
     setItemQuantity(1);
     setItemDiscount(0);
+    setItemDiscountType("percent");
     setProductSearchTerm("");
     setShowAddItemDialog(false);
   };
@@ -1811,18 +1836,13 @@ export default function OrderDetailsPage({
                               />
                             </div>
                             <div>
-                              <Label>Descuento (%)</Label>
-                              <Input
-                                type="number"
-                                min="0"
-                                max="100"
-                                placeholder="0"
+                              <Label>Descuento</Label>
+                              <DiscountInput
                                 value={itemDiscount}
-                                onChange={(e) =>
-                                  setItemDiscount(
-                                    parseFloat(e.target.value) || 0
-                                  )
-                                }
+                                type={itemDiscountType}
+                                onValueChange={setItemDiscount}
+                                onTypeChange={setItemDiscountType}
+                                inputClassName="flex-1"
                               />
                             </div>
                           </div>
@@ -1846,18 +1866,33 @@ export default function OrderDetailsPage({
                                 )}
                               </div>
                               {itemDiscount > 0 && (
-                                <div>Descuento: {itemDiscount}%</div>
+                                <div>
+                                  Descuento:{" "}
+                                  {formatItemDiscount({
+                                    quantity: itemQuantity,
+                                    unitPrice: Number(
+                                      selectedVariant?.price ||
+                                        selectedProduct.price ||
+                                        0
+                                    ),
+                                    discount: itemDiscount,
+                                    discountType: itemDiscountType,
+                                  })}
+                                </div>
                               )}
                               <div className="font-bold">
                                 Subtotal:{" "}
                                 {formatearPrecio(
-                                  Number(
-                                    selectedVariant?.price ||
-                                      selectedProduct.price ||
-                                      0
-                                  ) *
-                                    itemQuantity *
-                                    (1 - itemDiscount / 100)
+                                  calcItemNet({
+                                    quantity: itemQuantity,
+                                    unitPrice: Number(
+                                      selectedVariant?.price ||
+                                        selectedProduct.price ||
+                                        0
+                                    ),
+                                    discount: itemDiscount,
+                                    discountType: itemDiscountType,
+                                  })
                                 )}
                               </div>
                             </div>
@@ -1976,19 +2011,17 @@ export default function OrderDetailsPage({
                         </div>
                       </div>
                       <div>
-                        <Label>Descuento (%)</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          placeholder="0"
-                          value={manualItem.discount}
-                          onChange={(e) =>
-                            setManualItem((prev) => ({
-                              ...prev,
-                              discount: parseFloat(e.target.value) ,
-                            }))
+                        <Label>Descuento</Label>
+                        <DiscountInput
+                          value={manualItem.discount || 0}
+                          type={manualItem.discountType}
+                          onValueChange={(discount) =>
+                            setManualItem((prev) => ({ ...prev, discount }))
                           }
+                          onTypeChange={(discountType) =>
+                            setManualItem((prev) => ({ ...prev, discountType }))
+                          }
+                          inputClassName="flex-1"
                         />
                       </div>
                       {/* Preview del subtotal */}
@@ -2001,15 +2034,16 @@ export default function OrderDetailsPage({
                               {formatearPrecio(manualItem.unitPrice)}
                             </div>
                             {manualItem.discount > 0 && (
-                              <div>Descuento: {manualItem.discount}%</div>
+                              <div>
+                                Descuento: {formatItemDiscount(manualItem)} (−
+                                {formatearPrecio(
+                                  calcItemDiscountAmount(manualItem)
+                                )}
+                                )
+                              </div>
                             )}
                             <div className="font-bold">
-                              Subtotal:{" "}
-                              {formatearPrecio(
-                                manualItem.unitPrice *
-                                  manualItem.quantity *
-                                  (1 - manualItem.discount / 100)
-                              )}
+                              Subtotal: {formatearPrecio(calcItemNet(manualItem))}
                             </div>
                           </div>
                         </div>
@@ -2044,6 +2078,7 @@ export default function OrderDetailsPage({
                     <TableHead>Variante</TableHead>
                     <TableHead>Cantidad</TableHead>
                     <TableHead>Precio Unit.</TableHead>
+                    <TableHead>Desc.</TableHead>
                     <TableHead>Subtotal</TableHead>
                     <TableHead>Acciones</TableHead>
                   </TableRow>
@@ -2078,7 +2113,24 @@ export default function OrderDetailsPage({
                       </TableCell>
                       <TableCell className="text-center">{item.quantity}</TableCell>
                       <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
-                      <TableCell>{formatearPrecio(item.subtotal)}</TableCell>
+                      <TableCell>
+                        {item.discount > 0 ? (
+                          <span className="text-green-600">
+                            {formatItemDiscount(item)} (−
+                            {formatearPrecio(calcItemDiscountAmount(item))})
+                          </span>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {item.discount > 0 && (
+                          <span className="mr-2 text-xs text-slate-400 line-through">
+                            {formatearPrecio(calcItemGross(item))}
+                          </span>
+                        )}
+                        {formatearPrecio(item.subtotal)}
+                      </TableCell>
                       <TableCell className="text-center">
                         <Button
                           size="sm"
@@ -2128,18 +2180,21 @@ export default function OrderDetailsPage({
                       <>
                         <div className="flex justify-between text-xs text-slate-500">
                           <span>Total s/descuento</span>
-                          <span>{formatearPrecio(subtotal)}</span>
+                          <span>{formatearPrecio(grossSubtotal)}</span>
                         </div>
+                        {itemsDiscountAmount > 0 && (
+                          <div className="flex justify-between text-xs text-slate-500">
+                            <span>Descuento en ítems</span>
+                            <span>-{formatearPrecio(itemsDiscountAmount)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between text-xs text-slate-500">
-                          <span>Descuento</span>
+                          <span>Descuento general</span>
                           <span>
                             -
                             {formatearPrecio(
-                              // (editedOrder?.discountAmount || 0) +
-                                (editedOrder?.manualDiscount || 0) +
-                                ((editedOrder?.discountPercentage || 0) *
-                                  subtotal) /
-                                  100
+                              totals.generalDiscountAmount +
+                                totals.manualDiscount
                             )}
                           </span>
                         </div>
@@ -2247,7 +2302,7 @@ export default function OrderDetailsPage({
                 {/* Campos de descuento */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label>Descuento (%)</Label>
+                    <Label>Desc. general (%)</Label>
                     <Input
                       type="number"
                       step="0.01"
@@ -2263,7 +2318,7 @@ export default function OrderDetailsPage({
                     />
                   </div>
                   <div>
-                    <Label>Descuento ($)</Label>
+                    <Label>Desc. general ($)</Label>
                     <MoneyInput
                       value={editedOrder?.manualDiscount || 0}
                       onValueChange={(n) =>

@@ -50,6 +50,16 @@ import {
   redondearTotal,
   formatDateString,
 } from "@/lib/utils";
+import {
+  calcDocumentTotals,
+  calcItemDiscountAmount,
+  calcItemGross,
+  calcItemNet,
+  formatItemDiscount,
+  resolveItemDiscount,
+  TDiscountType,
+} from "@/lib/totals";
+import { DiscountInput } from "@/components/admin/DiscountInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TProduct, TProductVariant } from "@/types/product";
 import { toast } from "sonner";
@@ -180,6 +190,8 @@ export default function NuevasOrdenesPage() {
     useState<TProductVariant | null>(null);
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemDiscount, setItemDiscount] = useState(0);
+  const [itemDiscountType, setItemDiscountType] =
+    useState<TDiscountType>("percent");
   const [itemNotes, setItemNotes] = useState("");
   const [productSearchTerm, setProductSearchTerm] = useState("");
   const [applyIVA, setApplyIVA] = useState(false);
@@ -303,29 +315,25 @@ export default function NuevasOrdenesPage() {
     });
   }, [products, productSearchTerm]);
 
-  // Calcular totales
-  const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-
-  // Calcular IVA desde precio final cuando aplica
-  let taxAmount = 0;
-  let subtotalSinIVA = subtotal;
-
-  if (applyIVA) {
-    const taxRate = parseFloat(iva);
-    taxAmount = subtotal * (taxRate / (100 + taxRate));
-    subtotalSinIVA = subtotal - taxAmount;
-  }
-
-  // Calcular descuentos
-  const generalDiscountAmount = subtotalSinIVA * (discountPercentage / 100);
-  const totalDiscountAmount = generalDiscountAmount + manualDiscount;
-
-  // Los descuentos de items ya están en el subtotal, así que solo agregamos los generales
-  const total = subtotal - totalDiscountAmount;
-
-  // // Calcular descuentos
-  // const discountAmount = subtotalSinIVA * (discountPercentage / 100);
-  // const total = subtotal - discountAmount - manualDiscount;
+  // Cálculo canónico compartido: primero el descuento de cada ítem (ya dentro
+  // de `subtotal`), después el general sobre ese subtotal ya descontado.
+  const totals = calcDocumentTotals({
+    items,
+    applyIVA,
+    taxRate: parseFloat(iva) || 21,
+    discountPercentage,
+    manualDiscount,
+  });
+  const grossSubtotal = totals.grossSubtotal;
+  const itemsDiscountAmount = totals.itemsDiscountAmount;
+  const subtotal = totals.subtotal;
+  const taxAmount = totals.taxAmount;
+  const subtotalSinIVA = totals.subtotalSinIVA;
+  const generalDiscountAmount = totals.generalDiscountAmount;
+  const totalDiscountAmount = redondearTotal(
+    generalDiscountAmount + manualDiscount,
+  );
+  const total = totals.total;
 
   // Manejar selección de cliente
   const handleSelectClient = (clientId: string) => {
@@ -376,7 +384,9 @@ export default function NuevasOrdenesPage() {
       description: item.product?.description || item.description || "",
       quantity: item.quantity,
       unitPrice: item.unitPrice,
-      discount: item.discount || 0,
+      // Los presupuestos viejos guardaban el neto sin declarar el descuento
+      // de línea: se reconstruye para que la orden dé el mismo total.
+      ...resolveItemDiscount(item, item.subtotal),
       subtotal: item.subtotal,
       notes: item.notes || "",
       isManual: item.isManual || item.product?.id?.startsWith("manual-") || false,
@@ -675,9 +685,6 @@ export default function NuevasOrdenesPage() {
   const addItemToOrder = () => {
     if (!selectedProduct) return;
     const price = Number(selectedVariant ? selectedVariant.price : 0);
-    const discountAmount = (price * itemDiscount) / 100;
-    const priceAfterDiscount = price - discountAmount;
-    const subtotal = priceAfterDiscount * itemQuantity;
     const newItem = {
       id: editingItemId || Date.now().toString(),
       product: selectedProduct,
@@ -685,7 +692,13 @@ export default function NuevasOrdenesPage() {
       quantity: itemQuantity,
       unitPrice: price,
       discount: itemDiscount,
-      subtotal: subtotal,
+      discountType: itemDiscountType,
+      subtotal: calcItemNet({
+        quantity: itemQuantity,
+        unitPrice: price,
+        discount: itemDiscount,
+        discountType: itemDiscountType,
+      }),
       notes: itemNotes,
     };
     if (editingItemId) {
@@ -718,6 +731,7 @@ export default function NuevasOrdenesPage() {
     setSelectedVariant(item.variant || null);
     setItemQuantity(item.quantity);
     setItemDiscount(item.discount);
+    setItemDiscountType(item.discountType || "percent");
     setItemNotes(item.notes);
     setEditingItemId(item.id);
     setIsAddingItem(true);
@@ -732,6 +746,7 @@ export default function NuevasOrdenesPage() {
     setSelectedVariant(null);
     setItemQuantity(1);
     setItemDiscount(0);
+    setItemDiscountType("percent");
     setItemNotes("");
   };
 
@@ -740,6 +755,7 @@ export default function NuevasOrdenesPage() {
     setSelectedVariant(null);
     setItemQuantity(1);
     setItemDiscount(0);
+    setItemDiscountType("percent");
     setItemNotes("");
     setProductSearchTerm("");
     setEditingItemId(null);
@@ -913,6 +929,7 @@ export default function NuevasOrdenesPage() {
           quantity: item.quantity,
           unitPrice: item.unitPrice,
           discount: item.discount || 0,
+          discountType: item.discountType || "percent",
           subtotal: item.subtotal,
           tax: 0,
           taxAmount: 0,
@@ -1698,18 +1715,13 @@ export default function NuevasOrdenesPage() {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="discount">Descuento (%)</Label>
-                            <Input
-                              id="discount"
-                              type="number"
-                              min="0"
-                              max="100"
+                            <Label htmlFor="discount">Descuento</Label>
+                            <DiscountInput
                               value={itemDiscount}
-                              onChange={(e) =>
-                                setItemDiscount(
-                                  parseInt(e.target.value, 10) || 0,
-                                )
-                              }
+                              type={itemDiscountType}
+                              onValueChange={setItemDiscount}
+                              onTypeChange={setItemDiscountType}
+                              inputClassName="flex-1"
                             />
                           </div>
                         </div>
@@ -1736,13 +1748,25 @@ export default function NuevasOrdenesPage() {
                               </p>
                               {itemDiscount > 0 && (
                                 <p className="text-sm">
-                                  Descuento: {itemDiscount}% (
-                                  {formatearPrecio(
-                                    ((selectedVariant
+                                  Descuento:{" "}
+                                  {formatItemDiscount({
+                                    quantity: itemQuantity,
+                                    unitPrice: selectedVariant
                                       ? Number(selectedVariant.price)
-                                      : 0) *
-                                      itemDiscount) /
-                                      100,
+                                      : 0,
+                                    discount: itemDiscount,
+                                    discountType: itemDiscountType,
+                                  })}{" "}
+                                  (
+                                  {formatearPrecio(
+                                    calcItemDiscountAmount({
+                                      quantity: itemQuantity,
+                                      unitPrice: selectedVariant
+                                        ? Number(selectedVariant.price)
+                                        : 0,
+                                      discount: itemDiscount,
+                                      discountType: itemDiscountType,
+                                    }),
                                   )}
                                   )
                                 </p>
@@ -1755,15 +1779,14 @@ export default function NuevasOrdenesPage() {
                               <p className="text-lg font-semibold">
                                 Subtotal:{" "}
                                 {formatearPrecio(
-                                  itemQuantity *
-                                    ((selectedVariant
+                                  calcItemNet({
+                                    quantity: itemQuantity,
+                                    unitPrice: selectedVariant
                                       ? Number(selectedVariant.price)
-                                      : 0) -
-                                      ((selectedVariant
-                                        ? Number(selectedVariant.price)
-                                        : 0) *
-                                        itemDiscount) /
-                                        100),
+                                      : 0,
+                                    discount: itemDiscount,
+                                    discountType: itemDiscountType,
+                                  }),
                                 )}
                               </p>
                             </div>
@@ -1853,9 +1876,21 @@ export default function NuevasOrdenesPage() {
                         <TableCell>{formatearPrecio(item.unitPrice)}</TableCell>
                         <TableCell>{item.quantity}</TableCell>
                         <TableCell>
-                          {item.discount > 0 ? `${item.discount}%` : "-"}
+                          {item.discount > 0 ? (
+                            <span className="text-green-600">
+                              {formatItemDiscount(item)} (−
+                              {formatearPrecio(calcItemDiscountAmount(item))})
+                            </span>
+                          ) : (
+                            "-"
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
+                          {item.discount > 0 && (
+                            <span className="mr-2 text-xs text-slate-400 line-through">
+                              {formatearPrecio(calcItemGross(item))}
+                            </span>
+                          )}
                           {formatearPrecio(item.subtotal)}
                         </TableCell>
                         <TableCell>
@@ -1900,8 +1935,26 @@ export default function NuevasOrdenesPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <p className="text-gray-700">Subtotal</p>
-                  <p className="font-semibold">{formatearPrecio(subtotal)}</p>
+                  <p className="font-semibold">
+                    {formatearPrecio(grossSubtotal)}
+                  </p>
                 </div>
+
+                {itemsDiscountAmount > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <p className="text-gray-700">Descuento en ítems</p>
+                    <p className="text-red-600">
+                      -{formatearPrecio(itemsDiscountAmount)}
+                    </p>
+                  </div>
+                )}
+
+                {itemsDiscountAmount > 0 && (
+                  <div className="flex justify-between items-center text-sm">
+                    <p className="text-gray-700">Subtotal con descuentos</p>
+                    <p className="font-medium">{formatearPrecio(subtotal)}</p>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between border-b pb-2">
                   <div className="flex items-center gap-3">
@@ -1939,7 +1992,7 @@ export default function NuevasOrdenesPage() {
                       htmlFor="discount"
                       className="text-sm text-gray-700 w-24"
                     >
-                      Descuento (%)
+                      Desc. general (%)
                     </Label>
                     <Input
                       id="discount"
@@ -1954,8 +2007,9 @@ export default function NuevasOrdenesPage() {
                       placeholder="0"
                     />
                   </div>
+                  {/* Sólo el descuento porcentual: el fijo tiene su propia fila. */}
                   <p className="text-red-600">
-                    -{formatearPrecio(redondearTotal(totalDiscountAmount))}
+                    -{formatearPrecio(generalDiscountAmount)}
                   </p>
                 </div>
 
@@ -1965,7 +2019,7 @@ export default function NuevasOrdenesPage() {
                       htmlFor="manualDiscount"
                       className="text-sm text-gray-700 w-24"
                     >
-                      Descuento ($)
+                      Desc. general ($)
                     </Label>
                     <MoneyInput
                       id="manualDiscount"
