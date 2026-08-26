@@ -65,12 +65,13 @@ import { DiscountInput } from "@/components/admin/DiscountInput";
 import { toast } from "sonner";
 import { EOrderStatus, TPaymentHistory, TFactura } from "@/types/order";
 import { EPaymentMethod, ESaleDepartment } from "@/types/sale";
-import { doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
 import collections from "@/lib/collections";
 import { isDeleted } from "@/lib/softDelete";
-import { variantDiscountsStock } from "@/lib/stock";
+import { createSale as createSaleWithStock, hydrateLineFromCatalog } from "@/lib/sales";
+import { useAuditLog } from "@/hooks/useAuditLog";
 import { TProduct, TProductVariant } from "@/types/product";
 import { TClient } from "@/types/client";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -112,7 +113,8 @@ export default function OrderDetailsPage({
     error: orderError,
   } = useOrderById(orderId);
   const { clients, loading: clientsLoading, updateClient } = useClients({ section: EClientSection.BANDERAS });
-  const { createSale, generateSaleNumber } = useSales();
+  const { generateSaleNumber } = useSales();
+  const { logEvent } = useAuditLog();
 
   // Productos
   const productsCollection = collection(firestore, collections.PRODUCTS);
@@ -641,11 +643,11 @@ export default function OrderDetailsPage({
       // Transformar items de orden a items de venta
       const saleItems = orderData.items.map((item: any) => ({
         isManual: item.isManual || false,
-        description: item.description || undefined,
-        productId: item.productId || undefined,
-        variantId: item.variantId || undefined,
-        productName: item.productName || undefined,
-        variantName: item.variantName || undefined,
+        description: item.description || "",
+        productId: item.productId || null,
+        variantId: item.variantId || null,
+        productName: item.productName || "",
+        variantName: item.variantName || "",
         quantity: Number(item.quantity) || 0,
         unitPrice: Number(item.unitPrice) || 0,
         discount: Number(item.discount) || 0,
@@ -663,8 +665,8 @@ export default function OrderDetailsPage({
 
       // Crear la venta basada en la orden
       const saleData = {
-        clientName: orderData.clientName || undefined,
-        client: orderData.clientId || undefined,
+        clientName: orderData.clientName || null,
+        client: orderData.clientId || null,
         number: orderData.number,
         items: saleItems,
         subtotal: orderData.subtotal,
@@ -684,60 +686,52 @@ export default function OrderDetailsPage({
         department: ESaleDepartment.BANDERAS,
         isInvoiced: orderData.isInvoiced || false,
         invoiceNumber: orderData.invoiceNumber || "",
-        bank: orderData.bank || undefined,
+        bank: orderData.bank || null,
         facturas: orderData.facturas || [],
         orderId: orderId,
       };
 
-      // Crear la venta
-      const saleId = await createSale(saleData as any);
+      // Renglones con producto/variante del catálogo: la orden guarda sólo ids,
+      // y createSale necesita el producto completo para recalcular el stock.
+      const catalog = (products ?? []) as unknown as TProduct[];
+      const lineItems = orderData.items.map((item: any) => {
+        const { product, variant } = hydrateLineFromCatalog(catalog, {
+          productId: item.productId,
+          variantId: item.variantId,
+          productName: item.productName,
+          variantName: item.variantName,
+          description: item.description,
+          unitPrice: item.unitPrice,
+          isManual: item.isManual,
+        });
+        return {
+          product,
+          variant,
+          quantity: Number(item.quantity) || 0,
+          unitPrice: Number(item.unitPrice) || 0,
+          discount: Number(item.discount) || 0,
+          discountType: item.discountType || "percent",
+          total: Number(item.subtotal) || 0,
+        };
+      });
 
-      // Descontar stock de los productos (mismo flujo que en ventas/nueva)
-      for (const item of orderData.items) {
-        // Solo actualizar stock para productos del catálogo, no para items manuales
-        const isManualItem = item.isManual || false;
+      // formasPagoValidas vacío a propósito (ver nota de arriba): los cobros de
+      // la orden ya impactaron en las cuentas al registrarse cada pago.
+      const { saleId, stockWarning } = await createSaleWithStock(
+        firestore,
+        logEvent,
+        userRole || "",
+        {
+          saleData,
+          items: lineItems,
+          formasPagoValidas: [],
+          allAccounts: [],
+          clienteInput: orderData.clientName,
+          total: Number(orderData.total) || 0,
+        },
+      );
 
-        if (!isManualItem && item.productId) {
-          try {
-            const productRef = doc(firestore, collections.PRODUCTS, item.productId);
-            const productDoc = await getDoc(productRef);
-
-            if (productDoc.exists()) {
-              const currentProduct = productDoc.data();
-              const currentSalesCount = currentProduct.salesCount || 0;
-
-              // Si tiene variante, actualizar stock de la variante específica
-              if (item.variantId && currentProduct.variants) {
-                const variant = currentProduct.variants.find((v: any) => v.id === item.variantId);
-                const shouldUpdateStock =
-                  variant && variant.stock != null && variantDiscountsStock(variant);
-                await updateDoc(productRef, {
-                  variants: shouldUpdateStock
-                    ? currentProduct.variants.map((v: any) =>
-                        v.id === item.variantId
-                          ? { ...v, stock: Number(v.stock) - item.quantity }
-                          : v
-                      )
-                    : currentProduct.variants,
-                  salesCount: currentSalesCount + 1,
-                  lastSaleDate: new Date(),
-                });
-              } else {
-                // Si stock es null (ej: bandera personalizada), no descontar
-                const shouldUpdateStock = currentProduct.stock != null;
-                await updateDoc(productRef, {
-                  ...(shouldUpdateStock && { stock: Number(currentProduct.stock) - item.quantity }),
-                  salesCount: currentSalesCount + 1,
-                  lastSaleDate: new Date(),
-                });
-              }
-            }
-          } catch (error) {
-            console.error(`Error al actualizar stock del producto ${item.productId}:`, error);
-            // Continuar con los demás productos aunque uno falle
-          }
-        }
-      }
+      if (stockWarning) toast.warning(stockWarning);
 
       toast.success(`Orden convertida a venta exitosamente (ID: ${saleId})`);
 

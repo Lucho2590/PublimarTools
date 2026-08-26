@@ -398,7 +398,7 @@ export default function PuntoDeVentaPage() {
         ...clientData,
       };
 
-      await createSale(firestore, logEvent, userRole || "", {
+      const { stockWarning } = await createSale(firestore, logEvent, userRole || "", {
         saleData,
         items: cart,
         formasPagoValidas,
@@ -407,7 +407,8 @@ export default function PuntoDeVentaPage() {
         total,
       });
 
-      toast.success("Venta registrada con éxito");
+      if (stockWarning) toast.warning(stockWarning);
+      else toast.success("Venta registrada con éxito");
       resetAll();
     } catch (error) {
       console.error("Error al registrar la venta:", error);

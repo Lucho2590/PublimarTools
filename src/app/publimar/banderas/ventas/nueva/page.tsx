@@ -62,7 +62,7 @@ import { useClients } from "@/hooks/useClients";
 import { EClientSection } from "@/types/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { AccountSelect } from "@/components/admin/AccountSelect";
-import { createSale } from "@/lib/sales";
+import { createSale, hydrateLineFromCatalog } from "@/lib/sales";
 import { variantDiscountsStock } from "@/lib/stock";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -285,28 +285,39 @@ export default function NuevaVentaPage() {
     const quote = clientQuotes.find((q) => q.id === quoteId);
     if (!quote?.items) return;
 
+    // Los items del presupuesto guardan un `product` recortado, SIN el array
+    // `variants` (ver el sanitizedItems de presupuestos/nuevo). Si se usa ese
+    // snapshot tal cual, createSale no puede recalcular el stock y la venta
+    // queda creada sin descontar nada.
+    const catalog = (products ?? []) as unknown as TProduct[];
+    const sinStock: string[] = [];
+
     const importedItems: SaleItem[] = quote.items.map((item: any, index: number) => {
-      const isManualItem =
-        item.isManual ||
-        (typeof item.productId === "string" && item.productId.startsWith("manual-"));
+      const { product, variant, tracksStock } = hydrateLineFromCatalog(catalog, {
+        productId: item.product?.id || item.productId,
+        variantId: item.variant?.id || item.variantId,
+        productName: item.product?.name || item.productName,
+        variantName: item.variant?.size || item.variantName,
+        description: item.description,
+        unitPrice: item.unitPrice,
+        isManual: item.isManual,
+      });
 
-      const productId = item.product?.id || item.productId || `manual-${Date.now()}-${index}`;
-      const variantId = item.variant?.id || item.variantId || `manual-variant-${Date.now()}-${index}`;
-      const productName = item.product?.name || item.productName || "";
-      const variantName = item.variant?.size || item.variantName || "";
-
-      const product: any = item.product ?? {
-        id: productId,
-        name: productName,
-        description: item.description || "",
-        variants: [],
-      };
-      const variant: any = item.variant ?? {
-        id: variantId,
-        size: variantName,
-        stock: 0,
-        price: item.unitPrice,
-      };
+      // Sólo avisamos de los que el presupuesto daba por productos reales: si
+      // el renglón ya era manual, que no mueva stock es lo esperado.
+      const eraDeCatalogo =
+        !item.isManual &&
+        typeof (item.product?.id || item.productId) === "string" &&
+        !(item.product?.id || item.productId).startsWith("manual-");
+      if (eraDeCatalogo && !tracksStock) {
+        sinStock.push(
+          `${item.product?.name || item.productName}${
+            item.variant?.size || item.variantName
+              ? ` (${item.variant?.size || item.variantName})`
+              : ""
+          }`,
+        );
+      }
 
       const quantity = item.quantity || 1;
       const unitPrice = item.unitPrice || 0;
@@ -324,9 +335,7 @@ export default function NuevaVentaPage() {
 
       return {
         id: `imported_${Date.now()}_${index}`,
-        product: isManualItem
-          ? { ...product, id: productId.startsWith("manual-") ? productId : `manual-${productId}` }
-          : product,
+        product,
         variant,
         quantity,
         unitPrice,
@@ -335,6 +344,12 @@ export default function NuevaVentaPage() {
         total: calcItemNet({ quantity, unitPrice, discount, discountType }),
       };
     });
+
+    if (sinStock.length > 0) {
+      toast.warning(
+        `Estos items ya no están en el catálogo y no van a descontar stock: ${sinStock.join(", ")}`,
+      );
+    }
 
     setItems(importedItems);
 
@@ -956,7 +971,7 @@ export default function NuevaVentaPage() {
         ...clientData,
       };
 
-      await createSale(firestore, logEvent, userRole || "", {
+      const { stockWarning } = await createSale(firestore, logEvent, userRole || "", {
         saleData,
         items,
         formasPagoValidas,
@@ -965,7 +980,8 @@ export default function NuevaVentaPage() {
         total: currentTotal,
       });
 
-      toast.success("Venta registrada con éxito");
+      if (stockWarning) toast.warning(stockWarning);
+      else toast.success("Venta registrada con éxito");
       router.push("/publimar/banderas/ventas");
       
     } catch (error) {

@@ -34,6 +34,7 @@ import { PermissionsTab } from "./components/PermissionsTab";
 import { ImportMovementsTab } from "./components/ImportMovementsTab";
 import { RoundingTab } from "./components/RoundingTab";
 import { PriceHistoryTab } from "./components/PriceHistoryTab";
+import { StockReconciliationTab } from "./components/StockReconciliationTab";
 import {
   HIDDEN_FIELDS,
   formatFieldName,
@@ -77,7 +78,12 @@ export default function SudoPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [topTab, setTopTab] = useState<
-    "auditoria" | "eliminados" | "permisos" | "importar" | "redondeo"
+    | "auditoria"
+    | "conciliacion"
+    | "eliminados"
+    | "permisos"
+    | "importar"
+    | "redondeo"
   >("auditoria");
   const [auditSubTab, setAuditSubTab] = useState<"actividad" | "precios">(
     "actividad"
@@ -252,6 +258,7 @@ export default function SudoPage() {
       <Tabs value={topTab} onValueChange={(v) => setTopTab(v as any)}>
         <TabsList>
           <TabsTrigger value="auditoria">Auditoría</TabsTrigger>
+          <TabsTrigger value="conciliacion">Conciliación de stock</TabsTrigger>
           <TabsTrigger value="eliminados">Eliminados</TabsTrigger>
           <TabsTrigger value="permisos">Permisos</TabsTrigger>
           <TabsTrigger value="importar">Importar movimientos</TabsTrigger>
@@ -274,6 +281,10 @@ export default function SudoPage() {
               <PriceHistoryTab />
             </TabsContent>
           </Tabs>
+        </TabsContent>
+
+        <TabsContent value="conciliacion" className="mt-4">
+          <StockReconciliationTab />
         </TabsContent>
 
         <TabsContent value="eliminados" className="mt-4">
