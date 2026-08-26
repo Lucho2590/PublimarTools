@@ -6,7 +6,6 @@ import {
 import { 
   collection, 
   doc, 
-  addDoc, 
   updateDoc, 
   deleteDoc,
   orderBy,
@@ -23,7 +22,6 @@ import { softDelete } from '@/lib/softDelete'
 import { useAuditLog } from '@/hooks/useAuditLog'
 import {
   buildChanges,
-  describeSaleCreate,
   describeSaleDelete,
   describeSaleUpdate,
 } from '@/lib/auditLog'
@@ -73,83 +71,10 @@ export function useSales(options?: UseSalesOptions) {
     idField: 'id',
   })
 
-  const createSale = useCallback(async (saleData: Partial<TSale> & {
-    number: string;
-    items: TSaleItem[];
-    subtotal: number;
-    total: number;
-    paymentMethod: EPaymentMethod;
-    isInvoiced: boolean;
-  }) => {
-    // Función para limpiar valores undefined recursivamente
-    const cleanData = (obj: any, seen = new WeakSet()): any => {
-      if (obj === null || obj === undefined) return null;
-      if (typeof obj !== 'object') return obj;
-      
-      // Filtrar funciones y objetos internos de Firebase
-      if (typeof obj === 'function') return undefined;
-      
-      // Protección contra referencias circulares
-      if (seen.has(obj)) return {};
-      seen.add(obj);
-      
-      if (Array.isArray(obj)) {
-        return obj.map(item => cleanData(item, seen)).filter(item => item !== undefined);
-      }
-      
-      const cleaned: any = {};
-      for (const [key, value] of Object.entries(obj)) {
-        // Filtrar campos internos de Firebase/ReactFire
-        if (key.startsWith('_') || 
-            key === 'firestore' || 
-            key === 'auth' ||
-            key === 'converter' ||
-            typeof value === 'function') {
-          continue;
-        }
-        
-        if (value !== undefined) {
-          const cleanedValue = cleanData(value, seen);
-          if (cleanedValue !== undefined) {
-            cleaned[key] = cleanedValue;
-          }
-        }
-      }
-      return cleaned;
-    };
-
-    // Limpiar datos recursivamente
-    const cleanSaleData = cleanData(saleData);
-    
-    try {
-      const docRef = await addDoc(salesCollection, {
-        ...cleanSaleData,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      })
-      await logEvent({
-        section: EAuditSection.BANDERAS_VENTAS,
-        entityType: EAuditEntityType.SALE,
-        entityId: docRef.id,
-        entityLabel: cleanSaleData.number ?? null,
-        action: EAuditAction.CREATE,
-        description: describeSaleCreate(cleanSaleData.number ?? docRef.id, Number(cleanSaleData.total ?? 0)),
-        changes: buildChanges(null, cleanSaleData, [
-          "number","clientName","clientId","total","subtotal","paymentMethod","isInvoiced","invoiceNumber","discountPercentage","applyIVA"
-        ]),
-        metadata: {
-          total: cleanSaleData.total,
-          paymentMethod: cleanSaleData.paymentMethod,
-          itemsCount: Array.isArray(cleanSaleData.items) ? cleanSaleData.items.length : 0,
-        },
-      })
-      return docRef.id
-    } catch (error) {
-      console.error('Error al crear venta:', error)
-      console.error('Datos que se intentaron guardar:', cleanSaleData)
-      throw new Error(`Error al crear venta: ${error instanceof Error ? error.message : 'Error desconocido'}`)
-    }
-  }, [salesCollection, logEvent])
+  // El alta de ventas vive en `createSale` de src/lib/sales.ts: además de crear
+  // el documento descuenta el stock y escribe la auditoría. No agregar acá otra
+  // función de alta — la que existía no tocaba inventario y dejaba ventas sin
+  // descontar stock.
 
   const updateSale = useCallback(async (id: string, sale: Partial<Omit<TSale, 'id' | 'createdAt' | 'updatedAt'>>) => {
     // Función para limpiar valores undefined recursivamente
@@ -304,7 +229,6 @@ export function useSales(options?: UseSalesOptions) {
     sales: ((sales as TSale[]) || []).filter(s => !(s as any).deleted),
     loading: status === 'loading',
     error: status === 'error',
-    createSale,
     updateSale,
     deleteSale,
     generateSaleNumber,

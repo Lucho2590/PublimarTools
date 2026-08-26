@@ -244,6 +244,8 @@ export function describeStockChange(
     product_edit: "al editar producto",
     ecommerce: "por tienda",
     return: "por devolución",
+    fix_missing_discount: "por corrección de venta sin descuento",
+    ecommerce_cancel: "por cancelación de pedido de tienda",
   };
   return `${sign}${delta} en stock de ${productName}${variant} ${reasonLabel[reason] ?? ""}`.trim();
 }

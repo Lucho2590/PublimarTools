@@ -97,3 +97,58 @@ $1 para diferencias de redondeo).
 ### Estado
 
 ✅ Ejecutado el 17/8/2026 — 1 presupuesto reparado (`P-2026-1497`: $2.016.000 → $1.867.800).
+
+---
+
+## Reparación de descuentos de stock que nunca se aplicaron
+
+### Descripción
+
+`fixMissingStockDiscounts.ts` aplica el descuento de stock de las ventas que quedaron a
+medias: existen en `sales` y la plata impactó en la cuenta, pero nunca se descontó el
+inventario ni se escribió auditoría.
+
+La causa: al importar un presupuesto en Ventas → Nueva, los renglones traían el `product`
+recortado que guarda el presupuesto (sin el array `variants`). `createSale` hacía
+`product.variants.map(...)` sobre `undefined` y tiraba una excepción **después** de crear la
+venta y registrar el movimiento de cuenta. El usuario veía "Error al registrar la venta"
+pero la venta ya estaba. El código ya está corregido (se rehidrata contra el catálogo con
+`hydrateLineFromCatalog`, y el bloque de stock es best-effort); este script arregla los
+documentos previos.
+
+Identifica las ventas afectadas por su firma exacta: están en `sales` pero **no tienen su
+evento `create` en `auditLog`**.
+
+### Cómo Ejecutar
+
+Usa `firebase-service-account.json` de la raíz del proyecto.
+
+```bash
+# Simulación: lista qué se descontaría, sin escribir nada
+pnpm dlx ts-node --compiler-options '{"module":"commonjs"}' scripts/fixMissingStockDiscounts.ts
+
+# Otra ventana de tiempo (default: 30 días)
+pnpm dlx ts-node --compiler-options '{"module":"commonjs"}' scripts/fixMissingStockDiscounts.ts --days=60
+
+# Aplicar los cambios
+pnpm dlx ts-node --compiler-options '{"module":"commonjs"}' scripts/fixMissingStockDiscounts.ts --apply
+```
+
+### Seguridad
+
+- Sólo toca ventas **sin** evento `create` en auditoría. Una venta normal no se toca nunca.
+- Saltea las ventas con `orderId`: el flujo viejo de orden→venta descontaba sin auditar, así
+  que "no tiene evento" no significa "no descontó". Tocarlas descontaría dos veces.
+- Es idempotente: si el renglón ya tiene un `stock_change` asociado a esa venta, lo saltea.
+- Deja rastro: escribe el `stock_change` con `reason: "fix_missing_discount"`.
+
+### Desde la app (recomendado)
+
+La pestaña **Sudo → Conciliación de stock** hace lo mismo desde la UI: corre el cruce en
+vivo (ventas vs. movimientos de auditoría vs. stock real), lista las ventas a medias y
+tiene un botón **Corregir** por venta (o "corregir todas") que descuenta el stock pendiente
+y reconstruye la auditoría, con un diálogo que detalla renglón por renglón lo que va a
+descontar. La lógica vive en `src/lib/stockReconciliation.ts` y aplica las mismas
+protecciones que este script.
+
+Este script queda para correcciones masivas o fuera de la app.
