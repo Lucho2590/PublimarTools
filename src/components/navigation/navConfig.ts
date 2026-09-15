@@ -14,6 +14,7 @@ import {
   BarChart3,
   Building2,
   MapPin,
+  Grid3x3,
   Calendar,
   Eye,
   LayoutGrid,
@@ -114,6 +115,11 @@ export const navConfig: NavItem[] = [
         name: "Ubicaciones",
         href: "/publimar/viaPublica/ubicaciones",
         icon: MapPin,
+      },
+      {
+        name: "Dispositivos",
+        href: "/publimar/viaPublica/dispositivos",
+        icon: Grid3x3,
       },
       {
         name: "Clientes",

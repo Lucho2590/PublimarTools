@@ -1,262 +1,277 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useFirestore, useFirestoreCollectionData } from 'reactfire';
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import {
-  collection,
-  addDoc,
-  doc,
-  updateDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { softDelete } from '@/lib/softDelete';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from 'sonner';
-import collections from '@/lib/collections';
-import { Trash2, Edit } from 'lucide-react';
-import { TDeviceType } from '@/types/device';
+  AlertTriangle,
+  Edit,
+  FileText,
+  Grid3x3,
+  Loader2,
+  MapPin,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SummaryCard } from "@/components/admin/SummaryCard";
+import { useDeviceTypes } from "@/hooks/useDeviceTypes";
+import { useLocations } from "@/hooks/useLocations";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { buildAficheMap, calcularTotalAfiches } from "@/lib/afiches";
+import { getPinColor } from "@/lib/pinColors";
+import { normalizeText } from "@/lib/searchText";
+import { TDeviceType } from "@/types/device";
+import { DeviceTypeFormModal } from "./modal/DeviceTypeFormModal";
 
 export default function DispositivosPage() {
-  const router = useRouter();
-  const [formData, setFormData] = useState({ name: '', description: '', afiche: '' });
-  const [editingDevice, setEditingDevice] = useState<{
-    id: string;
-    name: string;
-    description: string;
-    afiche: string;
-  } | null>(null);
-  const firestore = useFirestore();
+  const { deviceTypes, loading, softDeleteDeviceType } = useDeviceTypes();
+  const { locations } = useLocations();
 
-  const devicesCollection = collection(firestore, collections.DEVICES);
-  const { data: devices } = useFirestoreCollectionData(devicesCollection, {
-    idField: 'id',
-  });
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<TDeviceType | null>(null);
 
-  const handleAddDevice = async () => {
-    if (!formData.name.trim()) {
-      toast.error('El nombre del dispositivo no puede estar vacio');
-      return;
-    }
-
-    try {
-      await addDoc(devicesCollection, {
-        name: formData.name.trim(),
-        description: formData.description.trim(),
-        afiche: formData.afiche ? parseInt(formData.afiche) : null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+  // Cuántas ubicaciones y cuántas unidades usa cada tipo: alimenta los KPIs y
+  // avisa antes de borrar un tipo que está en uso.
+  const usageByType = useMemo(() => {
+    const usage = new Map<string, { locations: number; units: number }>();
+    locations.forEach((location) => {
+      location.devices?.forEach((device) => {
+        const prev = usage.get(device.deviceTypeId) ?? { locations: 0, units: 0 };
+        usage.set(device.deviceTypeId, {
+          locations: prev.locations + 1,
+          units: prev.units + (Number(device.quantity) || 0),
+        });
       });
-      setFormData({ name: '', description: '', afiche: '' });
-      toast.success('Tipo de dispositivo creado con exito');
-    } catch (error) {
-      console.error('Error al crear el dispositivo:', error);
-      toast.error('Error al crear el tipo de dispositivo');
-    }
+    });
+    return usage;
+  }, [locations]);
+
+  const stats = useMemo(() => {
+    const aficheByType = buildAficheMap(deviceTypes);
+    return {
+      total: deviceTypes.length,
+      locationsWithDevices: locations.filter((l) => (l.devices?.length ?? 0) > 0).length,
+      totalLocations: locations.length,
+      totalAfiches: locations.reduce(
+        (sum, l) => sum + calcularTotalAfiches(l.devices, aficheByType),
+        0,
+      ),
+      unused: deviceTypes.filter((dt) => !usageByType.get(dt.id)?.locations).length,
+    };
+  }, [deviceTypes, locations, usageByType]);
+
+  const filteredDeviceTypes = useMemo(() => {
+    const term = normalizeText(debouncedSearch.trim());
+    if (!term) return deviceTypes;
+    return deviceTypes.filter(
+      (dt) =>
+        normalizeText(dt.name).includes(term) || normalizeText(dt.description).includes(term),
+    );
+  }, [deviceTypes, debouncedSearch]);
+
+  const handleNew = () => {
+    setEditing(null);
+    setModalOpen(true);
   };
 
-  const handleEditDevice = async () => {
-    if (!editingDevice?.name.trim()) {
-      toast.error('El nombre del dispositivo no puede estar vacio');
-      return;
-    }
-
-    try {
-      const deviceRef = doc(firestore, collections.DEVICES, editingDevice.id);
-      await updateDoc(deviceRef, {
-        name: editingDevice.name.trim(),
-        description: editingDevice.description.trim(),
-        afiche: editingDevice.afiche ? parseInt(editingDevice.afiche) : null,
-        updatedAt: serverTimestamp(),
-      });
-      setEditingDevice(null);
-      toast.success('Tipo de dispositivo actualizado con exito');
-    } catch (error) {
-      console.error('Error al actualizar el dispositivo:', error);
-      toast.error('Error al actualizar el tipo de dispositivo');
-    }
+  const handleEdit = (deviceType: TDeviceType) => {
+    setEditing(deviceType);
+    setModalOpen(true);
   };
 
-  const handleDeleteDevice = async (deviceId: string) => {
-    if (!confirm('Estas seguro de que quieres eliminar este tipo de dispositivo?')) {
-      return;
-    }
+  const handleDelete = async (deviceType: TDeviceType) => {
+    const used = usageByType.get(deviceType.id)?.locations ?? 0;
+    const message = used
+      ? `"${deviceType.name}" está usado en ${used} ${used === 1 ? "ubicación" : "ubicaciones"}. ¿Eliminarlo igual?`
+      : `¿Seguro que querés eliminar "${deviceType.name}"?`;
+    if (!confirm(message)) return;
 
     try {
-      await softDelete(firestore, collections.DEVICES, deviceId);
-      toast.success('Tipo de dispositivo eliminado con exito');
+      await softDeleteDeviceType(deviceType.id);
+      toast.success("Tipo de dispositivo eliminado");
     } catch (error) {
-      console.error('Error al eliminar el dispositivo:', error);
-      toast.error('Error al eliminar el tipo de dispositivo');
+      console.error("Error al eliminar el tipo de dispositivo:", error);
+      toast.error("Error al eliminar el tipo de dispositivo");
     }
   };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Tipos de Dispositivos</h1>
-        <Button variant="outline" onClick={() => router.back()}>
-          Volver
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Tipos de Dispositivos</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Definí los dispositivos que se instalan en las ubicaciones y el color de su pin
+            en el mapa
+          </p>
+        </div>
+        <Button onClick={handleNew} className="bg-blue-900 hover:bg-blue-800">
+          <Plus className="h-4 w-4 mr-2" />
+          Nuevo tipo
         </Button>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <SummaryCard
+          title="Tipos de dispositivo"
+          value={stats.total}
+          icon={Grid3x3}
+          variant="blue"
+        />
+        <SummaryCard
+          title="Ubicaciones con dispositivos"
+          value={stats.locationsWithDevices}
+          subtitle={`de ${stats.totalLocations} ubicaciones`}
+          icon={MapPin}
+          variant="green"
+        />
+        <SummaryCard
+          title="Afiches instalados"
+          value={stats.totalAfiches}
+          icon={FileText}
+          variant="slate"
+        />
+        <SummaryCard
+          title="Tipos sin uso"
+          value={stats.unused}
+          subtitle="no están en ninguna ubicación"
+          icon={AlertTriangle}
+          variant="amber"
+        />
+      </div>
+
       <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>
-            {editingDevice ? 'Editar Tipo de Dispositivo' : 'Nuevo Tipo de Dispositivo'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="deviceName">Nombre del tipo de dispositivo</Label>
+        <CardContent className="pt-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
-                id="deviceName"
-                value={editingDevice ? editingDevice.name : formData.name}
-                onChange={(e) =>
-                  editingDevice
-                    ? setEditingDevice({
-                        ...editingDevice,
-                        name: e.target.value,
-                      })
-                    : setFormData({ ...formData, name: e.target.value })
-                }
-                placeholder="Ej: Simple, Doble, Pantalla LED, etc."
+                className="pl-9"
+                placeholder="Buscar por nombre o descripción..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div>
-              <Label htmlFor="deviceDescription">Descripcion (opcional)</Label>
-              <Textarea
-                id="deviceDescription"
-                value={editingDevice ? editingDevice.description : formData.description}
-                onChange={(e) =>
-                  editingDevice
-                    ? setEditingDevice({
-                        ...editingDevice,
-                        description: e.target.value,
-                      })
-                    : setFormData({ ...formData, description: e.target.value })
-                }
-                placeholder="Ej: Cartel publicitario de una cara"
-                rows={3}
-              />
-            </div>
-            <div>
-              <Label htmlFor="deviceAfiche">Cantidad de Afiches</Label>
-              <Input
-                id="deviceAfiche"
-                type="number"
-                min="0"
-                value={editingDevice ? editingDevice.afiche : formData.afiche}
-                onChange={(e) =>
-                  editingDevice
-                    ? setEditingDevice({
-                        ...editingDevice,
-                        afiche: e.target.value,
-                      })
-                    : setFormData({ ...formData, afiche: e.target.value })
-                }
-                placeholder="Ej: 2"
-              />
-            </div>
+            <p className="text-sm text-muted-foreground whitespace-nowrap">
+              <span className="font-semibold text-blue-900">{filteredDeviceTypes.length}</span>{" "}
+              de {deviceTypes.length} tipos
+            </p>
           </div>
         </CardContent>
-        <CardFooter>
-          {editingDevice ? (
-            <>
-              <Button onClick={handleEditDevice} className="mr-2">
-                Guardar Cambios
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setEditingDevice(null)}
-              >
-                Cancelar
-              </Button>
-            </>
-          ) : (
-            <Button onClick={handleAddDevice}>Agregar Tipo de Dispositivo</Button>
-          )}
-        </CardFooter>
       </Card>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-10">Nombre</TableHead>
-                <TableHead>Descripcion</TableHead>
-                <TableHead className="text-center">Afiches</TableHead>
-                <TableHead className="pr-10 text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {devices
-                ?.sort((a, b) => a.name.localeCompare(b.name))
-                ?.map((device) => {
-                const typedDevice = device as unknown as TDeviceType;
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Listado de tipos</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            </div>
+          ) : filteredDeviceTypes.length === 0 ? (
+            <div className="text-center py-12">
+              <Grid3x3 className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+              {deviceTypes.length === 0 ? (
+                <>
+                  <p className="text-gray-500">No hay tipos de dispositivo cargados</p>
+                  <Button onClick={handleNew} variant="outline" className="mt-4">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Crear el primero
+                  </Button>
+                </>
+              ) : (
+                <p className="text-gray-500">Ningún tipo coincide con la búsqueda</p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {filteredDeviceTypes.map((deviceType) => {
+                const usage = usageByType.get(deviceType.id);
+                const color = getPinColor(deviceType.pinColor);
                 return (
-                  <TableRow key={typedDevice.id}>
-                    <TableCell className="pl-10 font-medium">{typedDevice.name}</TableCell>
-                    <TableCell className="text-gray-600">
-                      {typedDevice.description || '-'}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {typedDevice.afiche ?? '-'}
-                    </TableCell>
-                    <TableCell className="pr-8 text-right">
+                  <div
+                    key={deviceType.id}
+                    className="flex items-center gap-4 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-150 group"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(deviceType)}
+                      className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
+                    >
+                      <span
+                        className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: color.hex }}
+                        title={`Color del pin: ${color.label}`}
+                      >
+                        <Grid3x3 className="h-4 w-4 text-white" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{deviceType.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {deviceType.description || "Sin descripción"}
+                        </p>
+                      </div>
+                    </button>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap bg-slate-100 text-slate-700">
+                        {deviceType.afiche || 0} afiches/u
+                      </span>
+                      {usage?.locations ? (
+                        <span
+                          className="px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap bg-blue-50 text-blue-800"
+                          title={`${usage.units} ${usage.units === 1 ? "unidad instalada" : "unidades instaladas"}`}
+                        >
+                          {usage.locations}{" "}
+                          {usage.locations === 1 ? "ubicación" : "ubicaciones"}
+                          <span className="text-blue-500"> · {usage.units} u.</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap bg-slate-50 text-slate-400 border border-dashed border-slate-200">
+                          Sin uso
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex gap-1 shrink-0">
                       <Button
-                        onClick={() =>
-                          setEditingDevice({
-                            id: typedDevice.id,
-                            name: typedDevice.name,
-                            description: typedDevice.description || '',
-                            afiche: typedDevice.afiche?.toString() || '',
-                          })
-                        }
                         variant="ghost"
                         size="icon"
                         title="Editar"
-                        className="bg-blue-900 hover:bg-blue-700 hover:text-white text-white"
+                        onClick={() => handleEdit(deviceType)}
+                        className="hover:bg-blue-50"
                       >
-                        <Edit className="h-4 w-4" />
+                        <Edit className="h-4 w-4 text-blue-600" />
                       </Button>
                       <Button
-                        onClick={() => handleDeleteDevice(typedDevice.id)}
                         variant="ghost"
                         size="icon"
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
                         title="Eliminar"
+                        onClick={() => handleDelete(deviceType)}
+                        className="hover:bg-red-50"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4 text-red-600" />
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </div>
+                  </div>
                 );
               })}
-            </TableBody>
-          </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      <DeviceTypeFormModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        deviceType={editing}
+      />
     </div>
   );
 }

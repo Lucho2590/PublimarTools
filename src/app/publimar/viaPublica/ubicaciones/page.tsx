@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { useFirestore, useFirestoreCollectionData } from "reactfire";
+import { useFirestore } from "reactfire";
 import {
   collection,
   addDoc,
@@ -44,10 +44,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { MapPin, Plus, Trash2, Edit, X, ChevronDown, Check, Filter, Grid3x3, Upload, Image as ImageIcon } from "lucide-react";
+import { MapPin, Plus, Trash2, Edit, X, Check, Filter, FileText, Grid3x3, Search, Upload, Image as ImageIcon } from "lucide-react";
 import collections from "@/lib/collections";
 import { TLocation, TLocationDevice } from "@/types/location";
-import { TDeviceType } from "@/types/device";
+import { SummaryCard } from "@/components/admin/SummaryCard";
+import { PinSwatch } from "@/components/admin/PinColorPicker";
+import { useDeviceTypes } from "@/hooks/useDeviceTypes";
+import { useLocations } from "@/hooks/useLocations";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import { normalizeText } from "@/lib/searchText";
+import { TablePagination } from "@/components/admin/TablePagination";
+import { DeviceTypeFilter } from "./components/DeviceTypeFilter";
+import { buildAficheMap, calcularTotalAfiches } from "@/lib/afiches";
 import { useMemo } from "react";
 
 const MapView = dynamic(() => import("@/components/maps/MapView"), {
@@ -100,8 +108,15 @@ export default function UbicacionesPage() {
     return new Set(); // Por defecto vacío = muestra todo
   });
 
-  // Estado para colapsar/expandir filtros
-  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  // Ubicación resaltada en el mapa al hacer click en una fila de la tabla
+  const [highlightedLocationId, setHighlightedLocationId] = useState<string | null>(null);
+  const mapSectionRef = useRef<HTMLDivElement>(null);
+
+  // Búsqueda por dirección o código (filtra mapa + KPIs + tabla) y paginación (solo tabla)
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
 
   const [formData, setFormData] = useState({
     code: "",
@@ -134,96 +149,151 @@ export default function UbicacionesPage() {
     }
   }, []);
 
-  const locationsCollection = collection(
-    firestore,
-    collections.LOCATIONS || "locations"
-  );
-  const { data: locationsData, status } = useFirestoreCollectionData(
-    locationsCollection,
-    {
-      idField: "id",
-    }
-  );
+  // Ambos hooks filtran los soft-deleted y devuelven referencias estables, que es
+  // lo que permite memoizar todo lo que cuelga de acá (filtros, KPIs, paginación).
+  const { locations, loading: locationsLoading } = useLocations();
+  const { deviceTypes } = useDeviceTypes();
 
-  const deviceTypesCollection = collection(firestore, collections.DEVICES);
-  const { data: deviceTypesData } = useFirestoreCollectionData(
-    deviceTypesCollection,
-    {
-      idField: "id",
-    }
-  );
+  const aficheByType = useMemo(() => buildAficheMap(deviceTypes), [deviceTypes]);
 
-  const deviceTypes: TDeviceType[] =
-    (deviceTypesData as any[])?.map((device) => ({
-      id: device.id,
-      name: device.name,
-      description: device.description,
-      afiche: device.afiche,
-    })) || [];
-
-  // Función para calcular total de afiches de una ubicación
-  const calcularTotalAfiches = (locationDevices: TLocationDevice[] | undefined): number => {
-    if (!locationDevices || locationDevices.length === 0) return 0;
-
-    return locationDevices.reduce((total, device) => {
-      const deviceType = deviceTypes.find(dt => dt.id === device.deviceTypeId);
-      const afichesPorDispositivo = deviceType?.afiche || 0;
-      return total + (device.quantity * afichesPorDispositivo);
-    }, 0);
-  };
-
-  const locations: TLocation[] =
-    (locationsData as any[])?.filter((loc) => !loc.deleted).map((loc) => ({
-      id: loc.id,
-      code: loc.code,
-      lat: loc.lat,
-      lng: loc.lng,
-      description: loc.description,
-      address: loc.address,
-      devices: loc.devices || [],
-      photos: loc.photos || [],
-      contactName: loc.contactName,
-      contactPhone: loc.contactPhone,
-      contactEmail: loc.contactEmail,
-      contactNote: loc.contactNote,
-      createdAt: loc.createdAt?.toDate?.(),
-    })) || [];
+  const colorKeyByDeviceType = useMemo(() => {
+    const map = new Map<string, string | undefined>();
+    deviceTypes.forEach((dt) => map.set(dt.id, dt.pinColor));
+    return map;
+  }, [deviceTypes]);
 
   // Guardar filtros en localStorage cuando cambien
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('mapDeviceFilters', JSON.stringify([...selectedDeviceTypes]));
+      localStorage.setItem('mapDeviceFilters', JSON.stringify(Array.from(selectedDeviceTypes)));
     }
   }, [selectedDeviceTypes]);
 
-  // Contador de ubicaciones por tipo de dispositivo
-  const deviceTypeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    deviceTypes.forEach(type => {
-      counts[type.id] = locations.filter(loc =>
-        loc.devices?.some(d => d.deviceTypeId === type.id)
-      ).length;
+  // Por tipo de dispositivo: en cuántas UBICACIONES aparece y cuántas UNIDADES
+  // hay instaladas en total. Son dos números distintos y conviene no confundirlos:
+  // una ubicación con 6 sextuples cuenta 1 ubicación y 6 unidades.
+  const deviceTypeStats = useMemo(() => {
+    const stats: Record<string, { locations: number; units: number }> = {};
+    deviceTypes.forEach((type) => {
+      stats[type.id] = { locations: 0, units: 0 };
     });
-    return counts;
+    locations.forEach((location) => {
+      location.devices?.forEach((device) => {
+        const entry = stats[device.deviceTypeId];
+        if (!entry) return;
+        entry.locations += 1;
+        entry.units += Number(device.quantity) || 0;
+      });
+    });
+    return stats;
   }, [locations, deviceTypes]);
 
-  // Filtrar ubicaciones según tipos de dispositivos seleccionados
+  // Filtro único que alimenta el mapa, los KPIs y la tabla
   const filteredLocations = useMemo(() => {
+    const term = normalizeText(debouncedSearch.trim());
+
     let result = locations;
 
     if (selectedDeviceTypes.size > 0) {
-      result = locations.filter(location =>
+      result = result.filter(location =>
         location.devices?.some(device =>
           selectedDeviceTypes.has(device.deviceTypeId)
         )
       );
     }
 
-    // Ordenar por código de ubicación (orden natural para manejar números)
-    return result.sort((a, b) =>
-      a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' })
+    if (term) {
+      result = result.filter(
+        location =>
+          normalizeText(location.address).includes(term) ||
+          normalizeText(location.code).includes(term),
+      );
+    }
+
+    // Copia antes de ordenar: sin filtros `result` es el array del hook, y mutarlo
+    // sería mutar una dependencia del useMemo.
+    return [...result].sort((a, b) =>
+      (a.code ?? "").localeCompare(b.code ?? "", undefined, { numeric: true, sensitivity: 'base' })
     );
-  }, [locations, selectedDeviceTypes]);
+  }, [locations, selectedDeviceTypes, debouncedSearch]);
+
+  const searchActive = debouncedSearch.trim().length > 0;
+  const activeFilterCount = selectedDeviceTypes.size + (searchActive ? 1 : 0);
+
+  // Paginación: SOLO de la tabla. El mapa y los KPIs siguen usando filteredLocations.
+  const totalPages = Math.max(1, Math.ceil(filteredLocations.length / itemsPerPage));
+  // Clamp derivado: si un filtro achica la lista estando en la página 7, no queda
+  // una tabla vacía ni hace falta un render extra por setState.
+  const page = Math.min(currentPage, totalPages);
+  const pageItems = useMemo(
+    () => filteredLocations.slice((page - 1) * itemsPerPage, page * itemsPerPage),
+    [filteredLocations, page, itemsPerPage],
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, selectedDeviceTypes, itemsPerPage]);
+
+  // Si la ubicación resaltada deja de pasar los filtros, su pin ya no está en el
+  // mapa: soltar el resaltado en vez de dejarlo apuntando a la nada.
+  useEffect(() => {
+    setHighlightedLocationId((prev) =>
+      prev && !filteredLocations.some((l) => l.id === prev) ? null : prev,
+    );
+  }, [filteredLocations]);
+
+  const clearHighlight = useCallback(() => setHighlightedLocationId(null), []);
+
+  // El resaltado se suelta al clickear en cualquier lado, salvo que el click sea
+  // para elegir otra ubicación o para operar el mapa.
+  //
+  // Fase de CAPTURA y no bubbling: React 18 delega sus handlers en el root
+  // container, que es descendiente de document, así que con bubbling este
+  // listener correría DESPUÉS del onClick de la fila y apagaría el resaltado
+  // que la fila acaba de prender.
+  //
+  // `click` y no `pointerdown`: pointerdown también dispara cuando el gesto
+  // termina siendo un scroll táctil o una selección de texto, y ahí no hubo
+  // ninguna intención de soltar nada.
+  useEffect(() => {
+    if (!highlightedLocationId) return;
+
+    const onDocumentClick = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      // Adentro del mapa decide Leaflet (ver onBackgroundClick), que sabe
+      // distinguir pin, popup, control y pan de un click sobre el fondo.
+      if (el?.closest('[data-keep-highlight], .leaflet-container')) return;
+      setHighlightedLocationId(null);
+    };
+
+    document.addEventListener("click", onDocumentClick, true);
+    return () => document.removeEventListener("click", onDocumentClick, true);
+  }, [highlightedLocationId]);
+
+  // Podar filtros de tipos ya eliminados: si no, un tipo borrado deja un filtro
+  // fantasma que oculta todas las ubicaciones sin forma obvia de recuperarlas.
+  useEffect(() => {
+    if (!deviceTypes.length) return; // no podar mientras carga
+    setSelectedDeviceTypes((prev) => {
+      const valid = new Set(
+        Array.from(prev).filter((id) => deviceTypes.some((dt) => dt.id === id))
+      );
+      return valid.size === prev.size ? prev : valid;
+    });
+  }, [deviceTypes]);
+
+  // Resumen de lo que se está viendo con los filtros aplicados
+  const resumen = useMemo(() => {
+    let afiches = 0;
+    let dispositivos = 0;
+    filteredLocations.forEach((location) => {
+      afiches += calcularTotalAfiches(location.devices, aficheByType);
+      location.devices?.forEach((d) => {
+        dispositivos += Number(d.quantity) || 0;
+      });
+    });
+    return { afiches, dispositivos };
+  }, [filteredLocations, aficheByType]);
 
   // Toggle de tipo de dispositivo
   const toggleDeviceType = (deviceTypeId: string) => {
@@ -238,9 +308,15 @@ export default function UbicacionesPage() {
     });
   };
 
-  // Limpiar todos los filtros
-  const clearFilters = () => {
+  // Limpiar solo los tipos de dispositivo (chips y popover)
+  const clearDeviceFilters = () => {
     setSelectedDeviceTypes(new Set());
+  };
+
+  // Limpiar todo, incluida la búsqueda por dirección
+  const clearAllFilters = () => {
+    setSelectedDeviceTypes(new Set());
+    setSearch("");
   };
 
   // Seleccionar todos los filtros
@@ -333,6 +409,13 @@ export default function UbicacionesPage() {
       console.error("Error al guardar ubicacion:", error);
       toast.error("Error al guardar la ubicacion");
     }
+  };
+
+  // Click en una fila: resalta el pin y sube la vista al mapa (el mapa está
+  // arriba de la tabla, si no el resaltado quedaría fuera de pantalla).
+  const handleHighlight = (location: TLocation) => {
+    setHighlightedLocationId(location.id);
+    mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   const handleEdit = (location: TLocation) => {
@@ -499,111 +582,132 @@ export default function UbicacionesPage() {
         </Button>
       </div>
 
-      {/* Filtros de dispositivos - Colapsable */}
+      {/* Resumen de lo que se está viendo */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <SummaryCard
+          title="Ubicaciones visibles"
+          value={filteredLocations.length}
+          subtitle={`de ${locations.length} totales`}
+          icon={MapPin}
+          variant="blue"
+        />
+        <SummaryCard
+          title="Afiches visibles"
+          value={resumen.afiches}
+          subtitle="en las ubicaciones visibles"
+          icon={FileText}
+          variant="green"
+        />
+        <SummaryCard
+          title="Dispositivos instalados"
+          value={resumen.dispositivos}
+          subtitle="todos los tipos, en las ubicaciones visibles"
+          icon={Grid3x3}
+          variant="slate"
+        />
+        <SummaryCard
+          title="Filtros activos"
+          value={activeFilterCount || "Todos"}
+          subtitle={
+            activeFilterCount
+              ? "Tocá para limpiar los filtros"
+              : `de ${deviceTypes.length} tipos`
+          }
+          icon={Filter}
+          variant="amber"
+          onClick={activeFilterCount ? clearAllFilters : undefined}
+        />
+      </div>
+
+      {/* Filtros por tipo de dispositivo. El punto de color va siempre: los chips
+          funcionan como leyenda de los pines del mapa. */}
       <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => setFiltersExpanded(!filtersExpanded)}
-              className="flex items-center gap-2 hover:opacity-70 transition-opacity"
-            >
-              <Filter className="h-5 w-5 text-blue-900" />
-              <CardTitle className="text-lg">Filtrar por Tipo de Dispositivo</CardTitle>
-              <ChevronDown
-                className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${
-                  filtersExpanded ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            {filtersExpanded && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearFilters}
-                  disabled={selectedDeviceTypes.size === 0}
+        <CardContent className="py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-medium text-gray-600 mr-1">
+              Filtrar por dispositivo:
+            </span>
+
+            {deviceTypes.map((deviceType) => {
+              const isSelected = selectedDeviceTypes.has(deviceType.id);
+              const stats = deviceTypeStats[deviceType.id] ?? { locations: 0, units: 0 };
+
+              return (
+                <button
+                  key={deviceType.id}
+                  onClick={() => toggleDeviceType(deviceType.id)}
+                  title={`${deviceType.name}: en ${stats.locations} ${
+                    stats.locations === 1 ? "ubicación" : "ubicaciones"
+                  } · ${stats.units} ${
+                    stats.units === 1 ? "unidad instalada" : "unidades instaladas"
+                  }`}
+                  className={`
+                    inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium
+                    transition-colors duration-150
+                    ${
+                      isSelected
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-300 bg-white text-slate-700 hover:border-slate-900"
+                    }
+                  `}
                 >
+                  <PinSwatch colorKey={deviceType.pinColor} className="h-2.5 w-2.5" />
+                  <span>{deviceType.name}</span>
+                  {/* Dos números distintos: ubicaciones donde aparece y unidades
+                      instaladas. Sin las etiquetas se confunden. */}
+                  <span
+                    className={`rounded-full px-1.5 text-[11px] font-bold tabular-nums ${
+                      isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {stats.locations} ub
+                    <span className={isSelected ? "text-white/60" : "text-slate-400"}>
+                      {" · "}
+                    </span>
+                    {stats.units} u
+                  </span>
+                  {isSelected && <Check className="h-3 w-3" />}
+                </button>
+              );
+            })}
+
+            <div className="ml-auto flex items-center gap-2">
+              {selectedDeviceTypes.size > 0 && (
+                <Button variant="ghost" size="sm" onClick={clearDeviceFilters}>
                   Limpiar
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={selectAllFilters}
-                  disabled={selectedDeviceTypes.size === deviceTypes.length}
-                >
-                  Seleccionar todos
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        {filtersExpanded && (
-          <CardContent>
-            <div className="space-y-3">
-              {/* Chips de filtros */}
-              <div className="flex flex-wrap gap-2">
-                {deviceTypes.map((deviceType) => {
-                  const isSelected = selectedDeviceTypes.has(deviceType.id);
-                  const count = deviceTypeCounts[deviceType.id] || 0;
-
-                  return (
-                    <button
-                      key={deviceType.id}
-                      onClick={() => toggleDeviceType(deviceType.id)}
-                      className={`
-                        inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium
-                        transition-all duration-200 border-2
-                        ${
-                          isSelected
-                            ? "bg-blue-900 text-white border-blue-900 shadow-md hover:bg-blue-800"
-                            : "bg-white text-gray-700 border-gray-300 hover:border-blue-900 hover:text-blue-900"
-                        }
-                      `}
-                    >
-                      <Grid3x3 className="h-4 w-4" />
-                      <span>{deviceType.name}</span>
-                      <span
-                        className={`
-                          px-2 py-0.5 rounded-full text-xs font-bold
-                          ${isSelected ? "bg-blue-800 text-white" : "bg-gray-200 text-gray-600"}
-                        `}
-                      >
-                        {count}
-                      </span>
-                      {isSelected && <Check className="h-4 w-4" />}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Contador de resultados */}
-              <div className="pt-2 border-t border-gray-200">
-                <p className="text-sm text-gray-600">
-                  Mostrando:{" "}
-                  <span className="font-bold text-blue-900">{filteredLocations.length}</span> de{" "}
-                  <span className="font-bold">{locations.length}</span> ubicaciones
-                </p>
-              </div>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selectAllFilters}
+                disabled={selectedDeviceTypes.size === deviceTypes.length}
+              >
+                Todos
+              </Button>
             </div>
-          </CardContent>
-        )}
+          </div>
+        </CardContent>
       </Card>
 
       {/* Mapa - Responsive y robusto */}
+      {/* Alto fijo en px enteros a propósito: con `calc(100vh - …)` el zoom del
+          navegador achica el viewport en px CSS, el mapa cambia de alto y
+          reacomoda toda la página; y el alto fraccionario resultante deja
+          hilos sub-pixel en el borde. Era el único elemento de la app atado al
+          viewport, por eso el síntoma se veía solo acá.
+          `overflow-hidden rounded-lg` viven acá y no en el MapContainer: una
+          sola caja redondea y recorta. */}
       <div
-        className="w-full relative z-0"
-        style={{
-          height: filtersExpanded ? 'calc(100vh - 400px)' : 'calc(100vh - 280px)',
-          minHeight: '500px',
-          maxHeight: '800px',
-          pointerEvents: "auto"
-        }}
+        ref={mapSectionRef}
+        className="w-full relative z-0 overflow-hidden rounded-lg h-[440px] md:h-[520px] xl:h-[600px] 2xl:h-[700px]"
       >
-        {status === "loading" ? (
+        {locationsLoading ? (
           <div className="h-full w-full bg-gray-100 rounded-lg flex items-center justify-center">
             <p className="text-gray-500">Cargando ubicaciones...</p>
           </div>
         ) : (
+          /* La paginación es solo de la tabla: el mapa muestra todo lo filtrado. */
           <MapView
             locations={filteredLocations}
             center={mapCenter}
@@ -611,6 +715,9 @@ export default function UbicacionesPage() {
             onDraggableMarkerMove={handleDraggableMarkerMove}
             onMapReady={(getCenterFn) => setGetMapCenter(() => getCenterFn)}
             deviceTypes={deviceTypes}
+            onEditLocation={handleEdit}
+            highlightedLocationId={highlightedLocationId}
+            onBackgroundClick={clearHighlight}
           />
         )}
       </div>
@@ -621,6 +728,33 @@ export default function UbicacionesPage() {
           <CardTitle>Ubicaciones Registradas ({filteredLocations.length})</CardTitle>
         </CardHeader>
         <CardContent>
+          {/* La barra va FUERA del estado vacío: si no, una búsqueda sin resultados
+              haría desaparecer el input y no habría forma de borrar el término. */}
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por dirección o código..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <DeviceTypeFilter
+              deviceTypes={deviceTypes}
+              selected={selectedDeviceTypes}
+              onToggle={toggleDeviceType}
+              onClear={clearDeviceFilters}
+              onSelectAll={selectAllFilters}
+              stats={deviceTypeStats}
+            />
+            {activeFilterCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={clearAllFilters}>
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+
           {filteredLocations.length === 0 ? (
             <div className="text-center py-12">
               <MapPin className="h-12 w-12 mx-auto text-gray-400 mb-4" />
@@ -630,6 +764,23 @@ export default function UbicacionesPage() {
                   <p className="text-sm text-gray-400 mt-2">
                     Agrega tu primera ubicacion haciendo click en Nueva Ubicacion
                   </p>
+                </>
+              ) : searchActive ? (
+                <>
+                  <p className="text-gray-500">
+                    No se encontraron ubicaciones para &ldquo;{debouncedSearch.trim()}&rdquo;
+                  </p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    Probá con otra dirección o código, o revisá los filtros de dispositivo
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4"
+                    onClick={() => setSearch("")}
+                  >
+                    Limpiar búsqueda
+                  </Button>
                 </>
               ) : (
                 <>
@@ -641,6 +792,7 @@ export default function UbicacionesPage() {
               )}
             </div>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -652,10 +804,20 @@ export default function UbicacionesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredLocations.map((location) => {
-                  const totalAfiches = calcularTotalAfiches(location.devices);
+                {pageItems.map((location) => {
+                  const totalAfiches = calcularTotalAfiches(location.devices, aficheByType);
                   return (
-                  <TableRow key={location.id}>
+                  <TableRow
+                    key={location.id}
+                    data-keep-highlight
+                    onClick={() => handleHighlight(location)}
+                    title="Ver esta ubicación en el mapa"
+                    className={`cursor-pointer ${
+                      location.id === highlightedLocationId
+                        ? "bg-blue-50 hover:bg-blue-50"
+                        : "hover:bg-slate-50"
+                    }`}
+                  >
                     <TableCell className="font-medium">
                       {location.code}
                     </TableCell>
@@ -664,7 +826,14 @@ export default function UbicacionesPage() {
                       {location.devices && location.devices.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {location.devices.map((d, i) => (
-                            <span key={i} className="bg-gray-100 px-2 py-0.5 rounded text-xs">
+                            <span
+                              key={i}
+                              className="inline-flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded text-xs"
+                            >
+                              <PinSwatch
+                                colorKey={colorKeyByDeviceType.get(d.deviceTypeId)}
+                                className="h-2 w-2"
+                              />
                               {d.quantity} {d.deviceTypeName}
                             </span>
                           ))}
@@ -677,7 +846,11 @@ export default function UbicacionesPage() {
                       ) : "-"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
+                      {/* stopPropagation: editar/eliminar no deben resaltar la fila */}
+                      <div
+                        className="flex justify-end gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Button
                           variant="ghost"
                           size="icon"
@@ -701,12 +874,26 @@ export default function UbicacionesPage() {
                 })}
               </TableBody>
             </Table>
+
+            <TablePagination
+              currentPage={page}
+              totalPages={totalPages}
+              totalItems={filteredLocations.length}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
+            />
+            </>
           )}
         </CardContent>
       </Card>
 
       {/* Drawer lateral derecho */}
+      {/* modal={false}: en modo modal Radix pone pointer-events:none en el body y
+          atrapa el foco, lo que impide scrollear e interactuar con el resto de la
+          página mientras el drawer está abierto. */}
       <Sheet
+        modal={false}
         open={showDrawer}
         onOpenChange={(open) => {
           // Solo permitir cerrar el drawer desde el boton X o Cancelar, no al hacer click afuera
