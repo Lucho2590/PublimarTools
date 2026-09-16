@@ -42,6 +42,7 @@ import {
   Edit,
   FileText,
   Search,
+  Users,
 } from "lucide-react";
 import { formatearPrecio, formatDate, redondearTotal, extractIdFromSlug } from "@/lib/utils";
 import {
@@ -63,6 +64,8 @@ import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
 import collections from "@/lib/collections";
 import { isDeleted } from "@/lib/softDelete";
+import { ChangeQuoteClientDialog } from "@/components/admin/ChangeQuoteClientDialog";
+import { buildQuoteClientSnapshot } from "@/lib/quoteClient";
 import { TProduct, TProductVariant } from "@/types/product";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -95,6 +98,7 @@ export default function QuoteDetailsPage({
   // Estados de edición
   const [editedQuote, setEditedQuote] = useState<TQuote | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showChangeClient, setShowChangeClient] = useState(false);
 
   // Estados para items
   const [isAddingProduct, setIsAddingProduct] = useState(false);
@@ -423,8 +427,16 @@ export default function QuoteDetailsPage({
 
       {/* Card Cliente */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Cliente</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowChangeClient(true)}
+          >
+            <Users className="h-4 w-4 mr-2" />
+            Cambiar cliente
+          </Button>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -1065,6 +1077,25 @@ export default function QuoteDetailsPage({
           </div>
         </CardContent>
       </Card>
+
+      <ChangeQuoteClientDialog
+        open={showChangeClient}
+        onOpenChange={setShowChangeClient}
+        quote={{
+          id: quoteId,
+          number: editedQuote.number,
+          client: editedQuote.client,
+        }}
+        // `handleSave` manda `editedQuote` entero: sin esto, guardar después del
+        // cambio pisaría el cliente nuevo con el que quedó en memoria.
+        onDone={(newClient) =>
+          setEditedQuote((prev) =>
+            prev
+              ? { ...prev, client: buildQuoteClientSnapshot(newClient, prev.client?.section) }
+              : prev,
+          )
+        }
+      />
     </div>
   );
 }
