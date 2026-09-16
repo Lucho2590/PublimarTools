@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useUser, useFirestoreCollectionData } from "reactfire";
-import { doc, getDoc, updateDoc, collection, query, where, serverTimestamp, Timestamp, Query, CollectionReference, orderBy, addDoc, getDocs } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, query, serverTimestamp, Timestamp, CollectionReference, orderBy, addDoc, getDocs } from "firebase/firestore";
 import { softDelete } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -48,6 +48,7 @@ import {
   Calendar as CalendarIcon,
   History,
   Eye,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { format, addDays } from "date-fns";
@@ -55,10 +56,12 @@ import { es } from "date-fns/locale";
 import { cn, extractIdFromSlug } from "@/lib/utils";
 import collections from "@/lib/collections";
 import { EQuoteStatus } from "@/types/quote";
-import { TClient, EClientSection, EClientTaxCondition } from "@/types/client";
+import { TClient, EClientTaxCondition } from "@/types/client";
 import { CuitInput } from "@/components/cuit-input";
 import { formatCuit } from "@/lib/cuit";
 import { taxConditionOptions, getTaxConditionLabel } from "@/lib/taxCondition";
+import { ChangeQuoteClientDialog } from "@/components/admin/ChangeQuoteClientDialog";
+import { buildQuoteClientSnapshot } from "@/lib/quoteClient";
 import { TDeviceType } from "@/types/device";
 import { EUserRole } from "@/types/user";
 import { useAuth } from "@/contexts/AuthContext";
@@ -138,17 +141,7 @@ export default function PresupuestoDetailPage({
   const [versions, setVersions] = useState<any[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<any | null>(null);
-
-  // Cargar clientes
-  const clientsCollection = collection(firestore, collections.CLIENTS);
-  const clientsQuery = query(
-    clientsCollection,
-    where("section", "==", EClientSection.VIA_PUBLICA),
-    orderBy("name")
-  );
-  const { data: clients } = useFirestoreCollectionData<TClient>(clientsQuery as Query<TClient>, {
-    idField: "id",
-  });
+  const [showChangeClient, setShowChangeClient] = useState(false);
 
   // Cargar dispositivos
   const devicesCollection = collection(firestore, "devices");
@@ -519,14 +512,9 @@ export default function PresupuestoDetailPage({
         })
         .filter((p): p is NonNullable<typeof p> => p !== null);
 
+      // El cliente NO se escribe acá: se cambia sólo desde
+      // ChangeQuoteClientDialog, que además propaga a órdenes/ventas/facturación.
       const updateData = {
-        client: {
-          id: editData.client.id,
-          name: editData.client.name,
-          section: editData.client.section,
-          cuit: editData.client.cuit ?? null,
-          taxCondition: editData.client.taxCondition ?? null,
-        },
         items: [],
         periodos: preparedPeriodos,
         fecha: toTimestamp(editData.fecha),
@@ -851,21 +839,22 @@ export default function PresupuestoDetailPage({
             </div>
             <div className="space-y-2">
               <Label>Cliente</Label>
-              {isEditing ? (
-                <Select value={editData?.client?.id || ""} onValueChange={(value) => {
-                  const selectedClient = clients?.find(c => c.id === value);
-                  if (selectedClient) setEditData({ ...editData!, client: selectedClient });
-                }}>
-                  <SelectTrigger><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger>
-                  <SelectContent>
-                    {clients?.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-sm py-2 font-medium">{quote.client?.name}</p>
-              )}
+                {/* Fuera del modo edición: cambiar el cliente escribe de una y
+                    recarga `quote`, lo que resincroniza `editData` y perdería
+                    los cambios sin guardar. */}
+                {!isEditing && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowChangeClient(true)}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Cambiar
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Estado</Label>
@@ -1251,6 +1240,21 @@ export default function PresupuestoDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ChangeQuoteClientDialog
+        open={showChangeClient}
+        onOpenChange={setShowChangeClient}
+        quote={{ id: quoteId, number: quote.number, client: quote.client as any }}
+        // `quote` se carga con un getDoc único, no con un listener: sin esto la
+        // pantalla sigue mostrando el cliente anterior hasta recargar.
+        onDone={(newClient) => {
+          const snapshot = buildQuoteClientSnapshot(
+            newClient,
+            quote.client?.section,
+          ) as any;
+          setQuote((prev) => (prev ? { ...prev, client: snapshot } : prev));
+        }}
+      />
     </div>
   );
 }

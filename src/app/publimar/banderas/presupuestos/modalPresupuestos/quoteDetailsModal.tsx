@@ -42,11 +42,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Edit, Save, X, Plus, Trash2, Search } from "lucide-react";
+import { Edit, Save, X, Plus, Trash2, Search, Users } from "lucide-react";
 import collections from "@/lib/collections";
 import { isDeleted } from "@/lib/softDelete";
 import { EQuoteStatus, TQuote, TQuoteItem } from "@/types/quote";
-import { TClient } from "@/types/client";
 import { TProduct, TProductVariant } from "@/types/product";
 import { formatDate, formatearPrecio } from "@/lib/utils";
 import {
@@ -58,6 +57,7 @@ import {
   TDiscountType,
 } from "@/lib/totals";
 import { DiscountInput } from "@/components/admin/DiscountInput";
+import { ChangeQuoteClientDialog } from "@/components/admin/ChangeQuoteClientDialog";
 
 // Tipo para los items del presupuesto
 type QuoteItem = {
@@ -89,8 +89,7 @@ export default function QuoteDetailsModal({
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [quote, setQuote] = useState<TQuote | null>(null);
-  const [selectedClient, setSelectedClient] = useState<TClient | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [showChangeClient, setShowChangeClient] = useState(false);
   const [productSearchTerm, setProductSearchTerm] = useState("");
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
@@ -124,15 +123,6 @@ export default function QuoteDetailsModal({
 
   const { status, data } = useFirestoreDocData(quoteDoc!, { idField: "id" });
 
-  // Fetch clients
-  const clientsCollection = collection(
-    firestore || ({} as any),
-    collections.CLIENTS
-  );
-  const { data: clients } = useFirestoreCollectionData(clientsCollection, {
-    idField: "id",
-  });
-
   // Fetch products
   const productsCollection = collection(
     firestore || ({} as any),
@@ -147,8 +137,7 @@ export default function QuoteDetailsModal({
     setIsEditing(false);
     setLoading(false);
     setQuote(null);
-    setSelectedClient(null);
-    setSearchTerm("");
+    setShowChangeClient(false);
     setProductSearchTerm("");
     setItems([]);
     setIsAddingProduct(false);
@@ -179,7 +168,6 @@ export default function QuoteDetailsModal({
     if (data && quoteId && isOpen) {
       const quoteData = data as TQuote;
       setQuote(quoteData);
-      setSelectedClient(quoteData.client);
 
       if (quoteData.items && Array.isArray(quoteData.items)) {
         const mappedItems: QuoteItem[] = quoteData.items.map(
@@ -266,18 +254,6 @@ export default function QuoteDetailsModal({
     );
   }
 
-  // Filter clients based on search (memoizado)
-  const filteredClients = useMemo(() => {
-    return clients?.filter((client: DocumentData) => {
-      if (!client) return false;
-      return (
-        client.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.phone?.includes(searchTerm)
-      );
-    });
-  }, [clients, searchTerm]);
-
   // Filter products based on search (memoizado)
   const filteredProducts = useMemo(() => {
     return products?.filter((product: DocumentData) => {
@@ -361,7 +337,7 @@ export default function QuoteDetailsModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quote || !selectedClient) return;
+    if (!quote) return;
 
     setLoading(true);
     try {
@@ -390,8 +366,9 @@ export default function QuoteDetailsModal({
         notes: item.notes,
       }));
 
+      // El cliente NO se escribe acá: se cambia sólo desde
+      // ChangeQuoteClientDialog, que además propaga a órdenes/ventas/facturación.
       const updateData = {
-        client: selectedClient,
         items: quoteItems,
         subtotal: subtotal,
         taxRate: Number(formData.taxRate),
@@ -415,11 +392,6 @@ export default function QuoteDetailsModal({
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSelectClient = (client: TClient) => {
-    setSelectedClient(client);
-    setSearchTerm("");
   };
 
   const handleProductSelect = (
@@ -483,6 +455,7 @@ export default function QuoteDetailsModal({
   }
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
         <DialogHeader className="flex flex-row items-center justify-between">
@@ -528,69 +501,41 @@ export default function QuoteDetailsModal({
           <form id="edit-quote-form" onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle>Información del Cliente</CardTitle>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowChangeClient(true)}
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    Cambiar cliente
+                  </Button>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="client-search">Buscar Cliente</Label>
-                      <div className="relative">
-                        <Input
-                          id="client-search"
-                          type="text"
-                          placeholder="Buscar por nombre, email o teléfono..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-10"
-                        />
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                      </div>
-                      {searchTerm && filteredClients && (
-                        <div className="mt-2 border rounded-md max-h-40 overflow-y-auto">
-                          {filteredClients.map((client: any) => (
-                            <div
-                              key={client.id}
-                              className="p-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                              onClick={() => handleSelectClient(client)}
-                            >
-                              <div className="font-medium">{client.name}</div>
-                              {client.email && (
-                                <div className="text-sm text-gray-600">
-                                  {client.email}
-                                </div>
-                              )}
-                              {client.phone && (
-                                <div className="text-sm text-gray-600">
-                                  {client.phone}
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                  {quote.client ? (
+                    <div className="p-3 bg-blue-50 rounded-md">
+                      <div className="font-medium">{quote.client.name}</div>
+                      {quote.client.email && (
+                        <div className="text-sm text-gray-600">
+                          {quote.client.email}
+                        </div>
+                      )}
+                      {quote.client.phone && (
+                        <div className="text-sm text-gray-600">
+                          {quote.client.phone}
+                        </div>
+                      )}
+                      {quote.client.address && (
+                        <div className="text-sm text-gray-600">
+                          {quote.client.address}
                         </div>
                       )}
                     </div>
-                    {selectedClient && (
-                      <div className="p-3 bg-blue-50 rounded-md">
-                        <div className="font-medium">{selectedClient.name}</div>
-                        {selectedClient.email && (
-                          <div className="text-sm text-gray-600">
-                            {selectedClient.email}
-                          </div>
-                        )}
-                        {selectedClient.phone && (
-                          <div className="text-sm text-gray-600">
-                            {selectedClient.phone}
-                          </div>
-                        )}
-                        {selectedClient.address && (
-                          <div className="text-sm text-gray-600">
-                            {selectedClient.address}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">Sin cliente asignado</p>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1141,5 +1086,12 @@ export default function QuoteDetailsModal({
         )}
       </DialogContent>
     </Dialog>
+
+    <ChangeQuoteClientDialog
+      open={showChangeClient}
+      onOpenChange={setShowChangeClient}
+      quote={{ id: quote.id, number: quote.number, client: quote.client }}
+    />
+    </>
   );
 }
