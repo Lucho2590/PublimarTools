@@ -56,6 +56,54 @@ export const formatDateString = (dateString: string): string => {
 };
 
 /**
+ * Convierte lo que haya guardado en un campo de fecha (Timestamp de Firestore,
+ * `{seconds}` plano, Date, string o número) a `Date`. Devuelve `null` si no se
+ * puede interpretar.
+ */
+export const toDateSafe = (value: any): Date | null => {
+  if (value === null || value === undefined || value === "") return null;
+  let d: Date;
+  if (typeof value.toDate === "function") d = value.toDate();
+  else if (typeof value === "object" && "seconds" in value)
+    d = new Date(value.seconds * 1000);
+  else if (value instanceof Date) d = value;
+  else d = new Date(value);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * `Date` → "yyyy-MM-dd" en hora LOCAL, para `<input type="date">`.
+ *
+ * No usar `toISOString().split("T")[0]` para esto: eso devuelve la fecha en
+ * UTC, y en Argentina (UTC-3) cualquier hora después de las 21:00 cae en el
+ * día siguiente.
+ */
+export const toLocalDateInputValue = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+/**
+ * Combina un "yyyy-MM-dd" (de un input de fecha) con la hora de `original`:
+ * cambia el día y conserva hora/minutos/segundos. Sin un `original` válido cae
+ * al mediodía local, igual que `formatDateString`.
+ */
+export const combineDateWithOriginalTime = (
+  dateString: string,
+  original?: Date | null,
+): Date => {
+  const [y, m, d] = dateString.split("-").map(Number);
+  if (!original || isNaN(original.getTime())) {
+    return new Date(`${dateString}T12:00:00`);
+  }
+  const out = new Date(original.getTime());
+  out.setFullYear(y, m - 1, d);
+  return out;
+};
+
+/**
  * Redondea un número primero en centavos y luego a la decena más cercana
  * @param num - El número a redondear
  * @returns El número redondeado

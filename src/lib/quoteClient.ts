@@ -30,7 +30,7 @@ import {
  */
 const BATCH_SIZE = 450;
 
-type LogEventFn = (entry: TAuditInput) => Promise<unknown>;
+export type LogEventFn = (entry: TAuditInput) => Promise<unknown>;
 
 /** Snapshot plano del cliente tal como se guarda dentro de un presupuesto. */
 export type TQuoteClientSnapshot = TQuote["client"];
@@ -121,14 +121,127 @@ export function impactIsEmpty(impact: TQuoteClientImpact): boolean {
 }
 
 /**
+ * Acumula escrituras y las commitea en batches de `BATCH_SIZE`. Compartido con
+ * `orderClient.ts`.
+ */
+export function createBatcher(firestore: Firestore) {
+  let batch = writeBatch(firestore);
+  let ops = 0;
+  const flush = async () => {
+    if (ops > 0) {
+      await batch.commit();
+      batch = writeBatch(firestore);
+      ops = 0;
+    }
+  };
+  const push = async (fn: (b: ReturnType<typeof writeBatch>) => void) => {
+    fn(batch);
+    ops++;
+    if (ops >= BATCH_SIZE) await flush();
+  };
+  return { push, flush };
+}
+
+/**
+ * Ventas generadas desde cada una de las órdenes dadas. Se consulta orden por
+ * orden en vez de con un `where in`: no hay tope de 30 valores y son todas
+ * consultas de índice simple.
+ */
+export async function findSalesForOrders(
+  firestore: Firestore,
+  orderIds: string[],
+): Promise<TImpactSale[]> {
+  const salesByOrder = await Promise.all(
+    orderIds.map(async (orderId) => {
+      const snap = await getDocs(
+        query(collection(firestore, collections.SALES), where("orderId", "==", orderId)),
+      );
+      return filterActive(
+        snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })),
+      ).map((data: any): TImpactSale => {
+        const raw = data.client;
+        return {
+          id: data.id,
+          number: data.number ?? "S/N",
+          orderId,
+          clientFieldShape:
+            raw === undefined || raw === null
+              ? "absent"
+              : typeof raw === "string"
+                ? "string"
+                : "object",
+        };
+      });
+    }),
+  );
+  return salesByOrder.flat();
+}
+
+/** Notas de crédito aplicadas a un documento (sólo informativo, no se reasignan). */
+export async function findCreditNotesAppliedTo(
+  firestore: Firestore,
+  documentId: string,
+): Promise<TImpactCreditNote[]> {
+  const snap = await getDocs(
+    query(
+      collection(firestore, collections.CREDIT_NOTES),
+      where("appliedToDocumentId", "==", documentId),
+    ),
+  );
+  return filterActive(
+    snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })),
+  ).map((data: any) => ({
+    id: data.id,
+    number: data.number ?? "S/N",
+    clientName: data.clientName ?? "",
+  }));
+}
+
+/**
+ * Campos a actualizar en una orden al reasignarle el cliente. Sólo se toca
+ * `client` si la orden ya lo tenía como objeto (formato viejo). No se pisan
+ * `cuit`/`direccion`/`telefono`/`email`: son editables a mano desde la orden.
+ */
+export function buildOrderClientUpdate(
+  snapshot: TQuoteClientSnapshot,
+  hasClientObject: boolean,
+): Record<string, any> {
+  const data: Record<string, any> = {
+    clientId: snapshot.id,
+    clientName: snapshot.name,
+    updatedAt: serverTimestamp(),
+  };
+  if (hasClientObject) data.client = snapshot;
+  return data;
+}
+
+/**
+ * Campos a actualizar en una venta al reasignarle el cliente.
+ *
+ * Al convertir orden→venta se guarda `client: order.clientId`, un string. La
+ * ficha de cliente compensa ese bug con `where("client","==",clientId)`, así
+ * que hay que conservar la forma del campo o esa query deja de matchear.
+ */
+export function buildSaleClientUpdate(
+  snapshot: TQuoteClientSnapshot,
+  clientFieldShape: TImpactSale["clientFieldShape"],
+): Record<string, any> {
+  const data: Record<string, any> = {
+    clientId: snapshot.id,
+    clientName: snapshot.name,
+    updatedAt: serverTimestamp(),
+  };
+  if (clientFieldShape === "string") data.client = snapshot.id;
+  else if (clientFieldShape === "object") data.client = snapshot;
+  return data;
+}
+
+/**
  * Descubre todos los documentos que heredaron el cliente de este presupuesto.
  *
  * Sólo lee. El resultado se le muestra al usuario antes de confirmar y después
  * se le pasa tal cual a `reassignQuoteClient`, así lo que se escribe es
  * exactamente lo que se mostró.
- *
- * Las ventas se buscan orden por orden en vez de con un `where in`: no hay tope
- * de 30 valores y son todas consultas de índice simple.
  */
 export async function findQuoteClientImpact(
   firestore: Firestore,
@@ -145,30 +258,10 @@ export async function findQuoteClientImpact(
     hasClientObject: !!data.client && typeof data.client === "object",
   }));
 
-  const salesByOrder = await Promise.all(
-    orders.map(async (order) => {
-      const snap = await getDocs(
-        query(collection(firestore, collections.SALES), where("orderId", "==", order.id)),
-      );
-      return filterActive(
-        snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })),
-      ).map((data: any): TImpactSale => {
-        const raw = data.client;
-        return {
-          id: data.id,
-          number: data.number ?? "S/N",
-          orderId: order.id,
-          clientFieldShape:
-            raw === undefined || raw === null
-              ? "absent"
-              : typeof raw === "string"
-                ? "string"
-                : "object",
-        };
-      });
-    }),
+  const sales = await findSalesForOrders(
+    firestore,
+    orders.map((o) => o.id),
   );
-  const sales: TImpactSale[] = salesByOrder.flat();
 
   const billingsSnap = await getDocs(
     query(collection(firestore, collections.BILLINGS), where("quoteId", "==", quoteId)),
@@ -183,19 +276,7 @@ export async function findQuoteClientImpact(
 
   // Las notas de crédito no se reasignan: sólo se listan para que el usuario
   // sepa que quedaron apuntando al cliente anterior.
-  const creditNotesSnap = await getDocs(
-    query(
-      collection(firestore, collections.CREDIT_NOTES),
-      where("appliedToDocumentId", "==", quoteId),
-    ),
-  );
-  const creditNotes: TImpactCreditNote[] = filterActive(
-    creditNotesSnap.docs.map((d) => ({ ...(d.data() as any), id: d.id })),
-  ).map((data: any) => ({
-    id: data.id,
-    number: data.number ?? "S/N",
-    clientName: data.clientName ?? "",
-  }));
+  const creditNotes = await findCreditNotesAppliedTo(firestore, quoteId);
 
   return { orders, sales, billings, creditNotes };
 }
@@ -207,9 +288,14 @@ export type ReassignQuoteClientInput = {
   newClient: TClient;
   /** El mismo impacto que se le mostró al usuario en el diálogo. */
   impact: TQuoteClientImpact;
+  /**
+   * Orden desde la que se disparó el cambio, cuando viene de la pantalla de
+   * una orden y no del presupuesto. Sólo afecta la auditoría.
+   */
+  origin?: { orderId: string; orderNumber: string };
 };
 
-function auditSectionFor(section: string | undefined | null): EAuditSection {
+export function auditSectionFor(section: string | undefined | null): EAuditSection {
   return section === EClientSection.VIA_PUBLICA
     ? EAuditSection.VIA_PUBLICA
     : EAuditSection.BANDERAS_CLIENTES;
@@ -232,24 +318,11 @@ export async function reassignQuoteClient(
   logEvent: LogEventFn,
   input: ReassignQuoteClientInput,
 ): Promise<void> {
-  const { quoteId, quoteNumber, previousClient, newClient, impact } = input;
+  const { quoteId, quoteNumber, previousClient, newClient, impact, origin } = input;
 
   const snapshot = buildQuoteClientSnapshot(newClient, previousClient?.section);
 
-  let batch = writeBatch(firestore);
-  let ops = 0;
-  const flush = async () => {
-    if (ops > 0) {
-      await batch.commit();
-      batch = writeBatch(firestore);
-      ops = 0;
-    }
-  };
-  const push = async (fn: (b: ReturnType<typeof writeBatch>) => void) => {
-    fn(batch);
-    ops++;
-    if (ops >= BATCH_SIZE) await flush();
-  };
+  const { push, flush } = createBatcher(firestore);
 
   // 1. El presupuesto.
   await push((b) =>
@@ -261,29 +334,22 @@ export async function reassignQuoteClient(
 
   // 2. Órdenes generadas desde este presupuesto.
   for (const order of impact.orders) {
-    const data: Record<string, any> = {
-      clientId: snapshot.id,
-      clientName: snapshot.name,
-      updatedAt: serverTimestamp(),
-    };
-    // Sólo se toca `client` si la orden ya lo tenía como objeto (formato viejo).
-    if (order.hasClientObject) data.client = snapshot;
-    await push((b) => b.update(doc(firestore, collections.ORDERS, order.id), data));
+    await push((b) =>
+      b.update(
+        doc(firestore, collections.ORDERS, order.id),
+        buildOrderClientUpdate(snapshot, order.hasClientObject),
+      ),
+    );
   }
 
   // 3. Ventas de esas órdenes.
   for (const sale of impact.sales) {
-    const data: Record<string, any> = {
-      clientId: snapshot.id,
-      clientName: snapshot.name,
-      updatedAt: serverTimestamp(),
-    };
-    // Al convertir orden→venta se guarda `client: order.clientId`, un string.
-    // La ficha de cliente compensa ese bug con `where("client","==",clientId)`,
-    // así que hay que conservar la forma del campo o esa query deja de matchear.
-    if (sale.clientFieldShape === "string") data.client = snapshot.id;
-    else if (sale.clientFieldShape === "object") data.client = snapshot;
-    await push((b) => b.update(doc(firestore, collections.SALES, sale.id), data));
+    await push((b) =>
+      b.update(
+        doc(firestore, collections.SALES, sale.id),
+        buildSaleClientUpdate(snapshot, sale.clientFieldShape),
+      ),
+    );
   }
 
   // 4. Facturaciones de Vía Pública. Sólo el snapshot del cliente: el saldo,
@@ -316,6 +382,7 @@ export async function reassignQuoteClient(
   const sectionNote = movedSection
     ? ` (movido de ${sectionLabel(previousClient?.section)} a ${sectionLabel(newClient.section)})`
     : "";
+  const originNote = origin ? ` (desde la orden ${origin.orderNumber})` : "";
 
   await logEvent({
     section,
@@ -324,7 +391,7 @@ export async function reassignQuoteClient(
     entityLabel: quoteNumber,
     action: EAuditAction.UPDATE,
     description:
-      `Cambió el cliente del presupuesto ${quoteNumber} de "${previousName}" a "${snapshot.name}"${sectionNote}`,
+      `Cambió el cliente del presupuesto ${quoteNumber} de "${previousName}" a "${snapshot.name}"${sectionNote}${originNote}`,
     // Se auditan escalares y no el objeto `client` entero a propósito:
     // `sanitizeValue` reemplaza por `{_truncated: true}` cualquier objeto de más
     // de 1024 bytes, y un cliente con contactos lo supera — el diff quedaría
@@ -352,6 +419,9 @@ export async function reassignQuoteClient(
       saleNumbers: impact.sales.map((s) => s.number),
       billingIds: impact.billings.map((b) => b.id),
       billingNumbers: impact.billings.map((b) => b.number),
+      ...(origin
+        ? { originOrderId: origin.orderId, originOrderNumber: origin.orderNumber }
+        : {}),
     },
   });
 
