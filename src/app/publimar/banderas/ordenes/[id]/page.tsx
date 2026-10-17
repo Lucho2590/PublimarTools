@@ -47,7 +47,10 @@ import {
   Edit,
   Wallet,
   Loader2,
+  Users,
 } from "lucide-react";
+import { ChangeOrderClientDialog } from "@/components/admin/ChangeOrderClientDialog";
+import { buildQuoteClientSnapshot } from "@/lib/quoteClient";
 import { Badge } from "@/components/ui/badge";
 import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
 import { applyCreditNoteToDocument } from "@/lib/creditNotes";
@@ -112,7 +115,7 @@ export default function OrderDetailsPage({
     loading: orderLoading,
     error: orderError,
   } = useOrderById(orderId);
-  const { clients, loading: clientsLoading, updateClient } = useClients({ section: EClientSection.BANDERAS });
+  const { clients, updateClient } = useClients({ section: EClientSection.BANDERAS });
   const { generateSaleNumber } = useSales();
   const { logEvent } = useAuditLog();
 
@@ -178,6 +181,7 @@ export default function OrderDetailsPage({
 
   // Estado para colapso de contacto
   const [showContactDetails, setShowContactDetails] = useState(false);
+  const [showChangeClient, setShowChangeClient] = useState(false);
 
   // Estados para múltiples facturas
   const [facturas, setFacturas] = useState<TFactura[]>([]);
@@ -1349,31 +1353,30 @@ export default function OrderDetailsPage({
         <div className="space-y-4">
           {/* Cliente - Movido arriba */}
           <Card className="border-0 shadow-sm">
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle>Información del Cliente</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowChangeClient(true)}
+                disabled={saving}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                Cambiar cliente
+              </Button>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <Label>Nombre del Cliente</Label>
-                <Input
-                  value={
-                    editedOrder?.clientName ||
+                {/* Sólo lectura: el cliente se cambia desde ChangeOrderClientDialog,
+                    que además propaga a presupuesto/ventas y audita. Antes este
+                    input renombraba al cliente en la BD en cada tecla. */}
+                <p className="mt-1 font-medium">
+                  {editedOrder?.clientName ||
                     editedOrder?.tempClientData?.name ||
                     order?.client?.name ||
-                    ""
-                  }
-                  onChange={async (e) => {
-                    const newValue = e.target.value;
-                    // Actualizar orden local
-                    setEditedOrder((prev: any) => ({
-                      ...prev!,
-                      clientName: newValue,
-                    }));
-                    // Actualizar cliente en BD
-                    await handleUpdateClientData({ name: newValue });
-                  }}
-                  placeholder="Nombre del cliente"
-                />
+                    "Sin cliente"}
+                </p>
               </div>
 
               <div>
@@ -2932,6 +2935,41 @@ export default function OrderDetailsPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {order && (
+        <ChangeOrderClientDialog
+          open={showChangeClient}
+          onOpenChange={setShowChangeClient}
+          order={{
+            id: orderId,
+            number: order.number,
+            quoteId: order.quoteId ?? null,
+            clientId: order.clientId ?? (order as any).client?.id ?? null,
+            clientName: order.clientName ?? (order as any).client?.name ?? null,
+            hasClientObject: !!order.client && typeof order.client === "object",
+          }}
+          // `order` es realtime y el useEffect resincroniza `editedOrder`, pero
+          // entre el commit y el snapshot un "Guardar" mandaría el cliente viejo
+          // (`handleSave` manda `editedOrder` entero).
+          onDone={(newClient) =>
+            setEditedOrder((prev: any) => {
+              if (!prev) return prev;
+              const next: any = {
+                ...prev,
+                clientId: newClient.id,
+                clientName: newClient.name,
+              };
+              if (prev.client && typeof prev.client === "object") {
+                next.client = buildQuoteClientSnapshot(
+                  newClient,
+                  EClientSection.BANDERAS,
+                );
+              }
+              return next;
+            })
+          }
+        />
+      )}
     </div>
   );
 }

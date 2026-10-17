@@ -52,6 +52,9 @@ import {
   redondearADecena,
   formatDateString,
   formatDate,
+  toDateSafe,
+  toLocalDateInputValue,
+  combineDateWithOriginalTime,
 } from "@/lib/utils";
 import {
   calcDocumentTotals,
@@ -364,19 +367,10 @@ export function SaleDetailsModal({
         setFormasPago([]);
       }
 
-      // Inicializar fecha editable
-      if (typedSale?.createdAt) {
-        try {
-          const date =
-            typeof typedSale.createdAt === "object" &&
-            "seconds" in typedSale.createdAt
-              ? new Date((typedSale.createdAt as any).seconds * 1000)
-              : new Date(typedSale.createdAt);
-          setEditedDate(date.toISOString().split("T")[0]);
-        } catch (error) {
-          console.error("Error al parsear fecha:", error);
-        }
-      }
+      // Inicializar fecha editable (en hora local, no UTC: si no, una venta
+      // de después de las 21:00 abre con el día siguiente).
+      const createdAtDate = toDateSafe(typedSale?.createdAt);
+      setEditedDate(createdAtDate ? toLocalDateInputValue(createdAtDate) : "");
 
       // Cargar datos del cliente
       if (typedSale?.clientId) {
@@ -412,11 +406,7 @@ export function SaleDetailsModal({
             id: `factura-legacy-${Date.now()}`,
             tipo: "Factura B", // Valor por defecto
             numero: typedSale.invoiceNumber,
-            fecha: typedSale.createdAt
-              ? new Date((typedSale.createdAt as any).seconds * 1000)
-                  .toISOString()
-                  .split("T")[0]
-              : "",
+            fecha: createdAtDate ? toLocalDateInputValue(createdAtDate) : "",
           };
           setFacturas([facturaLegacy]);
         } else {
@@ -1612,10 +1602,16 @@ export function SaleDetailsModal({
           updateData.invoiceNumber = invoiceNumber;
         }
       }
-      // Registrar cambio de fecha de creación
-      if (editedDate) {
+      // Registrar cambio de fecha de creación sólo si el usuario cambió el
+      // día. Antes se escribía siempre `${editedDate}T12:00:00`, así que cada
+      // guardado pisaba la hora de la venta a las 12:00.
+      const originalCreatedAt = toDateSafe(typedSale?.createdAt);
+      const originalDay = originalCreatedAt
+        ? toLocalDateInputValue(originalCreatedAt)
+        : "";
+      if (editedDate && editedDate !== originalDay) {
         updateData.createdAt = Timestamp.fromDate(
-          new Date(`${editedDate}T12:00:00`),
+          combineDateWithOriginalTime(editedDate, originalCreatedAt),
         ) as unknown as Date;
       }
 
