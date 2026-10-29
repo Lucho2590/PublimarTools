@@ -118,7 +118,7 @@ export default function WhatsappConversacionesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {date ? date.toLocaleString("es-UY") : "—"}
+                        {date ? date.toLocaleString("es-AR") : "—"}
                       </TableCell>
                       <TableCell className="text-center">
                         <Button

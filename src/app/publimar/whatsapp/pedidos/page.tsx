@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import collections from "@/lib/collections";
+import { formatearPrecio } from "@/lib/utils";
 import { EWhatsappOrderStatus, TWhatsappOrder } from "@/types/whatsapp";
 
 function toDate(value: any): Date | null {
@@ -23,10 +24,6 @@ function toDate(value: any): Date | null {
   if (typeof value?.seconds === "number") return new Date(value.seconds * 1000);
   const d = new Date(value);
   return isNaN(d.getTime()) ? null : d;
-}
-
-function formatMoney(n: number): string {
-  return new Intl.NumberFormat("es-UY", { style: "currency", currency: "UYU" }).format(n || 0);
 }
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
@@ -109,14 +106,14 @@ export default function WhatsappPedidosPage() {
                       <TableCell>{o.clientName || "—"}</TableCell>
                       <TableCell>{o.phone || "—"}</TableCell>
                       <TableCell className="text-center">{o.items?.length ?? 0}</TableCell>
-                      <TableCell className="text-right">{formatMoney(o.total)}</TableCell>
+                      <TableCell className="text-right">{formatearPrecio(o.total || 0)}</TableCell>
                       <TableCell className="text-center">
                         <Badge className={st.className} variant="secondary">
                           {st.label}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {date ? date.toLocaleDateString("es-UY") : "—"}
+                        {date ? date.toLocaleDateString("es-AR") : "—"}
                       </TableCell>
                     </TableRow>
                   );

@@ -38,6 +38,10 @@ const collections = {
   PAYMENT_ACCOUNT_DEFAULTS: "paymentAccountDefaults",
   WHATSAPP_CONVERSATIONS: "whatsappConversations",
   WHATSAPP_ORDERS: "whatsappOrders",
+  BOT_INTENTS: "botIntents",
+  BOT_SESSIONS: "botSessions",
+  BOT_TURNS: "botTurns",
+  BOT_STATS: "botStats",
   SETTINGS: "settings",
   PRICE_HISTORY: "priceHistory",
 } as const;
