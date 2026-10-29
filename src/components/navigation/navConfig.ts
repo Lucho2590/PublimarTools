@@ -24,6 +24,7 @@ import {
   CreditCard,
   MessageCircle,
   MessageSquare,
+  Bot,
   LucideIcon,
 } from "lucide-react";
 
@@ -214,6 +215,11 @@ export const navConfig: NavItem[] = [
         name: "Pedidos",
         href: "/publimar/whatsapp/pedidos",
         icon: ShoppingBag,
+      },
+      {
+        name: "Bot",
+        href: "/publimar/whatsapp/bot",
+        icon: Bot,
       },
     ],
   },
