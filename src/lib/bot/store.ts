@@ -85,15 +85,29 @@ function emptySession(id: string, channel: TBotChannel): TBotSession {
     cart: [],
     pendingProductId: null,
     pendingVariantId: null,
+    pendingQuantity: null,
     candidateProductIds: [],
+    familyLabel: null,
+    familyProductIds: [],
+    segmentId: null,
+    delivery: null,
+    custom: null,
     customerName: null,
     phone: null,
     clientId: null,
     status: "active",
     pausedUntil: null,
+    handoffReassured: false,
+    needsAttention: false,
+    handoffReason: null,
+    handoffAt: null,
+    handoffSummary: null,
+    attendedAt: null,
+    attendedBy: null,
     failCount: 0,
     lastOrderNumber: null,
     history: [],
+    lastOptions: [],
     createdAt: now,
     updatedAt: now,
   };
@@ -113,6 +127,8 @@ export async function loadSession(
     ...d,
     id,
     pausedUntil: toDate(d.pausedUntil),
+    handoffAt: toDate(d.handoffAt),
+    attendedAt: toDate(d.attendedAt),
     createdAt: toDate(d.createdAt) || new Date(),
     updatedAt: toDate(d.updatedAt) || new Date(),
   };
@@ -125,6 +141,12 @@ export async function loadSession(
     fresh.phone = session.phone;
     fresh.clientId = session.clientId;
     fresh.lastOrderNumber = session.lastOrderNumber;
+    fresh.segmentId = session.segmentId;
+    // Lo pendiente para el equipo no vence con la sesión.
+    fresh.needsAttention = session.needsAttention;
+    fresh.handoffReason = session.handoffReason;
+    fresh.handoffAt = session.handoffAt;
+    fresh.handoffSummary = session.handoffSummary;
     if (session.status === "handoff" && session.pausedUntil && session.pausedUntil > new Date()) {
       fresh.status = "handoff";
       fresh.pausedUntil = session.pausedUntil;
@@ -150,6 +172,8 @@ export async function saveSession(session: TBotSession): Promise<void> {
     .set({
       ...rest,
       pausedUntil: session.pausedUntil ? Timestamp.fromDate(session.pausedUntil) : null,
+      handoffAt: session.handoffAt ? Timestamp.fromDate(session.handoffAt) : null,
+      attendedAt: session.attendedAt ? Timestamp.fromDate(session.attendedAt) : null,
       createdAt: Timestamp.fromDate(createdAt),
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -196,7 +220,7 @@ export async function logTurn(args: {
     channel: session.channel,
     text: text ?? null,
     replyId: replyId ?? null,
-    replyPreview: replyPreview.slice(0, 300),
+    replyPreview: replyPreview.slice(0, 1500),
     layer: trace.layer,
     intent: trace.intent ?? null,
     score: trace.score ?? null,
@@ -204,6 +228,7 @@ export async function logTurn(args: {
     aiUsage: trace.aiUsage ?? null,
     latencyMs: trace.latencyMs,
     note: trace.note ?? null,
+    segment: trace.segment ?? null,
     learnStatus: learnable ? EBotLearnStatus.PENDING : null,
     createdAt: FieldValue.serverTimestamp(),
   };

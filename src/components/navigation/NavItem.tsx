@@ -6,6 +6,27 @@ import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { NavItem as NavItemType } from "./navConfig";
 import { cn } from "@/lib/utils";
+import { useWhatsappAttention } from "@/components/whatsapp/WhatsappAttention";
+
+/** Número del badge según el tipo (tienda online o pendientes de WhatsApp). */
+function badgeCountFor(
+  badge: NavItemType["badge"],
+  unviewedCount: number,
+  wa: { attention: number; pendingOrders: number }
+): number {
+  switch (badge) {
+    case "unviewed":
+      return unviewedCount;
+    case "whatsapp":
+      return wa.attention + wa.pendingOrders;
+    case "whatsappAttention":
+      return wa.attention;
+    case "whatsappOrders":
+      return wa.pendingOrders;
+    default:
+      return 0;
+  }
+}
 import {
   Tooltip,
   TooltipContent,
@@ -33,7 +54,9 @@ export const NavItem = memo(function NavItem({
   const Icon = item.icon;
   const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
   const hasSubItems = item.subItems && item.subItems.length > 0;
-  const showBadge = item.badge === "unviewed" && unviewedCount > 0;
+  const wa = useWhatsappAttention();
+  const badgeCount = badgeCountFor(item.badge, unviewedCount, wa);
+  const showBadge = badgeCount > 0;
 
   const linkContent = (
     <Link
@@ -57,14 +80,14 @@ export const NavItem = memo(function NavItem({
           {item.name}
           {showBadge && (
             <span className="ml-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center">
-              {unviewedCount}
+              {badgeCount}
             </span>
           )}
         </span>
       )}
       {!isSidebarOpen && showBadge && (
         <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] px-0.5 flex items-center justify-center">
-          {unviewedCount}
+          {badgeCount}
         </span>
       )}
     </Link>
@@ -138,6 +161,8 @@ const SubNavItem = memo(function SubNavItem({
   const pathname = usePathname();
   const Icon = item.icon;
   const isActive = pathname === item.href;
+  const wa = useWhatsappAttention();
+  const badgeCount = badgeCountFor(item.badge, 0, wa);
 
   return (
     <li className="py-0.5">
@@ -154,8 +179,13 @@ const SubNavItem = memo(function SubNavItem({
       >
         <Icon className={cn("h-4 w-4 shrink-0", isActive && "text-white")} />
         {isSidebarOpen && (
-          <span className={cn("ml-2.5 truncate", isActive && "font-medium")}>
+          <span className={cn("ml-2.5 truncate flex items-center", isActive && "font-medium")}>
             {item.name}
+            {badgeCount > 0 && (
+              <span className="ml-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 min-w-[20px] px-1 flex items-center justify-center">
+                {badgeCount}
+              </span>
+            )}
           </span>
         )}
       </Link>

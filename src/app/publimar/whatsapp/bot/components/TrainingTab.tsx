@@ -32,6 +32,10 @@ import {
 } from "@/lib/bot/defaults";
 import { EBotIntentKind, TBotIntent } from "@/types/bot";
 import { NewFaqDialog } from "./NewFaqDialog";
+import { ProductTypesCard } from "./ProductTypesCard";
+import { CatalogGroupsCard } from "./CatalogGroupsCard";
+import { CustomTechniquesCard } from "./CustomTechniquesCard";
+import { CustomerSegmentsCard } from "./CustomerSegmentsCard";
 
 export function TrainingTab() {
   const firestore = useFirestore();
@@ -63,6 +67,41 @@ export function TrainingTab() {
     toast.success("Intenciones iniciales cargadas");
   };
 
+  /** Suma a cada intención las frases sugeridas que todavía no tiene (no borra nada). */
+  const mergeSuggested = async () => {
+    const batch = writeBatch(firestore);
+    const existing = new Map(intents.map((i) => [i.id, i] as [string, TBotIntent]));
+    let added = 0;
+    for (const def of DEFAULT_BOT_INTENTS) {
+      const current = existing.get(def.id);
+      if (!current) {
+        const { id, ...rest } = def;
+        batch.set(doc(firestore, collections.BOT_INTENTS, id), {
+          ...rest,
+          hits: 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        added += def.examples.length;
+        continue;
+      }
+      const missing = def.examples.filter((e) => !(current.examples || []).includes(e));
+      if (missing.length) {
+        batch.update(doc(firestore, collections.BOT_INTENTS, def.id), {
+          examples: arrayUnion(...missing),
+          updatedAt: serverTimestamp(),
+        });
+        added += missing.length;
+      }
+    }
+    if (!added) {
+      toast.info("Ya tenés todas las frases sugeridas");
+      return;
+    }
+    await batch.commit();
+    toast.success(`Se sumaron ${added} frases sugeridas`);
+  };
+
   if (status === "loading") return <p className="text-sm text-slate-500">Cargando…</p>;
 
   return (
@@ -85,9 +124,14 @@ export function TrainingTab() {
               alguna, el bot responde <b>sin usar IA</b>. Cuantas más frases reales cargues, menos IA
               gasta.
             </p>
-            <Button onClick={() => setNewFaqOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" /> Nueva pregunta frecuente
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={mergeSuggested}>
+                Sumar frases sugeridas
+              </Button>
+              <Button onClick={() => setNewFaqOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" /> Nueva pregunta frecuente
+              </Button>
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             {intents.map((intent) => (
@@ -97,6 +141,10 @@ export function TrainingTab() {
         </>
       )}
 
+      <CatalogGroupsCard />
+      <CustomTechniquesCard />
+      <ProductTypesCard />
+      <CustomerSegmentsCard />
       <ProductAliasesCard />
       <NewFaqDialog open={newFaqOpen} onOpenChange={setNewFaqOpen} />
     </div>

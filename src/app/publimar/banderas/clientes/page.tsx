@@ -46,6 +46,7 @@ import { formatCuit } from "@/lib/cuit";
 import { taxConditionInfo } from "@/lib/taxCondition";
 import { useAvailableCreditByClient } from "@/hooks/useCreditNotes";
 import { Wallet } from "lucide-react";
+import { ClientTagBadge, useClientTagOptions } from "@/components/client/ClientTags";
 
 const timestampToDate = (timestamp: any): Date | null => {
   if (!timestamp) return null;
@@ -64,6 +65,8 @@ export default function ClientesPage() {
   const debouncedSearchTerm = useDebouncedValue(searchTerm);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [tagFilter, setTagFilter] = useState("all");
+  const tagOptions = useClientTagOptions();
   const firestore = useFirestore();
 
   const clientsCollection = collection(firestore, collections.CLIENTS);
@@ -119,10 +122,13 @@ export default function ClientesPage() {
         client.cuit?.includes(debouncedSearchTerm);
 
       const isActive = client.status === EClientStatus.ACTIVE;
+      const matchesTag =
+        tagFilter === "all" ||
+        (tagFilter === "none" ? !client.tags?.length : !!client.tags?.includes(tagFilter));
 
-      return matchesSearch && isActive;
+      return matchesSearch && isActive && matchesTag;
     });
-  }, [clients, debouncedSearchTerm]);
+  }, [clients, debouncedSearchTerm, tagFilter]);
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -258,17 +264,39 @@ export default function ClientesPage() {
       {/* Búsqueda */}
       <Card className="border-0 shadow-sm">
         <CardContent className="p-5">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              placeholder="Buscar por nombre, razón social, CUIT, email o teléfono..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
+          <div className="flex flex-col gap-3 md:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por nombre, razón social, CUIT, email o teléfono..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+            <Select
+              value={tagFilter}
+              onValueChange={(v) => {
+                setTagFilter(v);
                 setCurrentPage(1);
               }}
-            />
+            >
+              <SelectTrigger className="md:w-56">
+                <SelectValue placeholder="Tipo de cliente" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los tipos</SelectItem>
+                {tagOptions.map((o) => (
+                  <SelectItem key={o.id} value={o.id}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+                <SelectItem value="none">Sin tipo</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -331,6 +359,13 @@ export default function ClientesPage() {
                             <p className="text-xs text-muted-foreground truncate">
                               {metaParts.join(" · ")}
                             </p>
+                          )}
+                          {client.tags && client.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {client.tags.map((t: string) => (
+                                <ClientTagBadge key={t} id={t} options={tagOptions} />
+                              ))}
+                            </div>
                           )}
                         </div>
                       </div>

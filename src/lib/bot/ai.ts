@@ -4,7 +4,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { EBotAction, EBotIntentKind, TBotAiResult, TBotAiUsage, TBotConfig, TBotHistoryEntry, TBotIntent } from "@/types/bot";
-import { fillTemplate } from "./defaults";
+import { fillTemplate, resolveSegments } from "./defaults";
 
 const AI_TIMEOUT_MS = 8000;
 
@@ -23,6 +23,7 @@ const AI_INTENTS = [
   "order",
   "human",
   "thanks",
+  "custom",
   "faq",
   "other",
 ] as const;
@@ -37,8 +38,9 @@ const OUTPUT_SCHEMA = {
     quantity: { type: ["integer", "null"] },
     confidence: { type: "number" },
     reply: { type: ["string", "null"] },
+    segment: { type: ["string", "null"] },
   },
-  required: ["intent", "faqId", "product", "size", "quantity", "confidence", "reply"],
+  required: ["intent", "faqId", "product", "size", "quantity", "confidence", "reply", "segment"],
   additionalProperties: false,
 };
 
@@ -88,6 +90,8 @@ function buildSystemPrompt(config: TBotConfig, intents: TBotIntent[], catalogTex
 
   return `Sos el clasificador de mensajes del WhatsApp de ${b.name || "Publimar"}, un negocio que vende banderas (Mar del Plata, Argentina). Los clientes escriben en castellano rioplatense, con errores de tipeo y abreviaturas.
 
+El tono del negocio es cordial y cercano (rioplatense), nunca formal.
+
 Tu trabajo NO es conversar: es entender qué quiere el cliente y devolver JSON. El sistema ejecuta la acción con datos reales.
 
 Intenciones posibles:
@@ -96,6 +100,7 @@ Intenciones posibles:
 - catalog: quiere ver qué banderas hay.
 - price: pregunta el precio de algo. Completá "product" con el producto tal como lo nombra (y "size" si dice medida, ej "90x150").
 - order: quiere comprar/encargar. Completá product/size/quantity si los dice.
+- custom: quiere una bandera personalizada (con su logo, diseño, escudo, nombre, foto). Completá "quantity"/"size" si los dice.
 - human: pide hablar con una persona, o está enojado, o pide algo que un bot no puede resolver (reclamos, diseños personalizados complejos, facturas).
 - thanks: agradece o se despide.
 - faq: su pregunta la responde una de las preguntas frecuentes de abajo. Poné el "faqId".
@@ -105,6 +110,7 @@ Reglas:
 - "reply" solo se completa con intent "other" o "faq" y SOLO con información que esté literalmente en "Datos del negocio" o "Preguntas frecuentes". Nunca inventes precios, plazos, stock, envíos ni promociones. Si no está la info, dejá reply en null.
 - "reply" corto (máximo 2 oraciones), tono cordial rioplatense, sin markdown salvo *negrita*.
 - "confidence" entre 0 y 1: qué tan seguro estás de la intención.
+- "segment": tipo de cliente SOLO si se deduce claramente del mensaje (${resolveSegments(config).map((sg) => `"${sg.id}" = ${sg.label}`).join(", ")}). Si no, null.
 - Si el mensaje es ambiguo, confidence baja.
 
 Datos del negocio:
@@ -137,6 +143,7 @@ export async function classifyWithAi(args: {
   if (!anthropic) return { ok: false, error: "ANTHROPIC_API_KEY no configurada", usage: null };
 
   const { config, intents, catalogText, history, text } = args;
+  const segments = resolveSegments(config);
   const model = config.model || "claude-haiku-5-5";
 
   // Contexto reciente como texto dentro del turno del usuario: mantiene el
@@ -192,6 +199,10 @@ export async function classifyWithAi(args: {
         Number.isInteger(parsed.quantity) && parsed.quantity > 0 ? parsed.quantity : null,
       confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
       reply: typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : null,
+      segment:
+        typeof parsed.segment === "string" && segments.some((sg) => sg.id === parsed.segment)
+          ? parsed.segment
+          : null,
     };
     return { ok: true, result, usage };
   } catch (error) {

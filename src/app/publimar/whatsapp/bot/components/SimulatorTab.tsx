@@ -124,7 +124,14 @@ export function SimulatorTab() {
                       {formatUsd(t.aiUsage.costUsd)}
                     </span>
                   )}
+                  {t.segment && <span>cliente: {t.segment}</span>}
                   {t.note && <span className="italic">{t.note}</span>}
+                  {t.note?.startsWith("Derivado a un humano") && (
+                    <div className="basis-full mt-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+                      El bot está en silencio porque derivó la charla a una persona (en WhatsApp
+                      real responde el equipo). Tocá <b>Reiniciar conversación</b> para seguir probando.
+                    </div>
+                  )}
                 </div>
               );
             }

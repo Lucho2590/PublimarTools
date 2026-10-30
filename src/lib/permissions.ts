@@ -15,6 +15,7 @@ const RESTRICTED_PREFIXES: Array<{ prefix: string; allowed: EUserRole[] }> = [
  */
 const LEGACY_PATHS: Record<string, string> = {
   "/publimar/administracion/rentabilidad": "/publimar/administracion/analiticas",
+  "/publimar/whatsapp/conversaciones": "/publimar/whatsapp/chat",
 };
 
 function normalizeLegacyPath(p: string): string {

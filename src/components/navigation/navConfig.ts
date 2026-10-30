@@ -25,6 +25,7 @@ import {
   MessageCircle,
   MessageSquare,
   Bot,
+  Headphones,
   LucideIcon,
 } from "lucide-react";
 
@@ -32,7 +33,8 @@ export interface NavItem {
   name: string;
   href: string;
   icon: LucideIcon;
-  badge?: "unviewed";
+  /** unviewed = tienda online; whatsapp* = pendientes de WhatsApp (en vivo). */
+  badge?: "unviewed" | "whatsapp" | "whatsappAttention" | "whatsappOrders";
   subItems?: NavItem[];
 }
 
@@ -205,16 +207,24 @@ export const navConfig: NavItem[] = [
     name: "WhatsApp",
     href: "/publimar/whatsapp",
     icon: MessageCircle,
+    badge: "whatsapp",
     subItems: [
       {
-        name: "Conversaciones",
-        href: "/publimar/whatsapp/conversaciones",
+        name: "Atender",
+        href: "/publimar/whatsapp/atender",
+        icon: Headphones,
+        badge: "whatsappAttention",
+      },
+      {
+        name: "Chat",
+        href: "/publimar/whatsapp/chat",
         icon: MessageSquare,
       },
       {
         name: "Pedidos",
         href: "/publimar/whatsapp/pedidos",
         icon: ShoppingBag,
+        badge: "whatsappOrders",
       },
       {
         name: "Bot",

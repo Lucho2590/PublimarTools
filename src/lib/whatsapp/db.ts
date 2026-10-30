@@ -253,6 +253,10 @@ export async function createWhatsappOrder(args: {
   items: ItemInput[];
   phone?: string;
   quoteId?: string;
+  /** Tipo de cliente (bot): también se agrega como etiqueta del cliente. */
+  customerSegment?: string | null;
+  delivery?: { method: "pickup" | "shipping" | "courier"; place: string | null; address?: string | null } | null;
+  customerName?: string | null;
 }) {
   const db = getFirestoreAdmin();
   if (!args?.clientId) throw new Error("Se requiere clientId");
@@ -291,9 +295,92 @@ export async function createWhatsappOrder(args: {
     updatedAt: FieldValue.serverTimestamp(),
   };
   if (args.quoteId) data.quoteId = args.quoteId;
+  if (args.customerSegment) data.customerSegment = args.customerSegment;
+  if (args.delivery) data.delivery = args.delivery;
+  if (args.customerName) data.customerName = args.customerName;
 
   const ref = await db.collection(collections.WHATSAPP_ORDERS).add(data);
+  if (args.customerSegment) {
+    await db
+      .collection(collections.CLIENTS)
+      .doc(args.clientId)
+      .set({ tags: FieldValue.arrayUnion(args.customerSegment) }, { merge: true });
+  }
   return { id: ref.id, orderNumber, total };
+}
+
+/**
+ * Bandera personalizada a cotizar (estampada, bordada…): no tiene precio en el
+ * catálogo, el equipo la cotiza con su tabla. Queda en whatsappOrders con
+ * kind "custom_quote" y total 0 para que aparezca en Pedidos como "A cotizar".
+ */
+export async function createCustomQuoteRequest(args: {
+  clientId: string;
+  phone?: string;
+  customerName?: string | null;
+  customerSegment?: string | null;
+  delivery?: { method: "pickup" | "shipping" | "courier"; place: string | null; address?: string | null } | null;
+  details: {
+    technique: string;
+    quantity: number | null;
+    size: string | null;
+    neededBy: string | null;
+    whenText: string | null;
+    design: string | null;
+    leadTime?: string;
+    tight?: boolean;
+    unitPrice?: number | null;
+    estimatedTotal?: number | null;
+  };
+}) {
+  const db = getFirestoreAdmin();
+  if (!args?.clientId) throw new Error("Se requiere clientId");
+  const clientSnap = await db.collection(collections.CLIENTS).doc(args.clientId).get();
+  if (!clientSnap.exists) throw new Error("Cliente no encontrado");
+  const c = clientSnap.data() as any;
+
+  const d = args.details;
+  const description = [
+    `Bandera personalizada ${d.technique.toLowerCase()}`,
+    d.size ? d.size : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const orderNumber = generateOrderNumber();
+  const data: any = {
+    orderNumber,
+    kind: "custom_quote",
+    phone: args.phone ? normalizePhone(args.phone) : (c.phone ?? null),
+    clientId: args.clientId,
+    clientName: c.name ?? null,
+    items: [
+      {
+        productName: description,
+        quantity: d.quantity ?? 1,
+        unitPrice: d.unitPrice ?? 0,
+        subtotal: d.estimatedTotal ?? 0,
+      },
+    ],
+    // Estimado si la técnica tiene precio (sublimada); 0 = a cotizar por el equipo.
+    total: d.estimatedTotal ?? 0,
+    customDetails: d,
+    status: EWhatsappOrderStatus.PENDING,
+    source: "whatsapp_bot",
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  if (args.customerSegment) data.customerSegment = args.customerSegment;
+  if (args.delivery) data.delivery = args.delivery;
+  if (args.customerName) data.customerName = args.customerName;
+
+  const ref = await db.collection(collections.WHATSAPP_ORDERS).add(data);
+  if (args.customerSegment) {
+    await db
+      .collection(collections.CLIENTS)
+      .doc(args.clientId)
+      .set({ tags: FieldValue.arrayUnion(args.customerSegment) }, { merge: true });
+  }
+  return { id: ref.id, orderNumber };
 }
 
 // ---------------------------------------------------------------------------
