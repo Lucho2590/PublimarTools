@@ -72,6 +72,7 @@ import { SaleDetailsModal } from "../../ventas/modalVentas/saleDetailsModal";
 import { useClientAvailableCredit } from "@/hooks/useCreditNotes";
 import { Wallet } from "lucide-react";
 import { taxConditionInfo } from "@/lib/taxCondition";
+import { ClientTagsEditor } from "@/components/client/ClientTags";
 
 export default function ClienteDetallePage({
   params,
@@ -261,6 +262,9 @@ export default function ClienteDetallePage({
                   </span>
                 </>
               )}
+            </div>
+            <div className="mt-2">
+              <ClientTagsEditor clientId={clientId} tags={typedClient.tags || []} />
             </div>
           </div>
         </div>

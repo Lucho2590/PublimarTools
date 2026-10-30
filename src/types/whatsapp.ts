@@ -53,6 +53,25 @@ export type TWhatsappOrder = {
   total: number;
   status: EWhatsappOrderStatus;
   quoteId?: string;
+  /** Tipo de cliente (id de settings/whatsappBot.customerSegments). */
+  customerSegment?: string;
+  delivery?: { method: "pickup" | "shipping" | "courier"; place: string | null; address?: string | null };
+  customerName?: string;
+  /** "custom_quote" = personalizada a cotizar por el equipo (total 0). */
+  kind?: "order" | "custom_quote";
+  customDetails?: {
+    technique: string;
+    quantity: number | null;
+    size: string | null;
+    neededBy: string | null;
+    whenText: string | null;
+    design: string | null;
+    /** Plazo de la técnica para esa medida, ej. "10 a 15 días hábiles". */
+    leadTime?: string;
+    tight?: boolean;
+    unitPrice?: number | null;
+    estimatedTotal?: number | null;
+  };
   source: "whatsapp_bot";
   createdAt: Date;
   updatedAt: Date;

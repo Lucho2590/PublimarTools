@@ -54,6 +54,8 @@ export enum EClientType {
     reference?: string; // Referencia del cliente
     notes?: string;
     contacts?: TClientContact[];
+    /** Etiquetas de tipo de cliente (ids de settings/whatsappBot.customerSegments). */
+    tags?: string[];
     createdAt: Date;
     updatedAt: Date;
   };

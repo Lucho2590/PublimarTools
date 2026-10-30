@@ -24,6 +24,7 @@ import {
   BOT_CONFIG_DOC_ID,
   BOT_MODELS,
   BOT_TEMPLATE_VARS,
+  DEFAULT_BOT_CONFIG,
   mergeBotConfig,
 } from "@/lib/bot/defaults";
 import { TBotConfig } from "@/types/bot";
@@ -31,7 +32,8 @@ import { TBotConfig } from "@/types/bot";
 const DAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
 const MESSAGE_FIELDS: { key: keyof TBotConfig["messages"]; label: string }[] = [
-  { key: "welcome", label: "Bienvenida" },
+  { key: "intro", label: "Presentación (primer mensaje de cada charla)" },
+  { key: "welcome", label: "Bienvenida (cuando solo saluda)" },
   { key: "fallback", label: "Cuando no entiende" },
   { key: "handoff", label: "Derivar a una persona" },
   { key: "handoffOutOfHours", label: "Derivar fuera de horario" },
@@ -43,7 +45,9 @@ const BUSINESS_FIELDS: { key: keyof TBotConfig["business"]; label: string; rows:
   { key: "name", label: "Nombre del negocio", rows: 1 },
   { key: "address", label: "Dirección", rows: 2 },
   { key: "hours", label: "Horarios (texto)", rows: 2 },
-  { key: "shipping", label: "Envíos", rows: 3 },
+  { key: "shipping", label: "Envíos (fuera de la ciudad)", rows: 3 },
+  { key: "localCity", label: "Ciudad del local", rows: 1 },
+  { key: "localDelivery", label: "Entregas en la ciudad (mensajero). Usá {ciudad}", rows: 2 },
   { key: "payments", label: "Formas de pago", rows: 2 },
   { key: "productionTime", label: "Tiempos de fabricación", rows: 2 },
   { key: "extra", label: "Otros datos útiles para la IA", rows: 3 },
@@ -69,8 +73,9 @@ export function ConfigTab() {
   const save = async () => {
     setSaving(true);
     try {
-      // productAliases se edita en Entrenamiento: no se pisa desde acá.
-      const { productAliases, ...rest } = config;
+      // Alias y tipos se editan en Entrenamiento: no se pisan desde acá.
+      const { productAliases, productTypes, customerSegments, catalogGroups, customTechniques, ...rest } =
+        config;
       await setDoc(ref, { ...rest, updatedAt: serverTimestamp() }, { merge: true });
       toast.success("Configuración guardada");
     } catch (e) {
@@ -101,6 +106,33 @@ export function ConfigTab() {
                 Bot activo en WhatsApp
                 <span className="block text-xs text-slate-500 font-normal">
                   El simulador funciona igual aunque esté apagado.
+                </span>
+              </Label>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="useButtons"
+                checked={config.useButtons}
+                onCheckedChange={(v) => set("useButtons", v === true)}
+              />
+              <Label htmlFor="useButtons" className="leading-snug">
+                Mostrar botones y listas
+                <span className="block text-xs text-slate-500 font-normal">
+                  Apagado: todo en texto, las opciones van numeradas y el cliente escribe libre (o el
+                  número).
+                </span>
+              </Label>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="askDelivery"
+                checked={config.askDelivery}
+                onCheckedChange={(v) => set("askDelivery", v === true)}
+              />
+              <Label htmlFor="askDelivery" className="leading-snug">
+                Preguntar retiro o envío antes del resumen
+                <span className="block text-xs text-slate-500 font-normal">
+                  Si es envío, pide localidad y dirección.
                 </span>
               </Label>
             </div>
@@ -232,7 +264,19 @@ export function ConfigTab() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Mensajes fijos</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-base">Mensajes fijos</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  set("messages", { ...DEFAULT_BOT_CONFIG.messages });
+                  toast.info("Textos sugeridos cargados: tocá Guardar configuración");
+                }}
+              >
+                Restaurar textos sugeridos
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {MESSAGE_FIELDS.map((f) => (

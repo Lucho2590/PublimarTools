@@ -2,10 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
-import { collection, orderBy, query } from "firebase/firestore";
+import { collection, doc, orderBy, query, serverTimestamp, updateDoc } from "firebase/firestore";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -17,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import collections from "@/lib/collections";
 import { formatearPrecio } from "@/lib/utils";
+import { ClientTagBadge, useClientTagOptions } from "@/components/client/ClientTags";
 import { EWhatsappOrderStatus, TWhatsappOrder } from "@/types/whatsapp";
 
 function toDate(value: any): Date | null {
@@ -35,6 +43,7 @@ const STATUS_LABEL: Record<string, { label: string; className: string }> = {
 export default function WhatsappPedidosPage() {
   const firestore = useFirestore();
   const [searchTerm, setSearchTerm] = useState("");
+  const tagOptions = useClientTagOptions();
 
   const ordersQuery = useMemo(
     () => query(collection(firestore, collections.WHATSAPP_ORDERS), orderBy("createdAt", "desc")),
@@ -79,6 +88,8 @@ export default function WhatsappPedidosPage() {
                 <TableHead>N°</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Teléfono</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Entrega</TableHead>
                 <TableHead className="text-center">Items</TableHead>
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-center">Estado</TableHead>
@@ -89,7 +100,7 @@ export default function WhatsappPedidosPage() {
               {status === "loading" ? (
                 [...Array(5)].map((_, i) => (
                   <TableRow key={i}>
-                    {[...Array(7)].map((__, j) => (
+                    {[...Array(9)].map((__, j) => (
                       <TableCell key={j}>
                         <Skeleton className="h-4 w-full" />
                       </TableCell>
@@ -102,15 +113,76 @@ export default function WhatsappPedidosPage() {
                   const date = toDate(o.createdAt);
                   return (
                     <TableRow key={o.id}>
-                      <TableCell className="font-medium">{o.orderNumber}</TableCell>
+                      <TableCell className="font-medium">
+                        {o.orderNumber}
+                        {o.kind === "custom_quote" && (
+                          <Badge variant="secondary" className="ml-2 bg-purple-100 text-purple-800">
+                            A cotizar
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell>{o.clientName || "—"}</TableCell>
                       <TableCell>{o.phone || "—"}</TableCell>
-                      <TableCell className="text-center">{o.items?.length ?? 0}</TableCell>
-                      <TableCell className="text-right">{formatearPrecio(o.total || 0)}</TableCell>
+                      <TableCell>
+                        {o.customerSegment ? (
+                          <ClientTagBadge id={o.customerSegment} options={tagOptions} />
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {!o.delivery
+                          ? "—"
+                          : o.delivery.method === "pickup"
+                            ? "Retira en el local"
+                            : o.delivery.method === "courier"
+                              ? `Mensajero${o.delivery.place ? ` (${o.delivery.place})` : ""}`
+                            : `Envío: ${[o.delivery.address, o.delivery.place].filter(Boolean).join(", ") || "—"}`}
+                      </TableCell>
                       <TableCell className="text-center">
-                        <Badge className={st.className} variant="secondary">
-                          {st.label}
-                        </Badge>
+                        {o.kind === "custom_quote" ? o.customDetails?.quantity ?? "—" : o.items?.length ?? 0}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {o.kind === "custom_quote" && o.customDetails ? (
+                          <span className="text-xs text-slate-600">
+                            {o.total > 0 && (
+                              <span className="block text-sm font-medium text-slate-900">
+                                ≈ {formatearPrecio(o.total)}
+                              </span>
+                            )}
+                            {o.customDetails.technique}
+                            {o.customDetails.size ? ` · ${o.customDetails.size}` : ""}
+                            <br />
+                            Para: {o.customDetails.whenText || "sin apuro"}
+                            {o.customDetails.tight ? " ⚠️ justo" : ""}
+                            {o.customDetails.leadTime ? ` (${o.customDetails.leadTime})` : ""}
+                            {o.customDetails.design ? ` · Diseño: ${o.customDetails.design}` : ""}
+                          </span>
+                        ) : (
+                          formatearPrecio(o.total || 0)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Select
+                          value={o.status}
+                          onValueChange={(v) =>
+                            updateDoc(doc(firestore, collections.WHATSAPP_ORDERS, o.id), {
+                              status: v,
+                              updatedAt: serverTimestamp(),
+                            })
+                          }
+                        >
+                          <SelectTrigger className={`h-8 w-[130px] mx-auto border-0 ${st.className}`}>
+                            <SelectValue>{st.label}</SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(STATUS_LABEL).map(([value, cfg]) => (
+                              <SelectItem key={value} value={value}>
+                                {cfg.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </TableCell>
                       <TableCell className="text-right">
                         {date ? date.toLocaleDateString("es-AR") : "—"}
@@ -120,7 +192,7 @@ export default function WhatsappPedidosPage() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                  <TableCell colSpan={9} className="text-center py-8 text-slate-500">
                     No hay pedidos de WhatsApp todavía
                   </TableCell>
                 </TableRow>

@@ -7,6 +7,7 @@ import { useAuth } from "reactfire";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { useUnviewedCount } from "@/hooks/useUnviewedCount";
 import { Sidebar, MobileHeader } from "@/components/navigation";
+import { WhatsappAttentionProvider } from "@/components/whatsapp/WhatsappAttention";
 
 interface IDashboardLayoutProps {
   children: ReactNode;
@@ -68,6 +69,7 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
   }
 
   return (
+    <WhatsappAttentionProvider>
     <div className="flex h-screen bg-blue-100">
       {/* Sidebar */}
       <Sidebar
@@ -114,5 +116,6 @@ export default function DashboardLayout({ children }: IDashboardLayoutProps) {
         </main>
       </div>
     </div>
+    </WhatsappAttentionProvider>
   );
 }

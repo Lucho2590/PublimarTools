@@ -4,6 +4,8 @@
 import { getFirestoreAdmin } from "@/lib/apiAuth";
 import collections from "@/lib/collections";
 import { isDeleted } from "@/lib/softDelete";
+import { TBotCatalogGroup, TBotConfig, TBotProductType } from "@/types/bot";
+import { SUGGESTED_CATALOG_GROUPS, SUGGESTED_PRODUCT_TYPES } from "./defaults";
 import { parseSize } from "./entities";
 import { normalizeText, tokenize } from "./normalize";
 
@@ -22,6 +24,8 @@ export type TBotProduct = {
   categoryNames: string[];
   price: number;
   variants: TBotVariant[];
+  /** Ventas históricas: ordena "las más pedidas" en listas largas. */
+  salesCount: number;
   /** Tokens distintivos del nombre (sin "bandera" y otras genéricas). */
   keyTokens: string[];
 };
@@ -30,6 +34,8 @@ export type TBotCatalog = {
   products: TBotProduct[];
   categories: { id: string; name: string }[];
   byId: Map<string, TBotProduct>;
+  /** Todas las palabras distintivas de los nombres de productos. */
+  vocab: Set<string>;
 };
 
 // Palabras que aparecen en casi todos los productos: no sirven para distinguir.
@@ -80,6 +86,7 @@ export async function getCatalog(force = false): Promise<TBotCatalog> {
         categoryNames: categoryIds.map((id) => catName.get(id)).filter(Boolean) as string[],
         price: toNumber(data.price),
         variants,
+        salesCount: toNumber(data.salesCount),
         keyTokens: tokenize(name).filter((t) => !GENERIC.has(t)),
       };
     })
@@ -90,57 +97,10 @@ export async function getCatalog(force = false): Promise<TBotCatalog> {
     products,
     categories,
     byId: new Map(products.map((p) => [p.id, p] as [string, TBotProduct])),
+    vocab: new Set(products.reduce<string[]>((acc, p) => acc.concat(p.keyTokens), [])),
   };
   cache = { at: Date.now(), catalog };
   return catalog;
-}
-
-export type TProductMatch = { product: TBotProduct; score: number };
-
-/**
- * Busca productos mencionados en el texto. Puntaje 1 = alias exacto o todos los
- * tokens distintivos presentes; parcial = proporción de tokens presentes.
- */
-export function findProducts(
-  catalog: TBotCatalog,
-  text: string,
-  aliases: Record<string, string[]>
-): TProductMatch[] {
-  const norm = ` ${normalizeText(text)} `;
-  const tokens = new Set(tokenize(text));
-  const matches: TProductMatch[] = [];
-
-  for (const product of catalog.products) {
-    let score = 0;
-    for (const alias of aliases[product.id] || []) {
-      const a = normalizeText(alias);
-      if (a && norm.includes(` ${a} `)) score = 1;
-    }
-    if (score < 1 && product.keyTokens.length) {
-      const hit = product.keyTokens.filter((t) => tokens.has(t)).length;
-      score = Math.max(score, hit / product.keyTokens.length);
-    }
-    if (score >= 0.5) matches.push({ product, score });
-  }
-
-  matches.sort((a, b) => b.score - a.score || a.product.keyTokens.length - b.product.keyTokens.length);
-  return matches;
-}
-
-/**
- * Elige el producto si hay un único mejor puntaje; si empatan varios, los
- * devuelve como candidatos para que el cliente elija ("la argentina" con
- * "Argentina" 1.0 y "Argentina con sol" 0.5 → elige "Argentina").
- */
-export function pickProduct(matches: TProductMatch[]): {
-  product: TBotProduct | null;
-  candidates: TBotProduct[];
-} {
-  if (!matches.length) return { product: null, candidates: [] };
-  const top = matches[0].score;
-  const best = matches.filter((m) => m.score === top);
-  if (best.length === 1) return { product: best[0].product, candidates: [] };
-  return { product: null, candidates: best.map((m) => m.product) };
 }
 
 /** Variante por medida ("90x150"); también acepta texto libre igual al size. */
@@ -181,4 +141,169 @@ export function catalogSummary(catalog: TBotCatalog): string {
       return `- ${p.name}${sizes.length ? ` (medidas: ${sizes.join(", ")})` : ""}`;
     })
     .join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Familias y tipos: "argentina" → todas las argentinas, agrupadas por tipo
+// ---------------------------------------------------------------------------
+
+/** Tipos de bandera: los de la config o, si no hay, los sugeridos por nombre de categoría. */
+export function resolveTypes(catalog: TBotCatalog, config: TBotConfig): TBotProductType[] {
+  const configured = (config.productTypes || []).filter((t) =>
+    catalog.categories.some((c) => c.id === t.categoryId)
+  );
+  if (configured.length) return configured;
+  return SUGGESTED_PRODUCT_TYPES.map((s) => {
+    const cat = catalog.categories.find((c) => normalizeText(c.name) === s.categoryName);
+    return cat
+      ? { categoryId: cat.id, label: s.label, description: s.description, keywords: s.keywords }
+      : null;
+  }).filter(Boolean) as TBotProductType[];
+}
+
+function typeTokens(type: TBotProductType): string[] {
+  return tokenize([type.label, ...(type.keywords || [])].join(" "));
+}
+
+/** Tipo mencionado en el texto ("argentina de ceremonia" → Ceremonia). */
+export function detectType(text: string, types: TBotProductType[]): TBotProductType | null {
+  const tokens = new Set(tokenize(text));
+  return types.find((t) => typeTokens(t).some((k) => tokens.has(k))) || null;
+}
+
+export type TFamily = {
+  /** Productos que cumplen lo pedido, el más "clásico" (nombre más corto) primero. */
+  products: TBotProduct[];
+  /** Lo que pidió, para repetirlo: "bandera argentina". */
+  label: string;
+  /** Tipo que nombró el cliente (ya aplicado como filtro). */
+  type: TBotProductType | null;
+  /** Solo nombró un tipo, ningún producto ("banderas de flameo"). */
+  generic: boolean;
+};
+
+/**
+ * Productos que el cliente está pidiendo. Usa las palabras del mensaje que
+ * aparecen en nombres de productos ("argentina", "reforzada"…), sin las que
+ * nombran un tipo; esas filtran por categoría. Alias exacto → ese producto.
+ */
+/**
+ * Nombres comunes que no coinciden con cómo está cargado el producto
+ * ("estados unidos" → "EE.UU."). Los propios del negocio van como alias en el panel.
+ */
+const BUILTIN_SYNONYMS: [RegExp, string][] = [
+  [/\b(estados unidos|eeuu|ee uu|e e u u|usa|yanqui|yankee|norteamericana)\b/g, "ee uu"],
+];
+
+export function findFamily(
+  catalog: TBotCatalog,
+  rawText: string,
+  config: TBotConfig
+): TFamily | null {
+  let text = normalizeText(rawText);
+  for (const [re, to] of BUILTIN_SYNONYMS) text = text.replace(re, to);
+  const types = resolveTypes(catalog, config);
+  const type = detectType(text, types);
+  const typeWords = new Set(type ? typeTokens(type) : []);
+  const norm = ` ${normalizeText(text)} `;
+
+  for (const product of catalog.products) {
+    for (const alias of config.productAliases[product.id] || []) {
+      const a = normalizeText(alias);
+      if (a && norm.includes(` ${a} `)) return { products: [product], label: product.name, type: null, generic: false };
+    }
+  }
+
+  const tokens = tokenize(text);
+  // Sin números/medidas ("90x1,50" aparece en algunos nombres, pero es una medida).
+  const keys = Array.from(
+    new Set(tokens.filter((t) => catalog.vocab.has(t) && !typeWords.has(t) && !/^\d/.test(t)))
+  );
+
+  let products: TBotProduct[] = [];
+  if (keys.length) {
+    products = catalog.products.filter((p) => keys.every((k) => p.keyTokens.includes(k)));
+    if (!products.length) {
+      // Ninguno tiene todas las palabras: los que tienen más.
+      const hits = (p: TBotProduct) => keys.filter((k) => p.keyTokens.includes(k)).length;
+      const max = Math.max(...catalog.products.map(hits));
+      if (max > 0) products = catalog.products.filter((p) => hits(p) === max);
+    }
+  } else if (type) {
+    // "banderas de ceremonia": todas las de ese tipo.
+    products = catalog.products.filter((p) => p.categoryIds.includes(type.categoryId));
+  }
+  if (!products.length) return null;
+
+  if (type) {
+    const ofType = products.filter((p) => p.categoryIds.includes(type.categoryId));
+    if (ofType.length) products = ofType;
+  }
+  products = products
+    .slice()
+    .sort((a, b) => a.keyTokens.length - b.keyTokens.length || a.name.localeCompare(b.name, "es"));
+
+  const label = keys.length
+    ? `${familyName(products, keys)}${type ? ` de ${type.label.toLowerCase()}` : ""}`
+    : `banderas de ${type!.label.toLowerCase()}`;
+  return { products, label, type, generic: !keys.length };
+}
+
+/**
+ * Nombre de lo pedido con las palabras tal cual están en el catálogo:
+ * ["malvina"] → "Bandera Malvinas"; ["argentina","reforzada"] → "Bandera Argentina reforzada".
+ */
+function familyName(products: TBotProduct[], keys: string[]): string {
+  const ref = products.find((p) => keys.every((k) => p.keyTokens.includes(k))) || products[0];
+  const words = ref.name
+    .split(/\s+/)
+    .filter((w) => tokenize(w).some((t) => keys.includes(t)));
+  const name = words.join(" ") || keys.join(" ");
+  const flags = products.filter((p) => /^bandera\b/i.test(p.name)).length;
+  return flags * 2 >= products.length ? `Bandera ${name}` : name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** Nombre corto para listas: sin el "Bandera" inicial. */
+export function shortName(product: TBotProduct): string {
+  const s = product.name.replace(/^bandera\s+/i, "");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// ---------------------------------------------------------------------------
+// Grupos del menú del catálogo (Argentinas / Extranjeras / Personalizadas / Otras)
+// ---------------------------------------------------------------------------
+
+export type TResolvedGroup = TBotCatalogGroup & { products: TBotProduct[] };
+
+/**
+ * Grupos con sus productos. Cada producto va al PRIMER grupo que lo incluye
+ * (una argentina que también es "Flameo" queda en Argentinas); el grupo `rest`
+ * se queda con lo que sobra. Grupos vacíos se omiten.
+ */
+export function resolveGroups(catalog: TBotCatalog, config: TBotConfig): TResolvedGroup[] {
+  const groups: TBotCatalogGroup[] = config.catalogGroups?.length
+    ? config.catalogGroups
+    : SUGGESTED_CATALOG_GROUPS.map((g) => ({
+        id: g.id,
+        label: g.label,
+        rest: g.rest,
+        categoryIds: catalog.categories
+          .filter((c) => g.categoryNames.includes(normalizeText(c.name)))
+          .map((c) => c.id),
+      }));
+
+  const taken = new Set<string>();
+  const out: TResolvedGroup[] = [];
+  for (const g of groups) {
+    const products = g.rest
+      ? []
+      : catalog.products.filter(
+          (p) => !taken.has(p.id) && p.categoryIds.some((id) => g.categoryIds.includes(id))
+        );
+    products.forEach((p) => taken.add(p.id));
+    out.push({ ...g, products });
+  }
+  const rest = out.find((g) => g.rest);
+  if (rest) rest.products = catalog.products.filter((p) => !taken.has(p.id));
+  return out.filter((g) => g.products.length > 0);
 }
