@@ -44,6 +44,14 @@ const collections = {
   BOT_STATS: "botStats",
   SETTINGS: "settings",
   PRICE_HISTORY: "priceHistory",
+  // Cloud API (bandeja humana con coexistencia). Ver src/lib/whatsapp/*.
+  WHATSAPP_INTEGRATION: "whatsappIntegration",
+  WHATSAPP_CHANNELS: "whatsappChannels",
+  WHATSAPP_CONTACTS: "whatsappContacts",
+  WHATSAPP_MESSAGES: "whatsappMessages",
+  WHATSAPP_TEMPLATES: "whatsappTemplates",
+  WHATSAPP_TEMPLATE_SENDS: "whatsappTemplateSends",
+  WHATSAPP_WEBHOOK_EVENTS: "whatsappWebhookEvents",
 } as const;
 
 export default collections;

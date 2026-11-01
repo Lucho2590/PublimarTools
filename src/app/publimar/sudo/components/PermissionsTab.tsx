@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/phone-input";
 import {
   Table,
   TableBody,
@@ -26,6 +27,7 @@ import collections from "@/lib/collections";
 import { GRANTABLE_MODULES } from "@/lib/grantableModules";
 import { EUserRole } from "@/types/user";
 import { isAdminOrAbove } from "@/lib/permissions";
+import { isValidPhone } from "@/lib/phone";
 
 type UserRow = {
   id: string;
@@ -33,6 +35,7 @@ type UserRow = {
   displayName: string;
   role: EUserRole | null;
   permissions: string[];
+  phone: string;
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -50,6 +53,8 @@ export function PermissionsTab() {
   const [search, setSearch] = useState("");
   // Borrador editable: uid -> permisos seleccionados
   const [draft, setDraft] = useState<Record<string, Set<string>>>({});
+  // Borrador editable del celular: uid -> valor E.164 normalizado
+  const [phoneDraft, setPhoneDraft] = useState<Record<string, string>>({});
 
   const loadUsers = async () => {
     setLoading(true);
@@ -63,6 +68,7 @@ export function PermissionsTab() {
           displayName: data.displayName || "",
           role: data.role || null,
           permissions: Array.isArray(data.permissions) ? data.permissions : [],
+          phone: typeof data.phone === "string" ? data.phone : "",
         };
       });
       rows.sort((a, b) =>
@@ -72,6 +78,7 @@ export function PermissionsTab() {
       setDraft(
         Object.fromEntries(rows.map((r) => [r.id, new Set(r.permissions)]))
       );
+      setPhoneDraft(Object.fromEntries(rows.map((r) => [r.id, r.phone])));
     } catch (error) {
       console.error("Error cargando usuarios:", error);
       toast.error("No se pudieron cargar los usuarios");
@@ -95,6 +102,7 @@ export function PermissionsTab() {
   };
 
   const isDirty = (user: UserRow): boolean => {
+    if ((phoneDraft[user.id] ?? "") !== user.phone) return true;
     const current = draft[user.id] ?? new Set<string>();
     const original = new Set(user.permissions);
     if (current.size !== original.size) return true;
@@ -103,15 +111,23 @@ export function PermissionsTab() {
 
   const handleSave = async (user: UserRow) => {
     const next = Array.from(draft[user.id] ?? new Set<string>());
+    const phone = phoneDraft[user.id] ?? "";
+    if (phone && !isValidPhone(phone)) {
+      toast.error("Celular inválido");
+      return;
+    }
     setSavingId(user.id);
     try {
       await updateDoc(doc(firestore, collections.USERS, user.id), {
         permissions: next,
+        phone,
       });
       setUsers((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, permissions: next } : u))
+        prev.map((u) =>
+          u.id === user.id ? { ...u, permissions: next, phone } : u
+        )
       );
-      toast.success(`Permisos actualizados para ${user.displayName || user.email}`);
+      toast.success(`Datos actualizados para ${user.displayName || user.email}`);
     } catch (error) {
       console.error("Error guardando permisos:", error);
       toast.error("No se pudieron guardar los permisos");
@@ -195,6 +211,18 @@ export function PermissionsTab() {
                         <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-700">
                           {user.role ? ROLE_LABELS[user.role] ?? user.role : "—"}
                         </span>
+                        <div className="mt-2">
+                          <label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                            Celular
+                          </label>
+                          <PhoneInput
+                            value={phoneDraft[user.id] ?? ""}
+                            onValueChange={(v) =>
+                              setPhoneDraft((p) => ({ ...p, [user.id]: v }))
+                            }
+                            className="w-[150px]"
+                          />
+                        </div>
                       </TableCell>
                       {GRANTABLE_MODULES.map((m) => (
                         <TableCell key={m.key} className="text-center">
