@@ -115,6 +115,8 @@ import { createCreditNote } from "@/lib/creditNotes";
 import { ECreditNoteOriginType, TCreditNoteItem } from "@/types/creditNote";
 import { registerAccountMovement } from "@/lib/accountMovements";
 import { EMovementType } from "@/types/accountMovement";
+import { EmitirFacturaDialog } from "@/components/arca/EmitirFacturaDialog";
+import { ArcaBadge, ArcaFacturaActions } from "@/components/arca/ArcaFacturaActions";
 
 const BANCOS = ["Galicia", "Frances"];
 
@@ -173,6 +175,7 @@ export function SaleDetailsModal({
   // Estados para múltiples facturas
   const [facturas, setFacturas] = useState<TFactura[]>([]);
   const [showAddFactura, setShowAddFactura] = useState(false);
+  const [showArcaDialog, setShowArcaDialog] = useState(false);
   const [editingFacturaId, setEditingFacturaId] = useState<string | null>(null);
   const [newFacturaTipo, setNewFacturaTipo] = useState("");
   const [newFacturaNumero, setNewFacturaNumero] = useState("");
@@ -2201,6 +2204,18 @@ export function SaleDetailsModal({
                     <div className="border-t pt-4 space-y-4 mb-4">
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium">Facturas</h4>
+                        {/* Se factura fuera del modo edición: guardar la venta pisaría las facturas recién emitidas. */}
+                        {!isEditing && typedSale?.id && (
+                          <Button
+                            type="button"
+                            onClick={() => setShowArcaDialog(true)}
+                            className="bg-blue-600 hover:bg-blue-700"
+                            size="sm"
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            Facturar en ARCA
+                          </Button>
+                        )}
                         {isEditing && (
                           <Button
                             type="button"
@@ -2223,16 +2238,20 @@ export function SaleDetailsModal({
                               className="flex items-center justify-between p-3 bg-white border rounded-lg"
                             >
                               <div className="flex-1">
-                                <p className="text-sm font-medium">
+                                <p className="text-sm font-medium flex items-center gap-2 flex-wrap">
                                   {factura.tipo} - {factura.numero}
+                                  <ArcaBadge factura={factura} />
                                 </p>
                                 <p className="text-xs text-gray-500">
                                   {formatDateString(factura.fecha)}
                                   {factura.monto &&
-                                    ` - ${formatearPrecio(factura.monto)}`}
+                                    ` - ${factura.kind === "nc" ? "-" : ""}${formatearPrecio(factura.monto)}`}
                                 </p>
                               </div>
-                              {isEditing && (
+                              {factura.arcaInvoiceId && !isEditing && (
+                                <ArcaFacturaActions factura={factura} />
+                              )}
+                              {isEditing && !factura.arcaInvoiceId && (
                                 <div className="flex gap-1">
                                   <Button
                                     type="button"
@@ -4001,6 +4020,21 @@ export function SaleDetailsModal({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {typedSale?.id && (
+        <EmitirFacturaDialog
+          open={showArcaDialog}
+          onOpenChange={setShowArcaDialog}
+          source="sale"
+          doc={typedSale as any}
+          client={
+            clients?.find(
+              (c: any) =>
+                c.id === (typedSale.clientId || (typeof typedSale.client === "string" ? typedSale.client : typedSale.client?.id)),
+            ) ?? null
+          }
+        />
+      )}
     </>
   );
 }

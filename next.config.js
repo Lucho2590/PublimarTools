@@ -12,6 +12,11 @@ const nextConfig = {
   // No usar output: 'export' porque queremos SSR
   // Configuración para Firebase Hosting
   poweredByHeader: false,
+  experimental: {
+    // SDK de ARCA (SOAP + node-forge): se carga desde node_modules en el
+    // servidor en vez de pasar por webpack.
+    serverComponentsExternalPackages: ["@arcasdk/core", "soap", "node-forge"],
+  },
   compress: true,
   // La sección "Rentabilidad" se renombró a "Analíticas": se mantienen vivos
   // los links y favoritos viejos. 307 (no permanente) para no dejar el rename

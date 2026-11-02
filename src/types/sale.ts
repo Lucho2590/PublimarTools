@@ -47,6 +47,11 @@ export type TFactura = {
   numero: string;
   fecha: string;
   monto?: number;
+  // Emitida por ARCA (ver src/types/arca.ts). Las cargadas a mano no tienen estos campos.
+  arcaInvoiceId?: string;
+  cae?: string;
+  kind?: "factura" | "nc";
+  pagoKeys?: string[];
 }
 
 export type TSaleFormaPago = {
