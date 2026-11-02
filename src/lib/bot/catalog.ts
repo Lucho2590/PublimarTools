@@ -7,7 +7,7 @@ import { isDeleted } from "@/lib/softDelete";
 import { TBotCatalogGroup, TBotConfig, TBotProductType } from "@/types/bot";
 import { SUGGESTED_CATALOG_GROUPS, SUGGESTED_PRODUCT_TYPES } from "./defaults";
 import { parseSize } from "./entities";
-import { normalizeText, tokenize } from "./normalize";
+import { nearlyEqual, normalizeText, tokenize } from "./normalize";
 
 export type TBotVariant = {
   id: string;
@@ -15,6 +15,9 @@ export type TBotVariant = {
   /** Medida normalizada "90x150" (cm, menor primero) o null si no es AxB. */
   sizeKey: string | null;
   price: number;
+  stock: number;
+  /** false = "no descuenta stock" (se fabrica / no se controla): siempre disponible. */
+  stockTracked: boolean;
 };
 
 export type TBotProduct = {
@@ -23,6 +26,8 @@ export type TBotProduct = {
   categoryIds: string[];
   categoryNames: string[];
   price: number;
+  /** Stock del producto sin variantes. */
+  stock: number;
   variants: TBotVariant[];
   /** Ventas históricas: ordena "las más pedidas" en listas largas. */
   salesCount: number;
@@ -78,6 +83,8 @@ export async function getCatalog(force = false): Promise<TBotCatalog> {
           size: String(v.size || "").trim(),
           sizeKey: parseSize(String(v.size || "")),
           price: toNumber(v.price),
+          stock: toNumber(v.stock),
+          stockTracked: v.discountStock !== false,
         }));
       return {
         id: d.id,
@@ -85,6 +92,7 @@ export async function getCatalog(force = false): Promise<TBotCatalog> {
         categoryIds,
         categoryNames: categoryIds.map((id) => catName.get(id)).filter(Boolean) as string[],
         price: toNumber(data.price),
+        stock: toNumber(data.stock),
         variants,
         salesCount: toNumber(data.salesCount),
         keyTokens: tokenize(name).filter((t) => !GENERIC.has(t)),
@@ -167,8 +175,21 @@ function typeTokens(type: TBotProductType): string[] {
 
 /** Tipo mencionado en el texto ("argentina de ceremonia" → Ceremonia). */
 export function detectType(text: string, types: TBotProductType[]): TBotProductType | null {
-  const tokens = new Set(tokenize(text));
-  return types.find((t) => typeTokens(t).some((k) => tokens.has(k))) || null;
+  const words = tokenize(text);
+  const tokens = new Set(words);
+  const exact = types.find((t) => typeTokens(t).some((k) => tokens.has(k)));
+  if (exact) return exact;
+  // "flamo", "ceremnia": con errores de tipeo.
+  const typo = types.find((t) => typeTokens(t).some((k) => words.some((w) => nearlyEqual(w, k))));
+  if (typo) return typo;
+  // "para exterior" / "para el acto": por la descripción del tipo ("Para mástil o exterior").
+  return (
+    types.find((t) =>
+      tokenize(t.description || "")
+        .filter((k) => k.length >= 4)
+        .some((k) => words.some((w) => w === k || nearlyEqual(w, k)))
+    ) || null
+  );
 }
 
 export type TFamily = {
@@ -306,4 +327,19 @@ export function resolveGroups(catalog: TBotCatalog, config: TBotConfig): TResolv
   const rest = out.find((g) => g.rest);
   if (rest) rest.products = catalog.products.filter((p) => !taken.has(p.id));
   return out.filter((g) => g.products.length > 0);
+}
+
+/**
+ * ¿Hay para vender? Las variantes "sin control de stock" (se fabrican) siempre
+ * están disponibles; las demás, con stock > 0. Sin variante = stock del producto.
+ */
+export function isAvailable(product: TBotProduct, variant: TBotVariant | null): boolean {
+  if (variant) return !variant.stockTracked || variant.stock > 0;
+  return product.variants.length > 0 || product.stock > 0;
+}
+
+/** Unidades disponibles (Infinity si no se controla). */
+export function availableUnits(product: TBotProduct, variant: TBotVariant | null): number {
+  if (variant) return variant.stockTracked ? Math.max(0, variant.stock) : Infinity;
+  return Math.max(0, product.stock);
 }

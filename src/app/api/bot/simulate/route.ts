@@ -12,6 +12,8 @@ import { deleteSession } from "@/lib/bot/store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// El agente IA puede tardar varios segundos (Vercel corta a los 10–15 s por defecto).
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   const auth = await verifyAuthToken(request);

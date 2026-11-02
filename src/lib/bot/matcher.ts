@@ -28,8 +28,15 @@ export function matchIntent(text: string, intents: TBotIntent[]): TIntentMatch |
   scored.sort((a, b) => b.score - a.score);
 
   // "hola, cuánto sale la argentina": el saludo no debe tapar la consulta real.
+  // Solo si el mensaje dice algo MÁS que el saludo: un "Hola" solo (coincidencia
+  // perfecta con un ejemplo de saludo) es saludo, aunque otra frase empiece con "hola".
   const [first, second] = scored;
-  if (first.intent.action === EBotAction.GREETING && second && second.score >= 0.3) {
+  if (
+    first.intent.action === EBotAction.GREETING &&
+    first.score < 1 &&
+    second &&
+    second.score >= 0.3
+  ) {
     return second;
   }
   return first;

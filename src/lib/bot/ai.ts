@@ -55,7 +55,7 @@ export function isAiConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-function computeCost(model: string, u: Anthropic.Usage): TBotAiUsage {
+export function computeCost(model: string, u: Anthropic.Usage): TBotAiUsage {
   const p = PRICING[model] || PRICING["claude-haiku-5-5"];
   const input = u.input_tokens || 0;
   const output = u.output_tokens || 0;
@@ -107,7 +107,11 @@ Intenciones posibles:
 - other: nada de lo anterior.
 
 Reglas:
-- "reply" solo se completa con intent "other" o "faq" y SOLO con información que esté literalmente en "Datos del negocio" o "Preguntas frecuentes". Nunca inventes precios, plazos, stock, envíos ni promociones. Si no está la info, dejá reply en null.
+- Si el mensaje trae una PREGUNTA, completá "reply" con la respuesta aunque el intent sea otro (custom, order, price…): el sistema la manda y después sigue con el flujo. Si no pregunta nada, reply en null salvo intent "other"/"faq".
+- "reply" se completa SOLO con información que esté literalmente en "Datos del negocio", "Preguntas frecuentes" o en el "Estado de la charla" que viene con cada mensaje. Nunca inventes precios, plazos, stock, envíos ni promociones. Si no está la info, dejá reply en null.
+- Si el cliente pregunta algo sobre lo que ya se está hablando (medidas, precios, plazos, técnicas, stock) y la respuesta está en el "Estado de la charla", usá intent "other" y contestá en "reply" con esos datos (esos precios son reales del catálogo y se pueden decir). No repitas la pregunta que el bot le venía haciendo: el sistema la vuelve a hacer después de tu respuesta.
+- Si responde lo que el bot le preguntó con palabras raras (ej. "para fin de mes", "unas 20"), igual clasificá según el tema de la charla (custom, order…) y completá quantity/size si los dice.
+- En "reply" no anuncies lo que viene ("te pregunto…", "te paso los detalles"): el sistema hace la próxima pregunta solo.
 - "reply" corto (máximo 2 oraciones), tono cordial rioplatense, sin markdown salvo *negrita*.
 - "confidence" entre 0 y 1: qué tan seguro estás de la intención.
 - "segment": tipo de cliente SOLO si se deduce claramente del mensaje (${resolveSegments(config).map((sg) => `"${sg.id}" = ${sg.label}`).join(", ")}). Si no, null.
@@ -138,11 +142,13 @@ export async function classifyWithAi(args: {
   catalogText: string;
   history: TBotHistoryEntry[];
   text: string;
+  /** Estado de esta charla (paso, producto en curso, precios reales). */
+  flowContext?: string;
 }): Promise<TAiOutcome> {
   const anthropic = getClient();
   if (!anthropic) return { ok: false, error: "ANTHROPIC_API_KEY no configurada", usage: null };
 
-  const { config, intents, catalogText, history, text } = args;
+  const { config, intents, catalogText, history, text, flowContext } = args;
   const segments = resolveSegments(config);
   const model = config.model || "claude-haiku-5-5";
 
@@ -152,7 +158,7 @@ export async function classifyWithAi(args: {
     .slice(-6)
     .map((h) => `${h.role === "user" ? "Cliente" : "Bot"}: ${h.text}`)
     .join("\n");
-  const userContent = `${recent ? `Conversación reciente:\n${recent}\n\n` : ""}Mensaje nuevo del cliente:\n${text}`;
+  const userContent = `${recent ? `Conversación reciente:\n${recent}\n\n` : ""}${flowContext ? `Estado de la charla:\n${flowContext}\n\n` : ""}Mensaje nuevo del cliente:\n${text}`;
 
   try {
     const response = await anthropic.messages.create(

@@ -14,7 +14,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { toast } from "sonner";
-import { Bot, ExternalLink, Hand, MessageCircle, Search, Send } from "lucide-react";
+import { Bot, ExternalLink, Hand, MessageCircle, Search } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,8 @@ import { cn } from "@/lib/utils";
 import collections from "@/lib/collections";
 import { normalizeText } from "@/lib/bot/normalize";
 import { BotTranscript } from "@/components/whatsapp/BotTranscript";
+import { WhatsappThread } from "@/components/whatsapp/WhatsappThread";
+import { WhatsappHealthBanner } from "@/components/whatsapp/WhatsappHealthBanner";
 import { ClientTagBadge, useClientTagOptions } from "@/components/client/ClientTags";
 import { toDate } from "../bot/components/shared";
 
@@ -165,6 +167,7 @@ export default function ChatPage() {
         </p>
       </div>
 
+      <WhatsappHealthBanner />
       <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
         <Card className="overflow-hidden">
           <CardContent className="p-0">
@@ -284,16 +287,17 @@ export default function ChatPage() {
                 )}
               </div>
             </div>
-            <BotTranscript sessionId={selected.id} className="h-[58vh]" />
-            <div className="p-3 border-t flex gap-2">
-              <Input
-                disabled
-                placeholder="Responder desde acá va a estar disponible al conectar WhatsApp (Fase 2)."
-              />
-              <Button disabled>
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
+            {selected.channel === "whatsapp" ? (
+              // Lo que de verdad entró y salió por WhatsApp, con estado y para responder.
+              <WhatsappThread contactId={selected.id} className="h-[58vh]" />
+            ) : (
+              <>
+                <BotTranscript sessionId={selected.id} className="h-[58vh]" />
+                <p className="p-3 border-t text-center text-xs text-slate-500">
+                  Charla del simulador: no se puede responder.
+                </p>
+              </>
+            )}
           </Card>
         ) : (
           <Card>

@@ -42,6 +42,7 @@ const collections = {
   BOT_SESSIONS: "botSessions",
   BOT_TURNS: "botTurns",
   BOT_STATS: "botStats",
+  BOT_STOCK_ALERTS: "botStockAlerts",
   SETTINGS: "settings",
   PRICE_HISTORY: "priceHistory",
   // Cloud API (bandeja humana con coexistencia). Ver src/lib/whatsapp/*.

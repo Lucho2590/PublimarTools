@@ -15,6 +15,9 @@ import collections from "@/lib/collections";
 import { enableSystemNotifications } from "@/components/whatsapp/WhatsappAttention";
 import { toDate } from "../bot/components/shared";
 import { BotTranscript } from "@/components/whatsapp/BotTranscript";
+import { WhatsappThread } from "@/components/whatsapp/WhatsappThread";
+import { WhatsappHealthBanner } from "@/components/whatsapp/WhatsappHealthBanner";
+import { StockAlertsCard } from "@/components/whatsapp/StockAlertsCard";
 
 type TAttentionSession = {
   id: string;
@@ -114,6 +117,9 @@ export default function AtenderPage() {
         )}
       </div>
 
+      <WhatsappHealthBanner />
+      <StockAlertsCard />
+
       {status === "loading" ? (
         <p className="text-sm text-slate-500">Cargando…</p>
       ) : !sessions.length ? (
@@ -200,15 +206,21 @@ function ConversationDetail({
             </pre>
           )}
           <p className="text-xs text-slate-500">
-            {session.phone
-              ? "Respondele desde el WhatsApp del negocio. Cuando conectemos la API de WhatsApp vas a poder contestar desde acá."
-              : "Charla del simulador (sin teléfono). En WhatsApp real vas a poder contestar desde acá."}{" "}
+            {session.channel === "whatsapp"
+              ? "Respondele desde acá abajo o desde el celular del negocio."
+              : "Charla del simulador (sin teléfono): no se puede responder."}{" "}
             <b>Marcar atendida</b> la saca de la lista (el bot sigue en silencio unas horas);{" "}
             <b>Devolver al bot</b> hace que el bot vuelva a responder.
           </p>
         </div>
 
-        <BotTranscript sessionId={session.id} className="max-h-[55vh]" />
+        {session.channel === "whatsapp" ? (
+          <div className="flex flex-col">
+            <WhatsappThread contactId={session.id} className="max-h-[55vh]" />
+          </div>
+        ) : (
+          <BotTranscript sessionId={session.id} className="max-h-[55vh]" />
+        )}
       </CardContent>
     </Card>
   );

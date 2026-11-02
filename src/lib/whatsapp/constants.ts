@@ -1,7 +1,7 @@
 // Constantes de la integración con WhatsApp Cloud API (Meta Graph API).
 // La versión del Graph vive SOLO acá; no dispersarla por el código.
 
-export const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v21.0";
+export const GRAPH_VERSION = process.env.WHATSAPP_GRAPH_VERSION || "v26.0";
 export const GRAPH_BASE_URL = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 // Coexistencia: se envía en el Embedded Signup para NO tomar el número en

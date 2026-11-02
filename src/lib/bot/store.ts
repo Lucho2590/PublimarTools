@@ -86,6 +86,7 @@ function emptySession(id: string, channel: TBotChannel): TBotSession {
     pendingProductId: null,
     pendingVariantId: null,
     pendingQuantity: null,
+    offeredQuantity: null,
     candidateProductIds: [],
     familyLabel: null,
     familyProductIds: [],
@@ -107,6 +108,7 @@ function emptySession(id: string, channel: TBotChannel): TBotSession {
     failCount: 0,
     lastOrderNumber: null,
     history: [],
+    agentHistory: [],
     lastOptions: [],
     createdAt: now,
     updatedAt: now,
@@ -162,6 +164,17 @@ export function pushHistory(session: TBotSession, role: "user" | "bot", text: st
   session.history = [...(session.history || []), { role, text: text.slice(0, 500) }].slice(
     -HISTORY_MAX
   );
+}
+
+const AGENT_HISTORY_MAX = 40;
+
+/** Charla en texto para el agente IA (el mensaje del cliente y lo que se le contestó). */
+export function pushAgentHistory(session: TBotSession, userText: string, replies: string[]) {
+  const add: TBotSession["agentHistory"] = [];
+  if (userText) add.push({ role: "user", text: userText.slice(0, 1500) });
+  const reply = replies.filter(Boolean).join("\n\n");
+  if (reply) add.push({ role: "bot", text: reply.slice(0, 3000) });
+  if (add.length) session.agentHistory = [...(session.agentHistory || []), ...add].slice(-AGENT_HISTORY_MAX);
 }
 
 export async function saveSession(session: TBotSession): Promise<void> {
@@ -248,4 +261,36 @@ export async function logTurn(args: {
     db.collection(collections.BOT_TURNS).add(turn),
     db.collection(collections.BOT_STATS).doc(monthKey()).set(stats, { merge: true }),
   ]);
+}
+
+// ---------------------------------------------------------------------------
+// Avisos de stock: "no hay, te avisamos cuando vuelva"
+// ---------------------------------------------------------------------------
+
+/**
+ * Anota que el cliente quiere que le avisen cuando vuelva el producto. Un aviso
+ * pendiente por cliente + variante (si lo pide dos veces no se duplica).
+ */
+export async function addStockAlert(args: {
+  sessionId: string;
+  channel: TBotChannel;
+  phone: string | null;
+  customerName: string | null;
+  productId: string;
+  productName: string;
+  variantId: string | null;
+  size: string | null;
+}): Promise<void> {
+  const db = getFirestoreAdmin();
+  const id = `${args.sessionId}__${args.productId}__${args.variantId || "base"}`.replace(/[\/]/g, "_");
+  const ref = db.collection(collections.BOT_STOCK_ALERTS).doc(id);
+  const snap = await ref.get();
+  if (snap.exists && !snap.data()?.notified) return;
+  await ref.set({
+    ...args,
+    notified: false,
+    notifiedAt: null,
+    notifiedBy: null,
+    createdAt: FieldValue.serverTimestamp(),
+  });
 }

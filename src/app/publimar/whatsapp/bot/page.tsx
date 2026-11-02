@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminOrAbove } from "@/lib/permissions";
@@ -13,7 +14,13 @@ import { ConfigTab } from "./components/ConfigTab";
 export default function WhatsappBotPage() {
   const { userRole } = useAuth();
   const canEdit = isAdminOrAbove(userRole);
+  // ?tab=config: link directo (ej. "Cargar token" del aviso de WhatsApp desconectado).
+  const initialTab = useSearchParams().get("tab");
   const [tab, setTab] = useState("simulador");
+  // El rol carga después: recién ahí se puede abrir una pestaña de admin.
+  useEffect(() => {
+    if (initialTab && canEdit) setTab(initialTab);
+  }, [initialTab, canEdit]);
 
   return (
     <div>

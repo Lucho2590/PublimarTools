@@ -28,6 +28,7 @@ import {
   mergeBotConfig,
 } from "@/lib/bot/defaults";
 import { TBotConfig } from "@/types/bot";
+import { WhatsappConnectionCard } from "./WhatsappConnectionCard";
 
 const DAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 
@@ -94,6 +95,7 @@ export function ConfigTab() {
 
   return (
     <div className="space-y-6">
+      <WhatsappConnectionCard />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -164,15 +166,30 @@ export function ConfigTab() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Inteligencia artificial (solo como respaldo)</CardTitle>
+            <CardTitle className="text-base">Inteligencia artificial</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-start gap-2">
               <Checkbox id="ai" checked={config.aiEnabled} onCheckedChange={(v) => set("aiEnabled", v === true)} />
               <Label htmlFor="ai" className="leading-snug">
-                Usar IA cuando las reglas no alcanzan
+                Usar IA
                 <span className="block text-xs text-slate-500 font-normal">
-                  Apagada: si no entiende, ofrece el menú y deriva a una persona.
+                  Apagada: responde solo con reglas (menús y preguntas entrenadas).
+                </span>
+              </Label>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="agentMode"
+                checked={config.agentMode}
+                disabled={!config.aiEnabled}
+                onCheckedChange={(v) => set("agentMode", v === true)}
+              />
+              <Label htmlFor="agentMode" className="leading-snug">
+                Agente IA: la IA lleva la charla (recomendado)
+                <span className="block text-xs text-slate-500 font-normal">
+                  Busca en el catálogo, arma el pedido y cotiza personalizadas con precios reales. Apagado: reglas
+                  primero y la IA solo de respaldo.
                 </span>
               </Label>
             </div>
@@ -202,6 +219,28 @@ export function ConfigTab() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Instrucciones del vendedor (agente IA)</CardTitle>
+          <p className="text-sm text-slate-600">
+            Así se entrena al agente: escribí en criollo cómo querés que venda. Una idea por línea. Ej:{" "}
+            <i>
+              "Si es para exterior, recomendá la reforzada"; "A escuelas ofreceles el combo de ceremonia"; "Nunca
+              prometas entrega en el día"
+            </i>
+            . Los precios, el stock y los datos del negocio los toma solo de la app.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            rows={6}
+            value={config.agentInstructions}
+            placeholder="- Si preguntan por banderas para exterior, recomendá la reforzada&#10;- ..."
+            onChange={(e) => set("agentInstructions", e.target.value)}
+          />
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

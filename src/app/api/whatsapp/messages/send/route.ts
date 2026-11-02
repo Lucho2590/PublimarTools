@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getFirestoreAdmin, verifyAuthToken } from "@/lib/apiAuth";
 import collections from "@/lib/collections";
 import { sendText } from "@/lib/whatsapp/outbound";
+import { pauseBotForHuman } from "@/lib/whatsapp/botBridge";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -43,6 +44,13 @@ export async function POST(request: NextRequest) {
     senderUid: auth.uid,
     senderName,
   });
+
+  // Respondió una persona: el bot se calla con este cliente.
+  if (result.ok) {
+    await pauseBotForHuman(contactId, `Respondió ${senderName || "alguien del equipo"} desde la app`).catch(
+      () => {}
+    );
+  }
 
   if (!result.ok) {
     return NextResponse.json(

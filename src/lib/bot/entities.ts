@@ -36,16 +36,18 @@ export function parseExplicitQuantity(input: string): number | null {
   const q = parseQuantity(input);
   if (q == null) return null;
   if (q > 1) return q;
-  // 1 solo cuenta con dígito o "una sola" / "solo una" / "1 sola".
-  return /\b1\b|\b(una|uno|un) sol[oa]\b|\bsol[oa] (una|uno|un)\b/.test(normalizeText(input)) ? 1 : null;
+  // 1 solo cuenta con dígito o "una sola" / "solo una" / "1 sola" ("90x1,50" no es 1).
+  return /\b1\b|\b(una|uno|un) sol[oa]\b|\bsol[oa] (una|uno|un)\b/.test(withoutSizes(input)) ? 1 : null;
+}
+
+/** Texto normalizado sin las medidas ("90x 1,50" → " "), para buscar cantidades. */
+function withoutSizes(input: string): string {
+  return normalizeText(input).replace(/\d+(?:[.,]\d+)?\s*(?:x|por|\*)\s*\d+(?:[.,]\d+)?/g, " ");
 }
 
 /** Cantidad (entero 1–9999) en dígitos o palabras. Ignora números de medidas. */
 export function parseQuantity(input: string): number | null {
-  const text = normalizeText(input).replace(
-    /\d+(?:[.,]\d+)?\s*(?:x|por|\*)\s*\d+(?:[.,]\d+)?/g,
-    " "
-  );
+  const text = withoutSizes(input);
   const digits = text.match(/\b(\d{1,4})\b/);
   if (digits) {
     const n = parseInt(digits[1], 10);

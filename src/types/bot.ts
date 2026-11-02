@@ -142,6 +142,8 @@ export type TBotCustomRequest = {
   /** Precio unitario mostrado (técnicas con producto) y la medida cotizada. */
   unitPrice: number | null;
   priceSize: string | null;
+  /** Qué lleva ("nombre del club", "escudo"): lo anota el agente IA. */
+  content?: string | null;
 };
 
 export type TBotHistoryEntry = { role: "user" | "bot"; text: string };
@@ -155,6 +157,8 @@ export type TBotSession = {
   pendingVariantId: string | null;
   /** Cantidad que ya dijo ("necesito 10…") mientras elige modelo/medida. */
   pendingQuantity: number | null;
+  /** Cantidad ofrecida por falta de stock ("¿te anoto las 5?"): un "sí" la anota. */
+  offeredQuantity: number | null;
   candidateProductIds: string[];
   /** Lo que pidió el cliente, para repetirlo ("Bandera Argentina"). */
   familyLabel: string | null;
@@ -184,6 +188,8 @@ export type TBotSession = {
   failCount: number;
   lastOrderNumber: string | null;
   history: TBotHistoryEntry[];
+  /** Charla completa (texto) para el agente IA: más larga que `history`. */
+  agentHistory: TBotHistoryEntry[];
   /** Ids de la última lista numerada: "2" o "la 2" eligen esa opción. */
   lastOptions: string[];
   createdAt: Date;
@@ -299,6 +305,10 @@ export type TBotCustomerSegment = {
 export type TBotConfig = {
   enabled: boolean;
   aiEnabled: boolean;
+  /** La IA lleva la charla con herramientas (catálogo, pedido, personalizadas). Apagado: reglas + IA de respaldo. */
+  agentMode: boolean;
+  /** Instrucciones del vendedor para el agente IA (texto libre: cómo vender, qué recomendar, qué no prometer). */
+  agentInstructions: string;
   model: string;
   aiMonthlyBudgetUsd: number;
   /** Umbral 0–1 del matcher para aceptar una intención sin IA. */
