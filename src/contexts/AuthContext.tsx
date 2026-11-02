@@ -102,6 +102,7 @@ function AuthProviderInner({ children }: { children: React.ReactNode }) {
       createdAt: data.createdAt?.toDate?.() || new Date(),
       lastLogin: data.lastLogin?.toDate?.() || undefined,
       permissions: Array.isArray(data.permissions) ? data.permissions : [],
+      phone: typeof data.phone === "string" ? data.phone : undefined,
     } as TUser;
   }, [user, userDataFromFirestore, loadingUserData]);
 

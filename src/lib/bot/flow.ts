@@ -27,7 +27,9 @@ import {
   TBotProduct,
   TBotVariant,
   TFamily,
+  availableUnits,
   detectType,
+  isAvailable,
   findFamily,
   findVariant,
   productsInCategory,
@@ -46,12 +48,14 @@ import {
   formatNeededBy,
   isDoneAdding,
   parseName,
+  parseExplicitQuantity,
   parseNeededBy,
   parseQuantity,
   parseSize,
   parseYesNo,
 } from "./entities";
 import { normalizeText, tokenize } from "./normalize";
+import { addStockAlert } from "./store";
 import { detectSegment } from "./segments";
 
 export type TFlowCtx = {
@@ -66,6 +70,10 @@ export type TFlowCtx = {
   orderCreated: boolean;
   /** Escrituras en segundo plano (registrar consulta): el motor las espera antes de responder. */
   pending: Promise<unknown>[];
+  /** Pruebas offline: no escribe avisos de stock ni consultas. */
+  dryRun?: boolean;
+  /** Hay IA disponible (activada, con clave y dentro del tope): las preguntas las contesta ella. */
+  aiAvailable?: boolean;
 };
 
 const PAGE_SIZE = 9; // 9 filas + "Ver más" = límite de 10 de WhatsApp
@@ -134,7 +142,7 @@ function paginate(rows: TBotListRow[], page: number, moreId: (next: number) => s
   return slice;
 }
 
-const money = (n: number) => formatearPrecio(n);
+export const money = (n: number) => formatearPrecio(n);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 function variantPrice(product: TBotProduct, variant: TBotVariant | null): number {
@@ -146,7 +154,7 @@ function minPrice(product: TBotProduct): number {
   return Math.min(...prices);
 }
 
-function resetOrder(session: TBotSession) {
+export function resetOrder(session: TBotSession) {
   session.step = EBotStep.IDLE;
   session.cart = [];
   session.pendingProductId = null;
@@ -157,6 +165,7 @@ function resetOrder(session: TBotSession) {
   session.familyProductIds = [];
   session.delivery = null;
   session.custom = null;
+  session.offeredQuantity = null;
   // segmentId y customerName se conservan: son datos del cliente, no del pedido.
 }
 
@@ -197,7 +206,6 @@ export function showCatalog(ctx: TFlowCtx, page = 0, intro?: string) {
       groups.map((g) => ({
         id: `grp:${g.id}:0`,
         title: g.label,
-        description: plural(g.products.length, "producto", "productos"),
       }))
     );
     return;
@@ -211,7 +219,6 @@ export function showCatalog(ctx: TFlowCtx, page = 0, intro?: string) {
     const rows = cats.map((c) => ({
       id: `cat:${c.id}:0`,
       title: c.name,
-      description: plural(c.count, "producto", "productos"),
     }));
     list(
       ctx,
@@ -273,7 +280,7 @@ function showProductList(ctx: TFlowCtx, products: TBotProduct[], page: number, i
     title: shortName(p),
     description:
       p.variants.length > 1
-        ? `${plural(p.variants.length, "medida", "medidas")} · desde ${money(minPrice(p))}`
+        ? `desde ${money(minPrice(p))}`
         : money(minPrice(p)),
   }));
   ctx.session.step = EBotStep.CHOOSE_PRODUCT;
@@ -285,7 +292,13 @@ function showProductList(ctx: TFlowCtx, products: TBotProduct[], page: number, i
 // Producto puntual: medidas, precio, cantidad
 // ---------------------------------------------------------------------------
 
-export function showProduct(ctx: TFlowCtx, product: TBotProduct, page = 0, intro?: string) {
+export function showProduct(
+  ctx: TFlowCtx,
+  product: TBotProduct,
+  page = 0,
+  intro?: string,
+  onlyAvailable = false
+) {
   // Personalizada sin técnica elegida: primero fecha y cantidad.
   if (isCustomProduct(ctx, product) && !ctx.session.custom?.techniqueId) {
     startCustom(ctx);
@@ -303,10 +316,12 @@ export function showProduct(ctx: TFlowCtx, product: TBotProduct, page = 0, intro
     return;
   }
   ctx.session.step = EBotStep.CHOOSE_VARIANT;
-  const rows = product.variants.map((v) => ({
+  const rows = product.variants
+    .filter((v) => !onlyAvailable || isAvailable(product, v))
+    .map((v) => ({
     id: `var:${product.id}:${v.id}`,
     title: v.size || "Única",
-    description: money(v.price),
+    description: `${money(v.price)}${isAvailable(product, v) ? "" : " · sin stock"}`,
   }));
   list(
     ctx,
@@ -318,6 +333,10 @@ export function showProduct(ctx: TFlowCtx, product: TBotProduct, page = 0, intro
 
 /** Variante elegida → muestra precio y pide cantidad. */
 export function selectVariant(ctx: TFlowCtx, product: TBotProduct, variant: TBotVariant | null) {
+  if (!isCustomProduct(ctx, product) && !isAvailable(product, variant)) {
+    outOfStock(ctx, product, variant);
+    return;
+  }
   ctx.session.pendingProductId = product.id;
   ctx.session.pendingVariantId = variant ? variant.id : BASE_VARIANT;
   // Ya había dicho cuántas ("necesito 10 argentinas"): no se vuelve a preguntar.
@@ -349,6 +368,10 @@ export function quotePrice(ctx: TFlowCtx, product: TBotProduct, sizeText: string
         0,
         `En ${sizeText} no tengo *${product.name}* 🤔 Estas son las medidas que hay:`
       );
+      return;
+    }
+    if (!isCustomProduct(ctx, product) && !isAvailable(product, variant)) {
+      outOfStock(ctx, product, variant);
       return;
     }
     // Queda esperando cantidad: "sí", "dale" o "2" siguen el pedido.
@@ -435,6 +458,24 @@ function presentFamily(ctx: TFlowCtx, family: TFamily, ask: TAsk) {
       presentSingle(ctx, withSize[0].p, { ...ask, size: withSize[0].v.size });
       return;
     }
+    // "bandera argentina 90x150": la clásica en esa medida; las variantes aparte.
+    const primary = withSize.length > 1 ? primaryOf(ctx, withSize.map((x) => x.p)) : null;
+    if (primary) {
+      const base = familyBaseName(ctx);
+      const pv = withSize.find((x) => x.p.id === primary.id)!.v;
+      presentSingle(ctx, primary, { ...ask, size: pv.size });
+      const others = withSize.filter((x) => x.p.id !== primary.id && isAvailable(x.p, x.v));
+      // "promo" / "la sire" después elige entre estas, en la misma medida.
+      session.candidateProductIds = withSize.map((x) => x.p.id);
+      if (others.length) say(
+        ctx,
+        `_También en ${pv.size}: ${others
+          .slice(0, 4)
+          .map((x) => `${variantLabel(x.p, base)} ${money(x.v.price)}`)
+          .join(" · ")}. Escribime el nombre si te interesa._`
+      );
+      return;
+    }
     if (withSize.length > 1) {
       session.step = EBotStep.CHOOSE_PRODUCT;
       session.candidateProductIds = withSize.map((x) => x.p.id);
@@ -457,6 +498,11 @@ function presentFamily(ctx: TFlowCtx, family: TFamily, ask: TAsk) {
 
   // Varios tipos (flameo / ceremonia / escritorio…) → preguntar cuál.
   if (!family.type && askType(ctx, products, family.label, intro)) return;
+  // Ya filtrado por tipo ("argentina de flameo"): si hay un producto que es
+  // exactamente lo pedido, va a ese; si no, la medida primero.
+  if (!intro && family.type && showPrimaryWithAlternatives(ctx, products, family.type.label.toLowerCase())) {
+    return;
+  }
   // Un solo tipo con varios modelos → la medida primero.
   if (!intro && askSize(ctx, products, family.label)) return;
 
@@ -501,7 +547,7 @@ function askType(ctx: TFlowCtx, products: TBotProduct[], label: string, intro?: 
     ...groups.map((g) => ({
       id: `type:${g.t.categoryId}`,
       title: g.t.label,
-      description: `${g.t.description} · ${plural(g.n, "opción", "opciones")}`,
+      description: g.t.description,
     })),
     ...(others.length
       ? [{ id: `type:${OTHER_TYPE}`, title: "Otros", description: othersDesc }]
@@ -516,6 +562,7 @@ function askType(ctx: TFlowCtx, products: TBotProduct[], label: string, intro?: 
  * modelos no comparten medidas, o son demasiadas).
  */
 function askSize(ctx: TFlowCtx, products: TBotProduct[], label: string, page = 0): boolean {
+  // min = precio más bajo entre los que HAY (Infinity si ninguno tiene stock).
   const groups = new Map<string, { size: string; min: number; n: number }>();
   for (const p of products) {
     const seen = new Set<string>();
@@ -523,11 +570,12 @@ function askSize(ctx: TFlowCtx, products: TBotProduct[], label: string, page = 0
       const key = v.sizeKey || normalizeText(v.size);
       if (!key || seen.has(key)) continue;
       seen.add(key);
+      const price = isAvailable(p, v) ? v.price : Infinity;
       const g = groups.get(key);
       if (g) {
-        g.min = Math.min(g.min, v.price);
+        g.min = Math.min(g.min, price);
         g.n += 1;
-      } else groups.set(key, { size: v.size, min: v.price, n: 1 });
+      } else groups.set(key, { size: v.size, min: price, n: 1 });
     }
   }
   const shared = Array.from(groups.values()).some((g) => g.n >= 2);
@@ -541,7 +589,11 @@ function askSize(ctx: TFlowCtx, products: TBotProduct[], label: string, page = 0
     .map(([key, g]) => ({
       id: `size:${key}`,
       title: g.size,
-      description: `${g.n > 1 ? `${g.n} modelos · desde` : ""} ${money(g.min)}`.trim(),
+      description: !Number.isFinite(g.min)
+        ? "sin stock"
+        : g.n > 1
+          ? `desde ${money(g.min)}`
+          : money(g.min),
     }));
   list(
     ctx,
@@ -591,9 +643,59 @@ function chooseSize(ctx: TFlowCtx, keyOrText: string, fromList = false): boolean
     matches.slice(0, 10).map((x) => ({
       id: `var:${x.p.id}:${x.v.id}`,
       title: shortName(x.p),
-      description: sameSize ? money(x.v.price) : `${x.v.size} · ${money(x.v.price)}`,
+      description: `${sameSize ? money(x.v.price) : `${x.v.size} · ${money(x.v.price)}`}${isAvailable(x.p, x.v) ? "" : " · sin stock"}`,
     }))
   );
+  return true;
+}
+
+/**
+ * Lo que pidió ("Bandera Argentina") sin la parte del tipo ("de flameo"), para
+ * encontrar el producto que se llama exactamente así.
+ */
+function familyBaseName(ctx: TFlowCtx): string {
+  let label = ctx.session.familyLabel || "";
+  for (const t of resolveTypes(ctx.catalog, ctx.config)) {
+    const suffix = ` de ${t.label.toLowerCase()}`;
+    if (label.toLowerCase().endsWith(suffix)) label = label.slice(0, -suffix.length);
+  }
+  return normalizeText(label);
+}
+
+/**
+ * Lo que diferencia a una variante del producto pedido, tal cual está escrito:
+ * "Bandera Argentina reforzada" → "reforzada"; "Bandera para auto Argentina
+ * PROMO" → "para auto PROMO".
+ */
+function variantLabel(p: TBotProduct, base: string): string {
+  const baseWords = new Set(base.split(" "));
+  const words = p.name.split(/\s+/).filter((w) => !baseWords.has(normalizeText(w)));
+  return words.join(" ") || shortName(p);
+}
+
+/** Producto que se llama exactamente como lo pedido ("Bandera Argentina"), si hay. */
+function primaryOf(ctx: TFlowCtx, products: TBotProduct[]): TBotProduct | null {
+  const base = familyBaseName(ctx);
+  return (base && products.find((p) => normalizeText(p.name) === base)) || null;
+}
+
+/**
+ * Si entre los productos hay uno que es exactamente lo pedido (la "Bandera
+ * Argentina" clásica), muestra ESE con sus medidas y nombra las variantes
+ * (reforzada, PROMO, para auto…) aparte, sin mezclarlas. false si no hay.
+ */
+function showPrimaryWithAlternatives(ctx: TFlowCtx, products: TBotProduct[], typeName: string): boolean {
+  const base = familyBaseName(ctx);
+  if (!base) return false;
+  const primary = products.find((p) => normalizeText(p.name) === base);
+  if (!primary) return false;
+  const others = products.filter((p) => p.id !== primary.id);
+  const names = others.slice(0, 5).map((p) => variantLabel(p, base));
+  const more = others.length
+    ? `\n_Otras de ${typeName}: ${names.join(", ")}${others.length > 5 ? "…" : "."} Escribime el nombre si te interesa._`
+    : "";
+  showProduct(ctx, primary, 0, `*${primary.name}* (${typeName}): ¿qué medida necesitás? 👇${more}`);
+  ctx.session.candidateProductIds = products.map((p) => p.id);
   return true;
 }
 
@@ -621,6 +723,8 @@ function chooseType(ctx: TFlowCtx, typeId: string) {
     return;
   }
   const typeName = type ? type.label.toLowerCase() : "otros";
+  // Pidió "bandera argentina" a secas: va a ESA, con sus medidas y precios.
+  if (type && showPrimaryWithAlternatives(ctx, products, typeName)) return;
   const sizeLabel = session.familyLabel ? `${session.familyLabel} (${typeName})` : type?.label || "Otros";
   if (type && askSize(ctx, products, sizeLabel)) return;
   showProductList(
@@ -631,6 +735,23 @@ function chooseType(ctx: TFlowCtx, typeId: string) {
       ? `Opciones de *${session.familyLabel}* (${typeName}) 👇`
       : `Opciones de ${typeName} 👇`
   );
+}
+
+/**
+ * "promo" / "la sire" mientras mira un producto: cambia a esa variante de la
+ * misma familia, en la misma medida si la tiene (si no, muestra sus medidas).
+ */
+function switchCandidateKeepingSize(ctx: TFlowCtx, text: string): boolean {
+  const { session, catalog } = ctx;
+  if (!session.candidateProductIds?.length) return false;
+  const picked = pickAmongCandidates(ctx, text);
+  if (!picked || picked.id === session.pendingProductId) return false;
+  const current = session.pendingProductId ? catalog.byId.get(session.pendingProductId) : null;
+  const curVariant = current?.variants.find((v) => v.id === session.pendingVariantId) || null;
+  const same = curVariant ? findVariant(picked, curVariant.size) : null;
+  if (same) quotePrice(ctx, picked, same.size);
+  else showProduct(ctx, picked);
+  return true;
 }
 
 /** Texto libre eligiendo entre los candidatos ("la reforzada"). */
@@ -645,8 +766,15 @@ function pickAmongCandidates(ctx: TFlowCtx, text: string): TBotProduct | null {
     .filter((x) => x.n > 0)
     .sort((a, b) => b.n - a.n);
   if (!scored.length) return null;
-  // Debe distinguir: si todos empatan (repitió "argentina"), no sirve.
-  if (scored.length > 1 && scored[0].n === scored[1].n) return null;
+  // Empate: gana el de nombre más corto si es único ("promo" → "PROMO", no "PROMO SALDOS").
+  if (scored.length > 1 && scored[0].n === scored[1].n) {
+    const top = scored.filter((x) => x.n === scored[0].n);
+    const len = (p: TBotProduct) => tokenize(p.name).length;
+    const minLen = Math.min(...top.map((x) => len(x.p)));
+    const shortest = top.filter((x) => len(x.p) === minLen);
+    if (shortest.length !== 1 || top.length === candidates.length) return null;
+    return shortest[0].p;
+  }
   if (scored.length === candidates.length && scored.every((x) => x.n === scored[0].n)) return null;
   return scored[0].p;
 }
@@ -654,6 +782,37 @@ function pickAmongCandidates(ctx: TFlowCtx, text: string): TBotProduct | null {
 // ---------------------------------------------------------------------------
 // Carrito y confirmación
 // ---------------------------------------------------------------------------
+
+/**
+ * Pidió algo sin stock: se le dice, queda anotado para avisarle cuando vuelva
+ * (WhatsApp > Atender > Esperando stock) y se le ofrece lo que sí hay.
+ */
+function outOfStock(ctx: TFlowCtx, product: TBotProduct, variant: TBotVariant | null) {
+  const { session } = ctx;
+  const label = `${product.name}${variant?.size ? ` ${variant.size}` : ""}`;
+  if (!ctx.dryRun) ctx.pending.push(
+    addStockAlert({
+      sessionId: session.id,
+      channel: session.channel,
+      phone: session.phone,
+      customerName: session.customerName,
+      productId: product.id,
+      productName: product.name,
+      variantId: variant?.id ?? null,
+      size: variant?.size ?? null,
+    })
+  );
+  session.pendingProductId = null;
+  session.pendingVariantId = null;
+  const msg = `Uy, la *${label}* no la tenemos disponible en este momento 😕 Ya te anoté para avisarte apenas vuelva a entrar 🙌`;
+  const availableVariants = product.variants.filter((v) => isAvailable(product, v));
+  if (availableVariants.length) {
+    showProduct(ctx, product, 0, `${msg}\n\nMientras tanto, estas medidas sí las tenemos 👇`, true);
+    return;
+  }
+  session.step = EBotStep.IDLE;
+  say(ctx, `${msg}\n¿Te ayudo con otra bandera?`);
+}
 
 function addToCart(ctx: TFlowCtx, quantity: number) {
   const { session, catalog } = ctx;
@@ -666,6 +825,29 @@ function addToCart(ctx: TFlowCtx, quantity: number) {
     session.pendingVariantId && session.pendingVariantId !== BASE_VARIANT
       ? product.variants.find((v) => v.id === session.pendingVariantId) || null
       : null;
+
+  // Stock: lo que no hay no se anota; si pide más de lo que hay, se le dice cuánto.
+  if (!isCustomProduct(ctx, product)) {
+    const inCart =
+      session.cart.find((i) => i.productId === product.id && i.variantId === (variant?.id ?? null))
+        ?.quantity || 0;
+    const units = availableUnits(product, variant) - inCart;
+    if (units <= 0) {
+      session.pendingQuantity = null;
+      outOfStock(ctx, product, variant);
+      return;
+    }
+    if (quantity > units) {
+      session.step = EBotStep.QUANTITY;
+      session.pendingQuantity = null;
+      session.offeredQuantity = Number.isFinite(units) ? units : null;
+      say(
+        ctx,
+        `De *${product.name}${variant?.size ? ` ${variant.size}` : ""}* tengo ${plural(units, "disponible", "disponibles")} ahora 😕 ¿Te anoto ${units === 1 ? "esa" : `las ${units}`}? O escribime otra cantidad.`
+      );
+      return;
+    }
+  }
 
   const existing = session.cart.find(
     (i) => i.productId === product.id && i.variantId === (variant?.id ?? null)
@@ -684,6 +866,7 @@ function addToCart(ctx: TFlowCtx, quantity: number) {
   session.pendingProductId = null;
   session.pendingVariantId = null;
   session.pendingQuantity = null;
+  session.offeredQuantity = null;
   session.familyLabel = null;
   session.step = EBotStep.MORE;
   buttons(
@@ -804,7 +987,7 @@ function parseDelivery(text: string): "pickup" | "shipping" | null {
   return null;
 }
 
-function cartTotal(session: TBotSession): number {
+export function cartTotal(session: TBotSession): number {
   return session.cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
 }
 
@@ -887,7 +1070,7 @@ const CANCELLED_TEXT = "Listo, lo cancelé 🙂 ¿Te ayudo con otra cosa?";
 // precio → si le parece bien, pasa al equipo para ver el diseño.
 // ---------------------------------------------------------------------------
 
-const emptyCustom = (): TBotCustomRequest => ({
+export const emptyCustom = (): TBotCustomRequest => ({
   neededBy: null,
   days: null,
   whenText: null,
@@ -902,7 +1085,7 @@ const emptyCustom = (): TBotCustomRequest => ({
 });
 
 /** Producto de la técnica (configurado o, para sublimada, el "personalizada … sublimada"). */
-function techniqueProduct(ctx: TFlowCtx, t: TBotCustomTechnique): TBotProduct | null {
+export function techniqueProduct(ctx: TFlowCtx, t: TBotCustomTechnique): TBotProduct | null {
   if (t.productId) return ctx.catalog.byId.get(t.productId) || null;
   if (t.id !== "sublimada") return null;
   return (
@@ -947,6 +1130,42 @@ export function startCustom(ctx: TFlowCtx, text?: string | null) {
 
   // Lo que ya dijo en el mismo mensaje se anota y se le repite ("Anoté: …").
   const noted: string[] = [];
+
+  // "quiero personalizar la argentina" con la argentina lisa ya anotada: no son
+  // dos pedidos, es la misma bandera personalizada → se saca la lisa del pedido.
+  let converted: string | null = null;
+  const family = text ? findFamily(ctx.catalog, text, ctx.config) : null;
+  // "¿La puedo personalizar?" / "le ponemos unas palabras": habla de lo último que eligió.
+  const refersToLast =
+    !!text && !family && /\b(la|las|lo|los|le|les|esa|esas|esta|estas)\b|personalizarla|personalizarlas/.test(normalizeText(text));
+
+  // Estaba eligiendo una bandera (todavía sin anotar): esa es la que se personaliza.
+  const pending = session.pendingProductId ? ctx.catalog.byId.get(session.pendingProductId) : null;
+  if (pending && (refersToLast || family?.products.some((p) => p.id === pending.id))) {
+    const variant = pending.variants.find((v) => v.id === session.pendingVariantId) || null;
+    if (!c.size && variant?.size) c.size = parseSize(variant.size) || variant.size;
+    converted = `¡Dale! La *${pending.name}${variant?.size ? ` ${variant.size}` : ""}* la armamos personalizada 👌`;
+    session.pendingProductId = null;
+    session.pendingVariantId = null;
+    session.pendingQuantity = null;
+  }
+
+  if (!converted && text && session.cart.length) {
+    const ids = new Set(
+      family?.products.map((p) => p.id) || (refersToLast ? [session.cart[session.cart.length - 1].productId] : [])
+    );
+    const replaced = session.cart.filter((i) => ids.has(i.productId));
+    if (replaced.length) {
+      session.cart = session.cart.filter((i) => !ids.has(i.productId));
+      const last = replaced[replaced.length - 1];
+      if (!c.size && last.variantName) c.size = parseSize(last.variantName) || last.variantName;
+      if (!c.quantity && last.quantity > 1) {
+        c.quantity = last.quantity;
+        c.quantityText = String(last.quantity);
+      }
+      converted = `¡Dale! La *${last.productName}${last.variantName ? ` ${last.variantName}` : ""}* la armamos personalizada (la saco del pedido como lisa) 👌`;
+    }
+  }
   if (text) {
     const when = parseNeededBy(text);
     if (when && !c.whenText) {
@@ -972,7 +1191,8 @@ export function startCustom(ctx: TFlowCtx, text?: string | null) {
   }
   if (!c.whenText) {
     session.step = EBotStep.CUSTOM_DATE;
-    const head = noted.length ? `¡Dale! Anoté: ${noted.join(", ")} 👌` : "¡Buenísimo, una personalizada! 🙌";
+    const head =
+      converted || (noted.length ? `¡Dale! Anoté: ${noted.join(", ")} 👌` : "¡Buenísimo, una personalizada! 🙌");
     buttons(ctx, `${head} ¿Para cuándo la necesitás? 📅`, [
       { id: "cdate:week", title: "Esta semana" },
       { id: "cdate:3w", title: "En 2-3 semanas" },
@@ -980,7 +1200,7 @@ export function startCustom(ctx: TFlowCtx, text?: string | null) {
     ]);
     return;
   }
-  nextCustomStep(ctx, noted.length ? `¡Dale! Anoté: ${noted.join(", ")} 👌` : undefined);
+  nextCustomStep(ctx, converted || (noted.length ? `¡Dale! Anoté: ${noted.join(", ")} 👌` : undefined));
 }
 
 /** `prefix`: confirmación de lo ya anotado, va delante de la próxima pregunta. */
@@ -1074,7 +1294,7 @@ function availableBusinessDays(ctx: TFlowCtx): number | null {
 }
 
 /** "90x140" (cm) → "90x1,40", como se escriben en el catálogo; texto libre queda igual. */
-function displaySize(size: string | null): string {
+export function displaySize(size: string | null): string {
   const m = size?.match(/^(\d+)x(\d+)$/);
   if (!m) return size || "";
   const fmt = (cm: number) =>
@@ -1106,7 +1326,7 @@ export function leadTimeFor(t: TBotCustomTechnique, size: string | null): { min:
   return { min: t.minDays, max: Math.max(t.minDays, t.maxDays ?? t.minDays) };
 }
 
-function leadTimeLabel(lt: { min: number; max: number }): string {
+export function leadTimeLabel(lt: { min: number; max: number }): string {
   return lt.min === lt.max ? `${lt.min} días hábiles` : `${lt.min} a ${lt.max} días hábiles`;
 }
 
@@ -1127,7 +1347,7 @@ function viableTechniques(ctx: TFlowCtx): { t: TBotCustomTechnique; tight: boole
  * Variante para cotizar la medida pedida: la exacta, o la más chica que la
  * cubre (si pide 1x1,30 se cotiza la de 90x1,40… la siguiente que alcanza).
  */
-function priceVariant(product: TBotProduct, size: string | null): TBotVariant | null {
+export function priceVariant(product: TBotProduct, size: string | null): TBotVariant | null {
   if (!product.variants.length) return null;
   if (size) {
     const exact = findVariant(product, size);
@@ -1374,7 +1594,7 @@ async function handleCustomStep(
     case EBotStep.CUSTOM_DATE: {
       const when = parseNeededBy(text);
       if (!when) {
-        if (looksLikeIntent) return false;
+        if (looksLikeIntent || isQuestion(text)) return false;
         say(ctx, "No te entendí la fecha 🙈 Escribila tipo _20/11_, _en 2 semanas_ o _sin apuro_.");
         return true;
       }
@@ -1570,14 +1790,28 @@ export function runAction(
 ) {
   switch (action) {
     case EBotAction.GREETING:
+      // "Hola" solo = charla nueva: lo que había a medias queda atrás.
+      resetOrder(ctx.session);
       showMenu(ctx, true);
       return;
     case EBotAction.MENU:
       showMenu(ctx, false);
       return;
-    case EBotAction.THANKS:
-      buttons(ctx, "¡De nada! 🙌 ¿Algo más?", MENU_BUTTONS);
+    case EBotAction.THANKS: {
+      // Contesta según lo último que pasó (sin stock, derivado, pedido anotado).
+      // Respuestas del turno anterior (puede haber mandado más de un mensaje).
+      const recentBot = (ctx.session.history || []).slice(-4).filter((h) => h.role === "bot");
+      const lastBot = recentBot.map((h) => h.text).join("\n");
+      // Agradeció y cerró: lo que estaba eligiendo queda atrás ("no" después no es "no entendí").
+      ctx.session.step = EBotStep.IDLE;
+      const text = /avisarte apenas vuelva/.test(lastBot)
+        ? "¡De nada! Te aviso apenas vuelva a entrar 🙌"
+        : /pedido \*?[A-Z]+-|consulta \*?[A-Z]+-/i.test(lastBot)
+          ? "¡Gracias a vos! 🙌 Cualquier cosa me escribís."
+          : "¡De nada! 🙌 ¿Algo más?";
+      buttons(ctx, text, MENU_BUTTONS);
       return;
+    }
     case EBotAction.HUMAN:
       handoff(ctx, false, "Pidió hablar con una persona");
       return;
@@ -1732,7 +1966,7 @@ export async function handleReplyId(ctx: TFlowCtx, replyId: string): Promise<boo
   return false;
 }
 
-const PRICE_QUESTION = /\b(que sale|cuanto sale|cuanto cuesta|cuanto es|cuanto seria|cuanto me sale|precio|cuanto vale|el total|cuanto queda)\b/;
+const PRICE_QUESTION = /\b(que salen?|cuanto salen?|cuanto cuestan?|cuanto es|cuanto serian?|cuanto me salen?|precios?|cuanto valen?|el total|cuanto queda)\b/;
 
 /** Pasos en los que una pregunta de precio se refiere a lo que ya se eligió. */
 const PRICE_CONTEXT_STEPS: EBotStep[] = [
@@ -1773,6 +2007,33 @@ function answerPriceInContext(ctx: TFlowCtx, text: string): boolean {
   return true;
 }
 
+const SIZE_QUESTION = /\b(medidas?|tamanos?|tamanios?|que tan grande|dimensiones)\b/;
+
+/**
+ * En plena personalizada: "¿qué medidas se pueden hacer?" / "¿cuánto salen?" se
+ * contesta con las medidas y precios de la técnica con producto (sublimada) y
+ * se vuelve a la pregunta del paso. Sin IA.
+ */
+function answerCustomQuestion(ctx: TFlowCtx, text: string): boolean {
+  const { session } = ctx;
+  if (!session.step.startsWith("custom_") || session.step === EBotStep.CUSTOM_PRICE) return false;
+  const norm = normalizeText(text);
+  const asksSize = SIZE_QUESTION.test(norm) && isQuestion(text);
+  const asksPrice = PRICE_QUESTION.test(norm);
+  if (!asksSize && !asksPrice) return false;
+  if (session.step === EBotStep.CUSTOM_SIZE && parseSize(text)) return false;
+  const tech = resolveTechniques(ctx.config).find((t) => techniqueProduct(ctx, t));
+  const product = tech ? techniqueProduct(ctx, tech) : null;
+  if (!tech || !product?.variants.length) return false;
+  const rows = product.variants.map((v) => `• ${v.size || "Única"}: ${money(v.price)}`).join("\n");
+  say(
+    ctx,
+    `Las hacemos en estas medidas (precio por unidad, ${tech.label.toLowerCase()}) 👇\n${rows}\n_Si necesitás otra medida, decime y lo vemos._`
+  );
+  repromptStep(ctx);
+  return true;
+}
+
 /** Pasos del cierre en los que, si pregunta otra cosa, se contesta y se vuelve a preguntar. */
 export const REPROMPT_STEPS: EBotStep[] = [
   EBotStep.MORE,
@@ -1783,6 +2044,132 @@ export const REPROMPT_STEPS: EBotStep[] = [
   EBotStep.DELIVERY_ADDRESS,
   EBotStep.CONFIRM,
 ];
+
+/** "¿qué medidas hay?", "cuánto tarda": pregunta, no respuesta al paso. */
+export function isQuestion(text: string): boolean {
+  return (
+    /\?/.test(text) ||
+    /^(que|cual|cuales|cuanto|cuanta|cuantos|cuantas|como|donde|tienen|hacen|hay|se puede|puedo|pueden)\b/.test(
+      normalizeText(text)
+    )
+  );
+}
+
+/**
+ * "90x1,50… y le puedo agregar una inscripción?": responde el paso con la
+ * primera parte y devuelve la pregunta que vino colgada (o null si no hay o si
+ * el mensaje entero es la pregunta).
+ */
+export function extractSideQuestion(text: string): string | null {
+  const parts = text
+    .split(/\.{3}|…|[.;!\n]+|,\s+|\s+y\s+(?=(?:le|la|lo|me|se|tienen|hacen|puedo|pueden|cuanto|cuánto|que|qué|como|cómo|hay)\b)/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return null;
+  const q = [...parts].reverse().find((p) => isQuestion(p) && !parseSize(p));
+  if (!q || normalizeText(q).length < 6) return null;
+  return q.replace(/^y\s+/i, "");
+}
+
+/** Pasos en los que, si la IA contesta una pregunta, se vuelve a la pregunta del paso. */
+export const AI_REPROMPT_STEPS: EBotStep[] = [
+  ...REPROMPT_STEPS,
+  EBotStep.QUANTITY,
+  EBotStep.CUSTOM_DATE,
+  EBotStep.CUSTOM_QTY,
+  EBotStep.CUSTOM_SIZE,
+  EBotStep.CUSTOM_TECHNIQUE,
+  EBotStep.CUSTOM_LOGO,
+];
+
+const STEP_QUESTION: Partial<Record<EBotStep, string>> = {
+  [EBotStep.CHOOSE_TYPE]: "qué tipo de bandera quiere (flameo, ceremonia, escritorio…)",
+  [EBotStep.CHOOSE_PRODUCT]: "qué modelo de la lista quiere",
+  [EBotStep.CHOOSE_VARIANT]: "qué medida quiere",
+  [EBotStep.CHOOSE_SIZE]: "qué medida aproximada quiere",
+  [EBotStep.QUANTITY]: "cuántas quiere",
+  [EBotStep.MORE]: "si suma algo más al pedido",
+  [EBotStep.NAME]: "su nombre",
+  [EBotStep.SEGMENT]: "para quién es (tipo de cliente)",
+  [EBotStep.DELIVERY]: "si retira o se la mandamos",
+  [EBotStep.DELIVERY_PLACE]: "a qué localidad se la mandamos",
+  [EBotStep.DELIVERY_ADDRESS]: "la dirección de entrega",
+  [EBotStep.CONFIRM]: "que confirme el pedido",
+  [EBotStep.CUSTOM_DATE]: "para cuándo necesita la bandera personalizada",
+  [EBotStep.CUSTOM_QTY]: "cuántas banderas personalizadas necesita",
+  [EBotStep.CUSTOM_SIZE]: "qué medida aproximada quiere para la personalizada",
+  [EBotStep.CUSTOM_TECHNIQUE]: "qué técnica prefiere para la personalizada",
+  [EBotStep.CUSTOM_LOGO]: "si ya tiene el logo o diseño",
+  [EBotStep.CUSTOM_PRICE]: "(ya se le pasó el precio de la personalizada)",
+};
+
+function productFacts(product: TBotProduct): string {
+  const rows = product.variants.length
+    ? product.variants.map(
+        (v) => `${v.size || "única"} ${money(v.price)}${isAvailable(product, v) ? "" : " (sin stock)"}`
+      )
+    : [`${money(product.price)}${isAvailable(product, null) ? "" : " (sin stock)"}`];
+  return `${product.name}: ${rows.join(" · ")}`;
+}
+
+/**
+ * Lo que la IA necesita saber de ESTA charla (qué se le está preguntando, qué
+ * producto se está viendo, con precios reales del catálogo). Va en el mensaje
+ * del usuario, no en el system (que queda cacheado).
+ */
+export function aiFlowContext(ctx: TFlowCtx): string {
+  const { session, catalog } = ctx;
+  const lines: string[] = [];
+  const asking = STEP_QUESTION[session.step];
+  if (asking) lines.push(`El bot le está preguntando: ${asking}.`);
+
+  const shown = new Set<string>();
+  const addProduct = (id: string | null | undefined) => {
+    const p = id ? catalog.byId.get(id) : null;
+    if (p && !shown.has(p.id) && shown.size < 4) {
+      shown.add(p.id);
+      lines.push(`- ${productFacts(p)}`);
+    }
+  };
+
+  const c = session.custom;
+  if (c && session.step.startsWith("custom_")) {
+    const got = [
+      c.whenText && `para ${c.whenText}`,
+      c.quantityText && `${c.quantityText} unidades`,
+      c.size && `medida ${displaySize(c.size)}`,
+      c.hasLogo != null && (c.hasLogo ? "tiene logo" : "no tiene logo"),
+    ].filter(Boolean);
+    lines.push(`Bandera personalizada en curso${got.length ? ` (${got.join(", ")})` : ""}.`);
+    lines.push(
+      "El cliente manda su logo o diseño por este mismo chat (imagen o archivo) y alguien del equipo lo revisa antes de hacerla. Si todavía no lo tiene, se sigue igual y lo manda después."
+    );
+    lines.push("Técnicas:");
+    for (const t of resolveTechniques(ctx.config)) {
+      const product = techniqueProduct(ctx, t);
+      lines.push(
+        `- ${t.label}: ${t.description} Plazo ${leadTimeLabel(leadTimeFor(t, c.size))}, desde ${t.minQty} u.${product ? ` Precios por medida: ${productFacts(product)}` : " Precio: lo cotiza el equipo según el diseño."}`
+      );
+    }
+  } else {
+    const techs = resolveTechniques(ctx.config).map((t) => t.label.toLowerCase());
+    lines.push(
+      `También hacemos banderas personalizadas (con logo, texto, inscripción o diseño del cliente)${techs.length ? `: ${techs.join(", ")}` : ""}. Si el cliente quiere agregarle algo a una bandera, eso es una personalizada (intent "custom").`
+    );
+    if (session.pendingProductId || session.candidateProductIds.length || session.familyProductIds.length) {
+      lines.push("Productos que se están viendo (precios reales):");
+    }
+    addProduct(session.pendingProductId);
+    session.candidateProductIds.forEach(addProduct);
+    session.familyProductIds.forEach(addProduct);
+  }
+  if (session.cart.length) {
+    lines.push(
+      `Pedido anotado: ${session.cart.map((i) => `${i.quantity} × ${i.productName}${i.variantName ? ` ${i.variantName}` : ""}`).join(", ")} (total ${money(cartTotal(session))}).`
+    );
+  }
+  return lines.join("\n");
+}
 
 /** Vuelve a hacer la pregunta del paso actual (después de contestar otra cosa). */
 export function repromptStep(ctx: TFlowCtx) {
@@ -1799,6 +2186,20 @@ export function repromptStep(ctx: TFlowCtx) {
       return;
     case EBotStep.DELIVERY_ADDRESS:
       say(ctx, "¿Y la dirección? (calle y número) 📍");
+      return;
+    case EBotStep.CUSTOM_DATE:
+      say(ctx, "¿Para cuándo la necesitás? 📅");
+      return;
+    case EBotStep.CUSTOM_QTY:
+    case EBotStep.CUSTOM_SIZE:
+    case EBotStep.CUSTOM_LOGO:
+      nextCustomStep(ctx);
+      return;
+    case EBotStep.CUSTOM_TECHNIQUE:
+      offerTechniques(ctx);
+      return;
+    case EBotStep.QUANTITY:
+      say(ctx, "¿Cuántas te preparo?");
       return;
     default:
       // NAME / SEGMENT / DELIVERY: el siguiente dato que falta.
@@ -1824,6 +2225,7 @@ export async function handleStep(
   // "¿qué sale?" / "decime cuánto sale" en medio del pedido: se contesta con lo
   // que ya está anotado y se repite la pregunta del paso (no se pierde el contexto).
   if (answerPriceInContext(ctx, text)) return true;
+  if (answerCustomQuestion(ctx, text)) return true;
 
   switch (session.step) {
     case EBotStep.CHOOSE_TYPE: {
@@ -1889,6 +2291,14 @@ export async function handleStep(
         showProduct(ctx, product);
         return true;
       }
+      if (switchCandidateKeepingSize(ctx, text)) return true;
+      if (yn === true && product && session.offeredQuantity) {
+        // "¿Te anoto las 5?" → "sí": se anotan las ofrecidas.
+        const q = session.offeredQuantity;
+        session.offeredQuantity = null;
+        addToCart(ctx, q);
+        return true;
+      }
       if (yn === true && product) {
         // Ya le dijimos el precio: solo falta la cantidad.
         buttons(ctx, "¡Genial! ¿Cuántas te preparo?", [
@@ -1911,8 +2321,9 @@ export async function handleStep(
       const product = session.pendingProductId ? catalog.byId.get(session.pendingProductId) : null;
       if (!product) return false;
       const variant = findVariant(product, text);
-      if (!variant) return false;
-      const q = parseQuantity(text);
+      if (!variant) return switchCandidateKeepingSize(ctx, text);
+      // Solo una cantidad clara: "una inscripción" no es "1".
+      const q = parseExplicitQuantity(text);
       if (q) {
         session.pendingVariantId = variant.id;
         addToCart(ctx, q);

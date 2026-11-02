@@ -23,6 +23,8 @@ export const BOT_MODELS: { id: string; label: string }[] = [
 export const DEFAULT_BOT_CONFIG: TBotConfig = {
   enabled: false,
   aiEnabled: true,
+  agentMode: true,
+  agentInstructions: "",
   model: "claude-haiku-5-5",
   aiMonthlyBudgetUsd: 5,
   matchThreshold: 0.5,
@@ -407,5 +409,7 @@ export function mergeBotConfig(raw: Partial<TBotConfig> | null | undefined): TBo
     customTechniques: Array.isArray(r.customTechniques) ? r.customTechniques : [],
     askDelivery: r.askDelivery ?? DEFAULT_BOT_CONFIG.askDelivery,
     useButtons: r.useButtons ?? DEFAULT_BOT_CONFIG.useButtons,
+    agentMode: r.agentMode ?? DEFAULT_BOT_CONFIG.agentMode,
+    agentInstructions: r.agentInstructions ?? "",
   };
 }

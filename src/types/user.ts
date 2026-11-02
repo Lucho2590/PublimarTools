@@ -25,4 +25,11 @@ export type TUser = {
    * amplía el acceso, nunca lo restringe. Ver src/lib/permissions.ts.
    */
   permissions?: string[];
+  /**
+   * Celular del operador en E.164 sin "+" ni "0" de trunk, con código de país
+   * (UY "59899123456", AR "5491123456789"). Se guarda normalizado para ser
+   * comparable directamente contra el phone que el bot de WhatsApp persiste en
+   * las conversaciones. Ver src/lib/phone.ts.
+   */
+  phone?: string;
 };
