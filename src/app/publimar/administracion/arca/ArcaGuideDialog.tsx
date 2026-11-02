@@ -87,8 +87,10 @@ const HOMOLOGACION: TStep[] = [
     where: "PublimarTools → Certificado digital → Pruebas",
     body: (
       <p>
-        Primero guardá CUIT y razón social en {b("Datos del emisor")}. Después tocá {b("Generar CSR")}: se descarga un
-        archivo <code>.csr</code>. La clave privada queda guardada (cifrada) en el servidor y no hace falta tocarla.
+        Primero guardá CUIT y razón social en {b("Datos del emisor")}. En {b("CUIT de quien entra a ARCA")} poné el
+        CUIT de la persona que va a hacer el trámite con su clave fiscal (en una SRL, el socio gerente; ARCA emite el
+        certificado a su nombre, no al de la empresa). Después tocá {b("Generar CSR")}: se descarga un archivo{" "}
+        <code>.csr</code>. La clave privada queda guardada (cifrada) en el servidor y no hace falta tocarla.
       </p>
     ),
   },
@@ -121,7 +123,8 @@ const HOMOLOGACION: TStep[] = [
     body: (
       <p>
         Elegí el certificado recién creado y autorizalo para {b("wsfe")} (facturación). Después repetí el paso y
-        autorizalo para {b("ws_sr_constancia_inscripcion")} (validar CUIT en el padrón).
+        autorizalo para {b("ws_sr_constancia_inscripcion")} (validar CUIT en el padrón). Si el certificado es de una
+        persona y factura una empresa, en {b("CUIT representada")} poné el CUIT de la empresa.
       </p>
     ),
     tip: <>Si falta la autorización de <code>ws_sr_constancia_inscripcion</code>, se puede facturar pero el botón &quot;Validar en ARCA&quot; falla.</>,
@@ -150,7 +153,8 @@ const PRODUCCION: TStep[] = [
     where: "ARCA → Administración de Certificados Digitales",
     body: (
       <p>
-        Si no aparece el servicio, adherilo desde el Administrador de Relaciones. Elegí el CUIT de Banderas →{" "}
+        Si no aparece el servicio, adherilo desde el Administrador de Relaciones. Elegí tu CUIT (el que cargaste como
+        &quot;quien entra a ARCA&quot;) →{" "}
         {b("Agregar alias")} → poné un nombre, subí el <code>.csr</code> → {b("Agregar alias")}. Después entrá al
         alias y {b("descargá el certificado")} (<code>.crt</code>).
       </p>
@@ -163,6 +167,7 @@ const PRODUCCION: TStep[] = [
     body: (
       <>
         <p>
+          Si el certificado es tuyo y factura una empresa, al entrar elegí {b("representar a la empresa")}. Después{" "}
           {b("Buscar")} → ARCA → WebServices → {b("Facturación Electrónica")}. En {b("Representante")} elegí el
           certificado (computador fiscal) con el alias que creaste → Confirmar.
         </p>
@@ -197,6 +202,10 @@ const PRODUCCION: TStep[] = [
 ];
 
 const PROBLEMAS: { error: string; causa: React.ReactNode }[] = [
+  {
+    error: "WSASS rechaza el CSR / el CUIT no coincide",
+    causa: <>El CSR tiene que ir a nombre de quien entró a ARCA. Generá uno nuevo con su CUIT en &quot;CUIT de quien entra a ARCA&quot;.</>,
+  },
   {
     error: "\"ARCA rechazó el certificado\" / cms.cert…",
     causa: <>El certificado no corresponde al ambiente (uno de pruebas en producción o al revés), está vencido o no lo emitió ARCA. Generá un CSR nuevo en la pestaña correcta.</>,
@@ -260,7 +269,7 @@ export function ArcaGuideDialog({
             </p>
             <ul className="space-y-2 text-sm text-slate-700">
               {[
-                <>Clave fiscal {b("nivel 3")} del titular del CUIT de Banderas (o de alguien con permisos delegados).</>,
+                <>Clave fiscal {b("nivel 3")} del titular del CUIT de Banderas o, si es una sociedad, de quien la representa (el certificado sale a nombre de esa persona).</>,
                 <>Banderas tiene que ser {b("Responsable Inscripto")}: es la condición que emite Factura A y B.</>,
                 <>La variable {b("ARCA_ENCRYPTION_KEY")} cargada en el servidor (si falta, esta pantalla lo avisa arriba).</>,
                 <>Unos 20 minutos para pruebas y otros 20 para producción.</>,

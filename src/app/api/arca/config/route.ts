@@ -1,8 +1,9 @@
 // Configuración del emisor y certificados (solo admin).
 //   GET  → configuración pública (sin secretos)
 //   POST { action: "save", ...emisor }
-//   POST { action: "generateCsr", environment, alias } → { csrPem }
+//   POST { action: "generateCsr", environment, alias, titularCuit } → { csrPem }
 //   POST { action: "uploadCert", environment, certPem }
+//   POST { action: "setAuthCuit", authCuit } (solo homologación)
 
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -10,6 +11,7 @@ import {
   getPublicConfig,
   saveCertificate,
   saveEmisor,
+  setAuthCuit,
 } from "@/lib/arca/server/config";
 import { errorResponse, requireArcaUser } from "@/lib/arca/server/routeAuth";
 import type { TArcaEnvironment } from "@/types/arca";
@@ -51,11 +53,19 @@ export async function POST(request: NextRequest) {
         );
         break;
       case "generateCsr": {
-        const csrPem = await generateCsr(env(body.environment), String(body.alias || ""), auth.uid);
+        const csrPem = await generateCsr(
+          env(body.environment),
+          String(body.alias || ""),
+          String(body.titularCuit || ""),
+          auth.uid,
+        );
         return NextResponse.json({ csrPem, config: await getPublicConfig() });
       }
       case "uploadCert":
         await saveCertificate(env(body.environment), String(body.certPem || ""), auth.uid);
+        break;
+      case "setAuthCuit":
+        await setAuthCuit(body.authCuit === "certificado" ? "certificado" : "emisor", auth.uid);
         break;
       default:
         return NextResponse.json({ error: "Acción inválida" }, { status: 400 });

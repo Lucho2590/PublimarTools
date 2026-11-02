@@ -5,8 +5,9 @@
 import { generateKeyPairSync } from "crypto";
 import forge from "node-forge";
 import { getFirestoreAdmin } from "@/lib/apiAuth";
-import { cleanCuit } from "@/lib/cuit";
+import { cleanCuit, isValidCuitChecksum } from "@/lib/cuit";
 import type {
+  TArcaAuthCuit,
   TArcaCertInfo,
   TArcaEmisorSnapshot,
   TArcaEnvironment,
@@ -21,6 +22,10 @@ const CONFIG_DOC = "default";
 
 type TStoredCert = {
   keyEnc?: string;
+  /** CUIT de quien entra a ARCA y genera el certificado (puede no ser el del emisor). */
+  titularCuit?: string;
+  /** Solo homologación: con qué CUIT se factura cuando el certificado es de otra persona. */
+  authCuit?: TArcaAuthCuit;
   csrPem?: string;
   certPem?: string;
   certSubject?: string;
@@ -60,6 +65,8 @@ function certInfo(c: TStoredCert | undefined): TArcaCertInfo {
     certSubject: c?.certSubject,
     certCuit: c?.certCuit,
     certExpiresAt: c?.certExpiresAt,
+    titularCuit: c?.titularCuit,
+    authCuit: c?.authCuit === "certificado" ? "certificado" : "emisor",
   };
 }
 
@@ -120,16 +127,26 @@ export async function saveEmisor(input: TEmisorInput, uid: string): Promise<void
  * (WSASS en homologación, "Administración de Certificados Digitales" en
  * producción) y ARCA devuelve el .crt que después se carga con `saveCertificate`.
  * Regenerar invalida el certificado anterior de ese ambiente.
+ *
+ * ARCA emite el certificado a nombre de quien entra con su clave fiscal (en una
+ * SRL, el socio gerente), así que el CSR lleva ese CUIT (`titularCuit`). Después
+ * la empresa le delega wsfe y el padrón a ese certificado y se factura con el
+ * CUIT del emisor como representado.
  */
 export async function generateCsr(
   environment: TArcaEnvironment,
   alias: string,
+  titularCuitInput: string,
   uid: string,
 ): Promise<string> {
   const s = await readStored();
-  const cuit = cleanCuit(s.cuit);
-  if (cuit.length !== 11) throw new Error("Cargá y guardá el CUIT del emisor antes de generar el CSR");
+  const emisorCuit = cleanCuit(s.cuit);
+  if (emisorCuit.length !== 11) throw new Error("Cargá y guardá el CUIT del emisor antes de generar el CSR");
   if (!s.razonSocial) throw new Error("Cargá y guardá la razón social antes de generar el CSR");
+  const cuit = cleanCuit(titularCuitInput) || emisorCuit;
+  if (!isValidCuitChecksum(cuit)) {
+    throw new Error("El CUIT de quien entra a ARCA no es válido (revisá el dígito verificador)");
+  }
 
   const { privateKey } = generateKeyPairSync("rsa", {
     modulusLength: 2048,
@@ -155,6 +172,7 @@ export async function generateCsr(
       certs: {
         [environment]: {
           keyEnc: encryptSecret(forge.pki.privateKeyToPem(forgeKey)),
+          titularCuit: cuit,
           csrPem,
           certPem: null,
           certSubject: null,
@@ -194,11 +212,9 @@ export async function saveCertificate(
     throw new Error("El certificado no corresponde al último CSR generado para este ambiente");
   }
 
+  // Puede ser de otro CUIT que el emisor (representante): no se valida acá.
   const serial = cert.subject.getField({ name: "serialNumber" })?.value as string | undefined;
   const certCuit = cleanCuit(serial);
-  if (s.cuit && certCuit && certCuit !== cleanCuit(s.cuit)) {
-    throw new Error(`El certificado es del CUIT ${certCuit}, distinto al del emisor configurado`);
-  }
 
   const info = {
     certPem: forge.pki.certificateToPem(cert),
@@ -218,6 +234,19 @@ export async function saveCertificate(
   return certInfo({ ...stored, ...info, certCuit: info.certCuit || undefined });
 }
 
+/** Homologación: facturar las pruebas con el CUIT del emisor o con el del certificado. */
+export async function setAuthCuit(authCuit: TArcaAuthCuit, uid: string): Promise<void> {
+  await configRef().set(
+    {
+      certs: { homologacion: { authCuit: authCuit === "certificado" ? "certificado" : "emisor" } },
+      updatedAt: new Date().toISOString(),
+      updatedBy: uid,
+    },
+    { merge: true },
+  );
+  await clearTickets("homologacion");
+}
+
 export type TEmisionContext = {
   environment: TArcaEnvironment;
   cuit: string;
@@ -232,8 +261,8 @@ export type TEmisionContext = {
 export async function getEmisionContext(): Promise<TEmisionContext> {
   const s = await readStored();
   const environment = s.environment || "homologacion";
-  const cuit = cleanCuit(s.cuit);
-  if (cuit.length !== 11) throw new Error("Falta configurar el CUIT del emisor en Administración → ARCA");
+  const emisorCuit = cleanCuit(s.cuit);
+  if (emisorCuit.length !== 11) throw new Error("Falta configurar el CUIT del emisor en Administración → ARCA");
   const stored = s.certs?.[environment];
   if (!stored?.keyEnc || !stored?.certPem) {
     throw new Error(
@@ -243,6 +272,11 @@ export async function getEmisionContext(): Promise<TEmisionContext> {
   if (stored.certExpiresAt && new Date(stored.certExpiresAt).getTime() < Date.now()) {
     throw new Error("El certificado de ARCA está vencido: generá uno nuevo en Administración → ARCA");
   }
+  const certCuit = cleanCuit(stored.certCuit);
+  const cuit =
+    environment === "homologacion" && stored.authCuit === "certificado" && certCuit.length === 11
+      ? certCuit
+      : emisorCuit;
   return {
     environment,
     cuit,

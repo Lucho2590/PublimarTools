@@ -140,6 +140,9 @@ export type TArcaPadronSnapshot = {
   estadoClave: string;
 };
 
+/** Con qué CUIT se factura en homologación cuando el certificado es de otra persona. */
+export type TArcaAuthCuit = "emisor" | "certificado";
+
 export type TArcaCertInfo = {
   hasKey: boolean;
   hasCsr: boolean;
@@ -148,6 +151,9 @@ export type TArcaCertInfo = {
   certSubject?: string;
   certCuit?: string;
   certExpiresAt?: string;
+  /** CUIT con el que se generó el CSR (quien entra a ARCA). */
+  titularCuit?: string;
+  authCuit: TArcaAuthCuit;
 };
 
 /** Configuración visible para el admin (sin secretos). */
