@@ -119,7 +119,7 @@ export async function buildArcaInvoicePdf(inv: TArcaInvoice) {
   ry += 1.5;
   ry = labeled("CUIT", formatCuit(inv.emisor.cuit), mid + 10, ry, W - M - mid - 12);
   ry = labeled("Ingresos Brutos", inv.emisor.iibb, mid + 10, ry, W - M - mid - 12);
-  labeled("Fecha de Inicio de Actividades", inv.emisor.inicioActividades, mid + 10, ry, W - M - mid - 12);
+  labeled("Fecha de Inicio de Actividades", isoToAr(inv.emisor.inicioActividades), mid + 10, ry, W - M - mid - 12);
 
   // ---- Receptor ----
   const rTop = top + headH + 2;
