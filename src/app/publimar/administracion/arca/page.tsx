@@ -27,12 +27,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { MoneyInput } from "@/components/ui/money-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CuitInput } from "@/components/cuit-input";
 import { getArcaConfig, getArcaStatus, postArcaConfig, type TArcaStatus } from "@/lib/arca/api";
 import { CONDICION_IVA_EMISOR, DEFAULT_UMBRAL_CONSUMIDOR_FINAL } from "@/lib/arca/constants";
-import { isValidCuitChecksum } from "@/lib/cuit";
+import { cleanCuit, formatCuit, isValidCuitChecksum } from "@/lib/cuit";
 import { cn } from "@/lib/utils";
 import type { TArcaEnvironment, TArcaPublicConfig } from "@/types/arca";
 import { ArcaGuideDialog, type TGuideTab } from "./ArcaGuideDialog";
@@ -625,23 +626,47 @@ function CertificatePanel({
   const { data: user } = useUser();
   const info = config.certs[environment];
   const [alias, setAlias] = useState("banderas-app");
+  const [titularCuit, setTitularCuit] = useState(info.titularCuit || config.cuit);
+  const [regen, setRegen] = useState(false);
   const [certPem, setCertPem] = useState("");
   const [showPaste, setShowPaste] = useState(false);
-  const [busy, setBusy] = useState<"csr" | "cert" | null>(null);
+  const [busy, setBusy] = useState<"csr" | "cert" | "auth" | null>(null);
   const expired = certExpired(info.certExpiresAt);
   const ready = info.hasCert && !expired;
   const where = environment === "homologacion" ? "WSASS" : "Administración de Certificados Digitales";
+  const titularOk = isValidCuitChecksum(titularCuit);
+  // El certificado es de una persona (quien entra a ARCA) y factura por el emisor: hace falta la delegación.
+  const certCuit = cleanCuit(info.certCuit);
+  const representa = info.hasCert && certCuit.length === 11 && certCuit !== cleanCuit(config.cuit);
 
   const generate = async () => {
     if (info.hasCert && !window.confirm("Un CSR nuevo invalida el certificado actual de este ambiente. ¿Continuar?")) return;
     setBusy("csr");
     try {
-      const { config: c, csrPem } = await postArcaConfig(user, { action: "generateCsr", environment, alias });
+      const { config: c, csrPem } = await postArcaConfig(user, {
+        action: "generateCsr",
+        environment,
+        alias,
+        titularCuit,
+      });
       onConfig(c);
+      setRegen(false);
       if (csrPem) downloadText(`banderas-${environment}.csr`, csrPem);
       toast.success("Pedido generado: se descargó el archivo .csr");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "No se pudo generar el CSR");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleAuthCuit = async (authCuit: "emisor" | "certificado") => {
+    setBusy("auth");
+    try {
+      const { config: c } = await postArcaConfig(user, { action: "setAuthCuit", authCuit });
+      onConfig(c);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "No se pudo guardar la opción");
     } finally {
       setBusy(null);
     }
@@ -712,24 +737,53 @@ function CertificatePanel({
           {!emisorReady && (
             <p className="text-xs text-amber-700">Primero guardá CUIT y razón social en Datos del emisor.</p>
           )}
-          {info.hasCsr ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => downloadText(`banderas-${environment}.csr`, info.csrPem!)}>
-                <Download className="h-4 w-4 mr-1.5" />
-                Descargar .csr
-              </Button>
-              <Button size="sm" variant="ghost" onClick={generate} disabled={disabled || busy !== null || !emisorReady}>
-                {busy === "csr" ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1.5" />}
-                Generar uno nuevo
-              </Button>
+          {info.hasCsr && !regen ? (
+            <div className="space-y-2">
+              {info.titularCuit && (
+                <p className="text-sm text-muted-foreground">
+                  A nombre del CUIT <span className="font-medium text-slate-700">{formatCuit(info.titularCuit)}</span>
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => downloadText(`banderas-${environment}.csr`, info.csrPem!)}>
+                  <Download className="h-4 w-4 mr-1.5" />
+                  Descargar .csr
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setRegen(true)} disabled={disabled || busy !== null || !emisorReady}>
+                  <RefreshCw className="h-4 w-4 mr-1.5" />
+                  Generar uno nuevo
+                </Button>
+              </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="Nombre (alias)" className="sm:max-w-[220px]" />
-              <Button onClick={generate} disabled={disabled || busy !== null || !emisorReady}>
-                {busy === "csr" ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <KeyRound className="h-4 w-4 mr-1.5" />}
-                Generar y descargar .csr
-              </Button>
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field
+                  label="CUIT de quien entra a ARCA"
+                  hint={
+                    titularCuit && !titularOk
+                      ? "CUIT inválido (revisá el dígito verificador)"
+                      : "El certificado sale a nombre de la persona con clave fiscal (en una SRL, el socio gerente), no de la empresa."
+                  }
+                  error={!!titularCuit && !titularOk}
+                >
+                  <CuitInput value={titularCuit} onValueChange={setTitularCuit} />
+                </Field>
+                <Field label="Nombre (alias)">
+                  <Input value={alias} onChange={(e) => setAlias(e.target.value)} placeholder="banderas-app" />
+                </Field>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={generate} disabled={disabled || busy !== null || !emisorReady || !titularOk}>
+                  {busy === "csr" ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <KeyRound className="h-4 w-4 mr-1.5" />}
+                  Generar y descargar .csr
+                </Button>
+                {regen && (
+                  <Button variant="ghost" onClick={() => setRegen(false)} disabled={busy !== null}>
+                    Cancelar
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </SubStep>
@@ -747,6 +801,33 @@ function CertificatePanel({
         </SubStep>
 
         <SubStep n="C" title="Cargar el certificado" done={ready} active={info.hasCsr && !ready} last>
+          {representa && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-900 space-y-2">
+              <p>
+                El certificado es de <b>{formatCuit(certCuit)}</b> y factura por <b>{formatCuit(config.cuit)}</b>. La empresa
+                le tiene que delegar <code>wsfe</code> y el padrón a este certificado
+                {environment === "homologacion"
+                  ? " (WSASS → Crear autorización a servicio, con CUIT representada = la empresa)."
+                  : " (Administrador de Relaciones, representando a la empresa)."}
+              </p>
+              {environment === "homologacion" && (
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <Checkbox
+                    className="mt-0.5"
+                    checked={info.authCuit === "certificado"}
+                    disabled={disabled || busy !== null}
+                    onCheckedChange={(v) => toggleAuthCuit(v === true ? "certificado" : "emisor")}
+                  />
+                  <span>
+                    Facturar las pruebas con el CUIT del certificado ({formatCuit(certCuit)}).{" "}
+                    <span className="text-blue-700/80">
+                      Usalo si WSASS no te deja autorizar a la empresa como representada. En producción siempre factura la empresa.
+                    </span>
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
           {ready && !showPaste ? (
             <Button size="sm" variant="ghost" onClick={() => setShowPaste(true)} disabled={!info.hasKey}>
               Reemplazar certificado

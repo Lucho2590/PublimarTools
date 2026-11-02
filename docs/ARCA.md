@@ -8,19 +8,21 @@ La app emite **Factura A, Factura B, Nota de Crédito A y Nota de Crédito B** c
 
 ## 1. Trámite en ARCA (titular del CUIT o contador)
 
-Hace falta clave fiscal nivel 3 del CUIT de Banderas. Banderas tiene que ser **Responsable Inscripto** (es la condición que emite A y B). Confirmá también que no esté en el régimen de "A con leyenda" o "M" (RG 1575).
+Hace falta clave fiscal nivel 3 del CUIT de Banderas o, si es una sociedad, de quien la representa. Banderas tiene que ser **Responsable Inscripto** (es la condición que emite A y B). Confirmá también que no esté en el régimen de "A con leyenda" o "M" (RG 1575).
+
+**Representante y representado.** ARCA emite el certificado a nombre de **quien entra con su clave fiscal** (en una SRL, el socio gerente — p. ej. MDQ Publishot SRL la valida Hugo Froilán Giardini con su CUIT personal), no de la empresa. Por eso el CSR se genera con el *CUIT de quien entra a ARCA*, y la empresa le **delega** `wsfe` y el padrón a ese certificado. La app factura siempre con el CUIT del emisor (`Auth.Cuit` / `cuitRepresentada`), así que el CUIT del certificado y el del emisor pueden ser distintos.
 
 ### Homologación (pruebas, sin validez fiscal)
-1. En la app: Administración → Facturación ARCA → cargar y **guardar** CUIT y razón social → en la tarjeta *Homologación*, **Generar CSR** (se descarga un `.csr`).
+1. En la app: Administración → Facturación ARCA → cargar y **guardar** CUIT y razón social → en la tarjeta *Homologación*, cargar el **CUIT de quien entra a ARCA** y **Generar CSR** (se descarga un `.csr`). WSASS rechaza el CSR si ese CUIT no es el del usuario logueado.
 2. En ARCA, adherir el servicio **WSASS – Autogestión Certificados Homologación** (Administrador de Relaciones de Clave Fiscal → Adherir servicio).
 3. En WSASS: *Nuevo certificado* → pegar el CSR → copiar el certificado que devuelve.
-4. En WSASS: *Crear autorización a servicio* para ese certificado con los servicios **wsfe** y **ws_sr_constancia_inscripcion**.
-5. En la app: pegar el certificado en la tarjeta *Homologación* → **Guardar certificado** → **Probar**.
+4. En WSASS: *Crear autorización a servicio* para ese certificado con los servicios **wsfe** y **ws_sr_constancia_inscripcion**. Si el certificado es de una persona y factura una empresa, en *CUIT representada* va el CUIT de la empresa.
+5. En la app: pegar el certificado en la tarjeta *Homologación* → **Guardar certificado** → **Probar**. Si WSASS no deja autorizar a la empresa como representada, tildar *Facturar las pruebas con el CUIT del certificado* (solo existe en homologación; en producción siempre factura el emisor).
 
 ### Producción
 1. En la app: tarjeta *Producción* → **Generar CSR**.
 2. En ARCA → **Administración de Certificados Digitales** → agregar alias → subir el CSR → descargar el `.crt`.
-3. En ARCA → **Administrador de Relaciones de Clave Fiscal** → *Nueva relación* → buscar y agregar **dos** servicios, cada uno con el certificado (computador fiscal) como representante:
+3. En ARCA → **Administrador de Relaciones de Clave Fiscal** → elegir **representar a la empresa** (si el certificado es de una persona) → *Nueva relación* → buscar y agregar **dos** servicios, cada uno con el certificado (computador fiscal) como representante:
    - **Facturación Electrónica** (wsfe).
    - **Consulta a Padrón Constancia de Inscripción** (ws_sr_constancia_inscripcion).
 4. En ARCA → **Administración de Puntos de Venta y Domicilios** → nuevo punto de venta con sistema **"Factura Electrónica – Monotributo / Responsable Inscripto – Web Services"**. Tiene que ser distinto del que se usa en *Comprobantes en línea*.
