@@ -625,7 +625,7 @@ function CertificatePanel({
 }) {
   const { data: user } = useUser();
   const info = config.certs[environment];
-  const [alias, setAlias] = useState("banderas-app");
+  const [alias, setAlias] = useState(info.csrAlias || "banderas-app");
   const [titularCuit, setTitularCuit] = useState(info.titularCuit || config.cuit);
   const [regen, setRegen] = useState(false);
   const [certPem, setCertPem] = useState("");
@@ -720,9 +720,14 @@ function CertificatePanel({
               ? "Pedido generado: falta cargar el certificado de ARCA"
               : "Sin configurar"}
           </p>
-          <p className="text-slate-600 break-words">
+          <p className="text-slate-600 break-words" title={info.certSubject}>
             {ready
-              ? info.certSubject
+              ? [
+                  certCuit && `CUIT ${formatCuit(certCuit)}`,
+                  info.certAlias && `alias "${info.certAlias}"`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || info.certSubject
               : expired
               ? "Generá un pedido nuevo y repetí el trámite en ARCA."
               : info.hasCsr
@@ -739,10 +744,27 @@ function CertificatePanel({
           )}
           {info.hasCsr && !regen ? (
             <div className="space-y-2">
-              {info.titularCuit && (
-                <p className="text-sm text-muted-foreground">
-                  A nombre del CUIT <span className="font-medium text-slate-700">{formatCuit(info.titularCuit)}</span>
-                </p>
+              {(info.csrCuit || info.csrAlias) && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                    <dt className="text-muted-foreground">CUIT</dt>
+                    <dd className="font-medium text-slate-900">{formatCuit(info.csrCuit) || "—"}</dd>
+                    <dt className="text-muted-foreground">Alias</dt>
+                    <dd className="font-medium text-slate-900 break-all">{info.csrAlias || "—"}</dd>
+                    {info.csrRazonSocial && (
+                      <>
+                        <dt className="text-muted-foreground">Razón social</dt>
+                        <dd className="text-slate-700">{info.csrRazonSocial}</dd>
+                      </>
+                    )}
+                  </dl>
+                  {!info.hasCert && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {where} solo acepta el pedido si este CUIT es el de quien entra a ARCA. Si entrás con otro, tocá{" "}
+                      &quot;Generar uno nuevo&quot; y cargá ese CUIT.
+                    </p>
+                  )}
+                </div>
               )}
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="outline" onClick={() => downloadText(`banderas-${environment}.csr`, info.csrPem!)}>
@@ -789,11 +811,15 @@ function CertificatePanel({
         </SubStep>
 
         <SubStep n="B" title={`Crear el certificado en ARCA (${where})`} done={info.hasCert} active={info.hasCsr && !info.hasCert}>
-          <p className="text-sm text-muted-foreground">
-            {environment === "homologacion"
-              ? "Con el .csr se crea el certificado en WSASS y se lo autoriza para wsfe y ws_sr_constancia_inscripcion."
-              : "Se sube el .csr, se descarga el .crt y se lo asocia a Facturación Electrónica y a Consulta a Padrón."}
-          </p>
+          {info.hasCsr && !info.hasCert ? (
+            <ArcaTodo environment={environment} info={info} emisorCuit={config.cuit} emisorRazonSocial={config.razonSocial} />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {environment === "homologacion"
+                ? "Con el .csr se crea el certificado en WSASS y se lo autoriza para wsfe y ws_sr_constancia_inscripcion."
+                : "Se sube el .csr, se descarga el .crt y se lo asocia a Facturación Electrónica y a Consulta a Padrón."}
+            </p>
+          )}
           <Button size="sm" variant="outline" onClick={onOpenGuide}>
             <BookOpen className="h-4 w-4 mr-1.5" />
             Ver paso a paso
@@ -886,6 +912,92 @@ function CertificatePanel({
           )}
         </SubStep>
       </ol>
+    </div>
+  );
+}
+
+/** Qué hacer en ARCA con los datos reales de este pedido (CUIT, alias, empresa). */
+function ArcaTodo({
+  environment,
+  info,
+  emisorCuit,
+  emisorRazonSocial,
+}: {
+  environment: TArcaEnvironment;
+  info: TArcaPublicConfig["certs"][TArcaEnvironment];
+  emisorCuit: string;
+  emisorRazonSocial: string;
+}) {
+  const titular = cleanCuit(info.csrCuit || info.titularCuit);
+  const emisor = cleanCuit(emisorCuit);
+  const empresa = emisorRazonSocial || "la empresa";
+  const otraPersona = titular.length === 11 && titular !== emisor;
+  const v = (t: string) => <b className="font-semibold text-slate-900">{t}</b>;
+  const items: React.ReactNode[] =
+    environment === "homologacion"
+      ? [
+          <>
+            Entrá a ARCA con la clave fiscal del CUIT {v(formatCuit(titular) || "del pedido")} y abrí {v("WSASS")}{" "}
+            (si no aparece, adherilo en el Administrador de Relaciones).
+          </>,
+          <>
+            {v("Nuevo Certificado")} → nombre {v(info.csrAlias || "banderas-app")} → pegá el contenido del{" "}
+            <code>.csr</code> → copiá el certificado que devuelve.
+          </>,
+          <>
+            {v("Crear autorización a servicio")} con ese certificado para {v("wsfe")} y otra para{" "}
+            {v("ws_sr_constancia_inscripcion")}
+            {otraPersona ? (
+              <>
+                , con {v("CUIT representada")} = {v(formatCuit(emisor))} ({empresa}).
+              </>
+            ) : (
+              "."
+            )}
+          </>,
+          <>Pegá o subí el certificado en el paso C.</>,
+        ]
+      : [
+          <>
+            Entrá a ARCA con la clave fiscal del CUIT {v(formatCuit(titular) || "del pedido")} →{" "}
+            {v("Administración de Certificados Digitales")}.
+          </>,
+          <>
+            {v("Agregar alias")} → {v(info.csrAlias || "banderas-app")} → subí el <code>.csr</code> → descargá el{" "}
+            <code>.crt</code>.
+          </>,
+          <>
+            {v("Administrador de Relaciones")}
+            {otraPersona ? (
+              <>
+                {" "}
+                representando a {v(empresa)} ({formatCuit(emisor)})
+              </>
+            ) : null}{" "}
+            → Nueva relación → {v("Facturación Electrónica")} y {v("Consulta a Padrón Constancia de Inscripción")}, con
+            el certificado {v(info.csrAlias || "banderas-app")} como representante.
+          </>,
+          <>Subí el <code>.crt</code> en el paso C.</>,
+        ];
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2.5 space-y-2">
+      <p className="text-sm font-medium text-slate-900">Qué hacer ahora en ARCA</p>
+      <ol className="space-y-1.5 text-sm text-slate-700">
+        {items.map((item, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white">
+              {i + 1}
+            </span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ol>
+      {!otraPersona && titular === emisor && (
+        <p className="text-xs text-amber-700">
+          El pedido está a nombre de la empresa. Si en ARCA entrás con tu CUIT personal (por ejemplo, el socio gerente),
+          generá un pedido nuevo con ese CUIT o ARCA lo va a rechazar.
+        </p>
+      )}
     </div>
   );
 }

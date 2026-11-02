@@ -56,7 +56,40 @@ async function readStored(): Promise<TStoredConfig> {
   return (snap.exists ? snap.data() : {}) as TStoredConfig;
 }
 
+type TSubjectAttr = { name?: string; shortName?: string; value?: unknown };
+
+/** CUIT (serialNumber), alias (CN) y razón social (O) de un subject X.509. */
+type TSubjectDetails = { cuit?: string; alias?: string; razonSocial?: string };
+
+function subjectDetails(attrs: TSubjectAttr[]): TSubjectDetails {
+  const get = (key: string) => {
+    const a = attrs.find((x) => x.shortName === key || x.name === key);
+    return typeof a?.value === "string" ? a.value : undefined;
+  };
+  const cuit = cleanCuit(get("serialNumber"));
+  return { cuit: cuit || undefined, alias: get("CN"), razonSocial: get("O") };
+}
+
+function csrDetails(pem: string | undefined): TSubjectDetails {
+  if (!pem) return {};
+  try {
+    return subjectDetails(forge.pki.certificationRequestFromPem(pem).subject.attributes);
+  } catch {
+    return {};
+  }
+}
+
+function certAlias(pem: string | undefined): string | undefined {
+  if (!pem) return undefined;
+  try {
+    return subjectDetails(forge.pki.certificateFromPem(pem).subject.attributes).alias;
+  } catch {
+    return undefined;
+  }
+}
+
 function certInfo(c: TStoredCert | undefined): TArcaCertInfo {
+  const csr = csrDetails(c?.csrPem);
   return {
     hasKey: !!c?.keyEnc,
     hasCsr: !!c?.csrPem,
@@ -65,7 +98,11 @@ function certInfo(c: TStoredCert | undefined): TArcaCertInfo {
     certSubject: c?.certSubject,
     certCuit: c?.certCuit,
     certExpiresAt: c?.certExpiresAt,
-    titularCuit: c?.titularCuit,
+    titularCuit: c?.titularCuit || csr.cuit,
+    csrCuit: csr.cuit,
+    csrAlias: csr.alias,
+    csrRazonSocial: csr.razonSocial,
+    certAlias: certAlias(c?.certPem),
     authCuit: c?.authCuit === "certificado" ? "certificado" : "emisor",
   };
 }
