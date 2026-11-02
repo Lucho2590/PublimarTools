@@ -49,6 +49,17 @@ import {
   EAuditSection,
 } from "@/types/auditLog";
 import { taxConditionOptions } from "@/lib/taxCondition";
+import { TRazonSocial } from "@/types/client";
+import type { TArcaPadronResult, TArcaPadronSnapshot } from "@/types/arca";
+import {
+  ArcaPadronBadge,
+  ValidarCuitButton,
+  padronSnapshot,
+} from "@/components/arca/ValidarCuitButton";
+import {
+  RazonesSocialesEditor,
+  cleanRazonesSociales,
+} from "@/components/clients/RazonesSocialesEditor";
 
 export default function NuevoClientePage() {
   const [loading, setLoading] = useState(false);
@@ -60,6 +71,8 @@ export default function NuevoClientePage() {
   const [contacts, setContacts] = useState<TClientContact[]>([
     { name: "", email: "", phone: "" },
   ]);
+  const [razonesSociales, setRazonesSociales] = useState<TRazonSocial[]>([]);
+  const [arcaPadron, setArcaPadron] = useState<TArcaPadronSnapshot | null>(null);
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -72,6 +85,7 @@ export default function NuevoClientePage() {
     phone: string;
     address: string;
     cuit: string;
+    dni: string;
     taxCondition: EClientTaxCondition | undefined;
     reference: string;
     notes: string;
@@ -86,10 +100,24 @@ export default function NuevoClientePage() {
     phone: "",
     address: "",
     cuit: "",
+    dni: "",
     taxCondition: undefined,
     reference: "",
     notes: "",
   });
+
+  // Completa con lo que informa el padrón de ARCA (razón social, domicilio fiscal y condición IVA).
+  const applyPadron = (r: TArcaPadronResult) => {
+    setArcaPadron(padronSnapshot(r));
+    setFormData((prev) => ({
+      ...prev,
+      ...(prev.type === EClientType.COMPANY
+        ? { businessName: r.razonSocial || prev.businessName }
+        : { name: prev.name || r.razonSocial }),
+      address: prev.address || r.domicilio,
+      taxCondition: r.condicion,
+    }));
+  };
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -174,9 +202,12 @@ export default function NuevoClientePage() {
           finalFormData.fantasyName || finalFormData.businessName;
       }
 
+      const cleanedRazones = cleanRazonesSociales(razonesSociales);
       const clientData: Record<string, any> = {
         ...finalFormData,
         contacts: filteredContacts,
+        ...(cleanedRazones.length > 0 && { razonesSociales: cleanedRazones }),
+        ...(arcaPadron && { arcaPadron }),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: doc(firestore, `users/${user.uid}`),
@@ -207,7 +238,7 @@ export default function NuevoClientePage() {
         description: `Creó el cliente ${finalFormData.name ?? ""}`.trim(),
         changes: buildChanges(
           null,
-          { ...finalFormData, contacts: filteredContacts } as any,
+          { ...finalFormData, contacts: filteredContacts, razonesSociales: cleanedRazones } as any,
           [
             "name",
             "type",
@@ -219,7 +250,9 @@ export default function NuevoClientePage() {
             "phone",
             "address",
             "cuit",
+            "dni",
             "taxCondition",
+            "razonesSociales",
             "reference",
             "notes",
             "contacts",
@@ -292,14 +325,23 @@ export default function NuevoClientePage() {
                     ? "CUIT"
                     : "CUIT / CUIL"}
                 </Label>
-                <CuitInput
-                  id="cuit"
-                  name="cuit"
-                  value={formData.cuit}
-                  onValueChange={(digits) =>
-                    setFormData((prev) => ({ ...prev, cuit: digits }))
-                  }
-                />
+                <div className="flex gap-2">
+                  <CuitInput
+                    id="cuit"
+                    name="cuit"
+                    value={formData.cuit}
+                    onValueChange={(digits) => {
+                      setFormData((prev) => ({ ...prev, cuit: digits }));
+                      setArcaPadron(null);
+                    }}
+                  />
+                  <ValidarCuitButton
+                    cuit={formData.cuit}
+                    size="default"
+                    onResult={applyPadron}
+                  />
+                </div>
+                <ArcaPadronBadge snapshot={arcaPadron} />
               </div>
             </div>
 
@@ -316,6 +358,23 @@ export default function NuevoClientePage() {
                   />
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="dni">DNI</Label>
+                  <Input
+                    id="dni"
+                    name="dni"
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={formData.dni}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        dni: e.target.value.replace(/\D/g, ""),
+                      }))
+                    }
+                    placeholder="Si no tiene CUIT (consumidor final)"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="address">Dirección</Label>
                   <AddressInput
                     id="address"
@@ -385,6 +444,17 @@ export default function NuevoClientePage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Otras razones sociales</Label>
+              <p className="text-xs text-muted-foreground">
+                Otros CUIT a los que se le puede facturar a este cliente.
+              </p>
+              <RazonesSocialesEditor
+                value={razonesSociales}
+                onChange={setRazonesSociales}
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

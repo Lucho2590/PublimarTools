@@ -30,6 +30,7 @@ import {
   EClientTaxCondition,
   TClient,
   TClientContact,
+  TRazonSocial,
 } from "@/types/client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -42,33 +43,17 @@ import {
   Users,
   Save,
 } from "lucide-react";
-
-const taxConditionOptions: {
-  value: EClientTaxCondition;
-  label: string;
-  invoice: string;
-}[] = [
-  {
-    value: EClientTaxCondition.IVA_INSCRIPTO,
-    label: "IVA Inscripto",
-    invoice: "Factura A",
-  },
-  {
-    value: EClientTaxCondition.IVA_EXENTO,
-    label: "IVA Exento",
-    invoice: "Factura B",
-  },
-  {
-    value: EClientTaxCondition.IVA_NO_ALCANZADO,
-    label: "IVA No Alcanzado",
-    invoice: "Factura B",
-  },
-  {
-    value: EClientTaxCondition.CONSUMIDOR_FINAL,
-    label: "Consumidor Final",
-    invoice: "Factura B",
-  },
-];
+import { taxConditionOptions } from "@/lib/taxCondition";
+import type { TArcaPadronResult } from "@/types/arca";
+import {
+  ArcaPadronBadge,
+  ValidarCuitButton,
+  padronSnapshot,
+} from "@/components/arca/ValidarCuitButton";
+import {
+  RazonesSocialesEditor,
+  cleanRazonesSociales,
+} from "@/components/clients/RazonesSocialesEditor";
 
 export default function EditarClientePage({
   params,
@@ -100,12 +85,14 @@ export default function EditarClientePage({
   });
 
   const [contacts, setContacts] = useState<TClientContact[]>([]);
+  const [razonesSociales, setRazonesSociales] = useState<TRazonSocial[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     if (status === "success" && client && !formData.name) {
       setFormData(client as unknown as TClient);
       setContacts(client.contacts || [{ name: "", email: "", phone: "" }]);
+      setRazonesSociales(client.razonesSociales || []);
     }
   }, [status, client, formData.name]);
 
@@ -153,11 +140,17 @@ export default function EditarClientePage({
           finalFormData.name;
       }
 
-      await updateDoc(clientRef, {
+      // Firestore rechaza `undefined` (ej. condición IVA "Sin definir").
+      const payload: Record<string, any> = {
         ...finalFormData,
         contacts: filteredContacts,
+        razonesSociales: cleanRazonesSociales(razonesSociales),
         updatedAt: new Date(),
-      });
+      };
+      Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
+      if (!finalFormData.taxCondition) payload.taxCondition = null;
+      if (!finalFormData.arcaPadron) payload.arcaPadron = null;
+      await updateDoc(clientRef, payload);
 
       toast.success("Cliente actualizado correctamente");
       redirect(`/publimar/banderas/clientes/${params.id}`);
@@ -248,27 +241,68 @@ export default function EditarClientePage({
                 <Label htmlFor="cuit">
                   {formData.type === EClientType.COMPANY ? "CUIT" : "CUIT / CUIL"}
                 </Label>
-                <CuitInput
-                  id="cuit"
-                  value={formData.cuit || ""}
-                  onValueChange={(digits) =>
-                    setFormData({ ...formData, cuit: digits })
-                  }
-                />
+                <div className="flex gap-2">
+                  <CuitInput
+                    id="cuit"
+                    value={formData.cuit || ""}
+                    onValueChange={(digits) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        cuit: digits,
+                        // Cambió el CUIT: la validación anterior ya no aplica.
+                        ...(digits !== prev.cuit ? { arcaPadron: undefined } : {}),
+                      }))
+                    }
+                  />
+                  <ValidarCuitButton
+                    cuit={formData.cuit}
+                    size="default"
+                    onResult={(r: TArcaPadronResult) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        ...(prev.type === EClientType.COMPANY
+                          ? { businessName: r.razonSocial || prev.businessName }
+                          : { name: prev.name || r.razonSocial }),
+                        address: prev.address || r.domicilio,
+                        taxCondition: r.condicion,
+                        arcaPadron: padronSnapshot(r),
+                      }))
+                    }
+                  />
+                </div>
+                <ArcaPadronBadge snapshot={formData.arcaPadron} />
               </div>
 
               {formData.type === EClientType.INDIVIDUAL ? (
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="name">Nombre completo *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    required
-                  />
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nombre completo *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dni">DNI</Label>
+                    <Input
+                      id="dni"
+                      inputMode="numeric"
+                      maxLength={8}
+                      value={formData.dni || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          dni: e.target.value.replace(/\D/g, ""),
+                        })
+                      }
+                      placeholder="Si no tiene CUIT (consumidor final)"
+                    />
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="space-y-2">
@@ -328,6 +362,17 @@ export default function EditarClientePage({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <Label>Otras razones sociales</Label>
+                <p className="text-xs text-muted-foreground">
+                  Otros CUIT a los que se le puede facturar a este cliente.
+                </p>
+                <RazonesSocialesEditor
+                  value={razonesSociales}
+                  onChange={setRazonesSociales}
+                />
               </div>
 
               <div className="space-y-2">

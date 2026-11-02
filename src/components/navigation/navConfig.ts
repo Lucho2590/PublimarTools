@@ -201,6 +201,11 @@ export const navConfig: NavItem[] = [
         href: "/publimar/administracion/rrhh",
         icon: Users,
       },
+      {
+        name: "Facturación ARCA",
+        href: "/publimar/administracion/arca",
+        icon: FileText,
+      },
     ],
   },
   {

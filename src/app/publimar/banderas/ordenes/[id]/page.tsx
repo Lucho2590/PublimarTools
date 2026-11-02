@@ -91,6 +91,8 @@ import {
 } from "@/hooks/usePaymentAccountDefaults";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminOrAbove } from "@/lib/permissions";
+import { EmitirFacturaDialog } from "@/components/arca/EmitirFacturaDialog";
+import { ArcaBadge, ArcaFacturaActions } from "@/components/arca/ArcaFacturaActions";
 
 export default function OrderDetailsPage({
   params,
@@ -187,6 +189,7 @@ export default function OrderDetailsPage({
   const [facturas, setFacturas] = useState<TFactura[]>([]);
   const [showAddFactura, setShowAddFactura] = useState(false);
   const [editingFacturaId, setEditingFacturaId] = useState<string | null>(null);
+  const [showArcaDialog, setShowArcaDialog] = useState(false);
 
   // Estados para el formulario de nueva factura
   const [newFacturaTipo, setNewFacturaTipo] = useState("");
@@ -671,6 +674,12 @@ export default function OrderDetailsPage({
       const saleData = {
         clientName: orderData.clientName || null,
         client: orderData.clientId || null,
+        // Datos de facturación (ARCA factura desde la venta con estos datos).
+        clientId: orderData.clientId || null,
+        cuit: orderData.cuit || null,
+        direccion: orderData.direccion || null,
+        telefono: orderData.telefono || null,
+        email: orderData.email || null,
         number: orderData.number,
         items: saleItems,
         subtotal: orderData.subtotal,
@@ -2360,17 +2369,29 @@ export default function OrderDetailsPage({
                 {/* Información de facturación - Sistema múltiple */}
                 <div className="border-t pt-4 space-y-4">
                   {/* Header con botón agregar */}
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <h4 className="font-medium">Facturas</h4>
-                    <Button
-                      type="button"
-                      onClick={() => setShowAddFactura(true)}
-                      className="bg-blue-600 hover:bg-blue-700"
-                      size="sm"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Agregar Factura
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        onClick={() => setShowAddFactura(true)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Cargar manual
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => setShowArcaDialog(true)}
+                        className="bg-blue-600 hover:bg-blue-700"
+                        size="sm"
+                        disabled={!order}
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Facturar en ARCA
+                      </Button>
+                    </div>
                   </div>
 
                   {/* Lista de facturas */}
@@ -2382,7 +2403,7 @@ export default function OrderDetailsPage({
                           className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                         >
                           <div className="flex-1">
-                            <div className="flex items-center gap-4 text-sm">
+                            <div className="flex items-center gap-x-4 gap-y-1 text-sm flex-wrap">
                               <span className="font-medium">
                                 {factura.tipo}
                               </span>
@@ -2391,12 +2412,23 @@ export default function OrderDetailsPage({
                                 {formatDateString(factura.fecha)}
                               </span>
                               {factura.monto && (
-                                <span className="text-green-600 font-medium">
-                                  ${factura.monto.toFixed(2)}
+                                <span
+                                  className={
+                                    factura.kind === "nc"
+                                      ? "text-red-600 font-medium"
+                                      : "text-green-600 font-medium"
+                                  }
+                                >
+                                  {factura.kind === "nc" ? "-" : ""}
+                                  {formatearPrecio(factura.monto)}
                                 </span>
                               )}
+                              <ArcaBadge factura={factura} />
                             </div>
                           </div>
+                          {factura.arcaInvoiceId ? (
+                            <ArcaFacturaActions factura={factura} />
+                          ) : (
                           <div className="flex gap-2">
                             <Button
                               type="button"
@@ -2415,6 +2447,7 @@ export default function OrderDetailsPage({
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2646,8 +2679,16 @@ export default function OrderDetailsPage({
                                 ? 1
                                 : 0;
                             const historyIndex = index - legacyOffset;
+                            const arcaInvoiceId =
+                              historyIndex >= 0
+                                ? payment.arcaInvoiceId
+                                : (order as any)?.downPaymentArcaInvoiceId;
+                            const arcaFactura = arcaInvoiceId
+                              ? facturas.find((f) => f.arcaInvoiceId === arcaInvoiceId)
+                              : undefined;
+                            // Un pago facturado no se toca: primero se anula la factura con una NC.
                             const isEditable =
-                              canEditPayments && historyIndex >= 0;
+                              canEditPayments && historyIndex >= 0 && !arcaInvoiceId;
                             return (
                             <TableRow key={index}>
                               <TableCell className="text-sm">
@@ -2664,6 +2705,14 @@ export default function OrderDetailsPage({
                                 >
                                   {payment.type === "seña" ? "Seña" : "Parcial"}
                                 </span>
+                                {arcaInvoiceId && (
+                                  <span
+                                    className="ml-1.5 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800"
+                                    title="Pago facturado en ARCA"
+                                  >
+                                    Facturado{arcaFactura ? ` ${arcaFactura.numero}` : ""}
+                                  </span>
+                                )}
                               </TableCell>
                               <TableCell className="font-medium">
                                 {formatearPrecio(payment.amount)}
@@ -2726,7 +2775,14 @@ export default function OrderDetailsPage({
                                       </Button>
                                     </div>
                                   ) : (
-                                    <span className="text-xs text-gray-400">
+                                    <span
+                                      className="text-xs text-gray-400"
+                                      title={
+                                        arcaInvoiceId
+                                          ? "Pago facturado en ARCA: para modificarlo, anulá la factura con una nota de crédito"
+                                          : undefined
+                                      }
+                                    >
                                       —
                                     </span>
                                   )}
@@ -2745,6 +2801,16 @@ export default function OrderDetailsPage({
           </Card>
         </div>
       </div>
+
+      {order && (
+        <EmitirFacturaDialog
+          open={showArcaDialog}
+          onOpenChange={setShowArcaDialog}
+          source="order"
+          doc={{ ...(order as any), id: orderId }}
+          client={selectedClient as TClient | undefined}
+        />
+      )}
 
       {/* Dialog para editar un pago (solo SUPERUSER y ADMIN) */}
       <Dialog

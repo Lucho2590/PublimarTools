@@ -14,6 +14,7 @@ import {
   CreditCard,
   BarChart3,
   ArrowRight,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -84,6 +85,13 @@ const SECTIONS: AdminSection[] = [
     description: "Empleados y liquidación de sueldos. Próximamente.",
     href: "/publimar/administracion/rrhh",
     icon: Users,
+  },
+  {
+    title: "Facturación ARCA",
+    description:
+      "Datos del emisor, certificados y punto de venta para emitir Factura A/B y notas de crédito por web service.",
+    href: "/publimar/administracion/arca",
+    icon: FileText,
   },
 ];
 

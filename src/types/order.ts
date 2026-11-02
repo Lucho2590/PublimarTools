@@ -29,6 +29,11 @@ export type TFactura = {
   numero: string;
   fecha: string;
   monto?: number;
+  // Emitida por ARCA (ver src/types/arca.ts). Las cargadas a mano no tienen estos campos.
+  arcaInvoiceId?: string;
+  cae?: string;
+  kind?: "factura" | "nc";
+  pagoKeys?: string[];
 }
 
 
@@ -41,6 +46,7 @@ export type TPaymentHistory = {
   notes?: string;
   accountId?: string | null; // cuenta donde impactó el cobro
   accountMovementId?: string | null; // id del movimiento de cuenta generado (para revertir)
+  arcaInvoiceId?: string | null; // factura ARCA que incluye este pago (evita facturarlo dos veces)
 };
 
 export type TOrder = {
@@ -87,6 +93,8 @@ export type TOrder = {
   invoiceDate?: Date;
   facturas?: TFactura[];
   downPayment?: number | undefined ;
+  downPaymentArcaInvoiceId?: string | null; // factura ARCA que incluye la seña legacy
+  saleId?: string;
   balance?: number;
   publicUrl?: string;
   paymentHistory?: TPaymentHistory[];

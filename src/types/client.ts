@@ -1,4 +1,5 @@
 import { DocumentReference } from "firebase/firestore";
+import type { TArcaPadronSnapshot } from "./arca";
 
 export enum EClientType {
     INDIVIDUAL = "individual",
@@ -17,6 +18,7 @@ export enum EClientType {
 
   export enum EClientTaxCondition {
     IVA_INSCRIPTO = "ivaInscripto",
+    MONOTRIBUTO = "monotributo",
     IVA_EXENTO = "ivaExento",
     IVA_NO_ALCANZADO = "ivaNoAlcanzado",
     CONSUMIDOR_FINAL = "consumidorFinal",
@@ -34,6 +36,8 @@ export enum EClientType {
     fantasyName?: string;
     cuit?: string;
     taxCondition?: EClientTaxCondition; // Condición frente al IVA
+    domicilio?: string; // Domicilio fiscal (para facturar con esta razón social)
+    arcaPadron?: TArcaPadronSnapshot; // Última validación del CUIT en ARCA
   };
 
   export type TClient = {
@@ -51,6 +55,8 @@ export enum EClientType {
     address?: string;
     cuit?: string; // CUIT/CUIL
     taxCondition?: EClientTaxCondition; // Condición frente al IVA
+    dni?: string; // Para Factura B a consumidor final identificado
+    arcaPadron?: TArcaPadronSnapshot; // Última validación del CUIT en ARCA
     reference?: string; // Referencia del cliente
     notes?: string;
     contacts?: TClientContact[];

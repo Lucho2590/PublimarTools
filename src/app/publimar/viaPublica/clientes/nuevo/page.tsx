@@ -21,13 +21,16 @@ import {
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import collections from "@/lib/collections";
-import { EClientType, EClientStatus, EClientSection, EClientTaxCondition, TClientContact } from "@/types/client";
+import { EClientType, EClientStatus, EClientSection, EClientTaxCondition, TClientContact, TRazonSocial } from "@/types/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { taxConditionOptions } from "@/lib/taxCondition";
-import { Save, Trash2, Plus } from "lucide-react";
+import { Save, Trash2 } from "lucide-react";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { buildChanges } from "@/lib/auditLog";
 import { EAuditAction, EAuditEntityType, EAuditSection } from "@/types/auditLog";
+import type { TArcaPadronResult, TArcaPadronSnapshot } from "@/types/arca";
+import { ArcaPadronBadge, ValidarCuitButton, padronSnapshot } from "@/components/arca/ValidarCuitButton";
+import { RazonesSocialesEditor, cleanRazonesSociales } from "@/components/clients/RazonesSocialesEditor";
 
 export default function NuevoClientePage() {
   const [loading, setLoading] = useState(false);
@@ -42,7 +45,8 @@ export default function NuevoClientePage() {
   ]);
 
   // Estado para razones sociales adicionales
-  const [razonesSociales, setRazonesSociales] = useState<{ razonSocial: string; fantasyName: string; cuit: string; taxCondition?: EClientTaxCondition }[]>([]);
+  const [razonesSociales, setRazonesSociales] = useState<TRazonSocial[]>([]);
+  const [arcaPadron, setArcaPadron] = useState<TArcaPadronSnapshot | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -109,23 +113,17 @@ export default function NuevoClientePage() {
     }
   };
 
-  // Handlers para razones sociales adicionales
-  const addRazonSocial = () => {
-    setRazonesSociales([...razonesSociales, { razonSocial: "", fantasyName: "", cuit: "", taxCondition: undefined }]);
-  };
-
-  const removeRazonSocial = (index: number) => {
-    setRazonesSociales(razonesSociales.filter((_, i) => i !== index));
-  };
-
-  const handleRazonSocialChange = (
-    index: number,
-    field: "razonSocial" | "fantasyName" | "cuit" | "taxCondition",
-    value: string | EClientTaxCondition | undefined
-  ) => {
-    const updated = [...razonesSociales];
-    updated[index] = { ...updated[index], [field]: value };
-    setRazonesSociales(updated);
+  // Completa con lo que informa el padrón de ARCA (razón social, domicilio fiscal y condición IVA).
+  const applyPadron = (r: TArcaPadronResult) => {
+    setArcaPadron(padronSnapshot(r));
+    setFormData((prev) => ({
+      ...prev,
+      ...(prev.type === EClientType.COMPANY
+        ? { businessName: r.razonSocial || prev.businessName }
+        : { name: prev.name || r.razonSocial }),
+      address: prev.address || r.domicilio,
+      taxCondition: r.condicion,
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -163,19 +161,13 @@ export default function NuevoClientePage() {
       }
 
       // Filtrar razones sociales vacías
-      const filteredRazonesSociales = razonesSociales
-        .filter((rs) => rs.razonSocial.trim() !== "")
-        .map((rs) => ({
-          razonSocial: rs.razonSocial,
-          ...(rs.fantasyName.trim() && { fantasyName: rs.fantasyName }),
-          ...(rs.cuit.trim() && { cuit: rs.cuit }),
-          ...(rs.taxCondition && { taxCondition: rs.taxCondition }),
-        }));
+      const filteredRazonesSociales = cleanRazonesSociales(razonesSociales);
 
       const clientData: Record<string, any> = {
         ...finalFormData,
         contacts: filteredContacts,
         ...(filteredRazonesSociales.length > 0 && { razonesSociales: filteredRazonesSociales }),
+        ...(arcaPadron && { arcaPadron }),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: doc(firestore, `users/${user.uid}`),
@@ -256,14 +248,19 @@ export default function NuevoClientePage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="cuit">{formData.type === EClientType.COMPANY ? "CUIT" : "CUIL"}</Label>
-                <CuitInput
-                  id="cuit"
-                  name="cuit"
-                  value={formData.cuit}
-                  onValueChange={(digits) =>
-                    setFormData((prev) => ({ ...prev, cuit: digits }))
-                  }
-                />
+                <div className="flex gap-2">
+                  <CuitInput
+                    id="cuit"
+                    name="cuit"
+                    value={formData.cuit}
+                    onValueChange={(digits) => {
+                      setFormData((prev) => ({ ...prev, cuit: digits }));
+                      setArcaPadron(null);
+                    }}
+                  />
+                  <ValidarCuitButton cuit={formData.cuit} size="default" onResult={applyPadron} />
+                </div>
+                <ArcaPadronBadge snapshot={arcaPadron} />
               </div>
             </div>
 
@@ -341,87 +338,7 @@ export default function NuevoClientePage() {
                   </div>
                 </div>
 
-                {razonesSociales.length > 0 && (
-                  <div className="space-y-3">
-                    {razonesSociales.map((rs, index) => (
-                      <div key={index} className="border border-slate-200 rounded-lg p-4 space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm font-medium text-slate-600">Razón Social {index + 2}</span>
-                          <Button
-                            type="button"
-                            onClick={() => removeRazonSocial(index)}
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label>Razón Social *</Label>
-                            <Input
-                              value={rs.razonSocial}
-                              onChange={(e) => handleRazonSocialChange(index, "razonSocial", e.target.value)}
-                              placeholder="Razón social..."
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Nombre de Fantasía</Label>
-                            <Input
-                              value={rs.fantasyName}
-                              onChange={(e) => handleRazonSocialChange(index, "fantasyName", e.target.value)}
-                              placeholder="Nombre de fantasía..."
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>CUIT</Label>
-                            <CuitInput
-                              value={rs.cuit}
-                              onValueChange={(digits) => handleRazonSocialChange(index, "cuit", digits)}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>Condición frente al IVA</Label>
-                            <Select
-                              value={rs.taxCondition ?? "none"}
-                              onValueChange={(value) =>
-                                handleRazonSocialChange(
-                                  index,
-                                  "taxCondition",
-                                  value === "none" ? undefined : (value as EClientTaxCondition)
-                                )
-                              }
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue placeholder="Seleccionar condición fiscal" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">Sin definir</SelectItem>
-                                {taxConditionOptions.map((opt) => (
-                                  <SelectItem key={opt.value} value={opt.value}>
-                                    {opt.label} · {opt.invoice}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <Button
-                  type="button"
-                  onClick={addRazonSocial}
-                  variant="outline"
-                  size="sm"
-                  className="text-blue-900 border-blue-900 hover:bg-blue-50"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar otra Razón Social
-                </Button>
+                <RazonesSocialesEditor value={razonesSociales} onChange={setRazonesSociales} />
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2 md:col-span-2">

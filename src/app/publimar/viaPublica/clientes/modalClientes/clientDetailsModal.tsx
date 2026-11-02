@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { AddressInput } from "@/components/ui/address-input";
 import { CuitInput } from "@/components/cuit-input";
 import { formatCuit } from "@/lib/cuit";
+import { getTaxConditionLabel } from "@/lib/taxCondition";
+import { ArcaPadronBadge } from "@/components/arca/ValidarCuitButton";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -388,6 +390,30 @@ export default function ClientDetailsModal({
                       <div>
                         <h3 className="font-semibold text-slate-700">CUIT</h3>
                         <p className="text-slate-900 font-mono tabular-nums">{formatCuit(typedClient.cuit)}</p>
+                        <ArcaPadronBadge snapshot={typedClient.arcaPadron} />
+                      </div>
+                    )}
+                    {typedClient.taxCondition && (
+                      <div>
+                        <h3 className="font-semibold text-slate-700">Condición frente al IVA</h3>
+                        <p className="text-slate-900">{getTaxConditionLabel(typedClient.taxCondition)}</p>
+                      </div>
+                    )}
+                    {(typedClient.razonesSociales?.length ?? 0) > 0 && (
+                      <div className="md:col-span-2">
+                        <h3 className="font-semibold text-slate-700 mb-2">Otras razones sociales</h3>
+                        <div className="space-y-2">
+                          {typedClient.razonesSociales!.map((rs, i) => (
+                            <div key={i} className="border rounded-lg px-3 py-2 bg-slate-50 text-sm">
+                              <p className="font-medium text-slate-900">{rs.razonSocial}</p>
+                              <p className="text-slate-600">
+                                {rs.cuit ? <span className="font-mono tabular-nums">{formatCuit(rs.cuit)}</span> : "Sin CUIT"}
+                                {rs.taxCondition ? ` · ${getTaxConditionLabel(rs.taxCondition)}` : ""}
+                              </p>
+                              <ArcaPadronBadge snapshot={rs.arcaPadron} />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                     {typedClient.reference && (
@@ -643,7 +669,12 @@ export default function ClientDetailsModal({
                       id="cuit"
                       value={formData.cuit}
                       onValueChange={(digits) =>
-                        setFormData({ ...formData, cuit: digits })
+                        setFormData((prev) => ({
+                          ...prev,
+                          cuit: digits,
+                          // Cambió el CUIT: la validación en ARCA ya no aplica (null: Firestore no acepta undefined).
+                          ...(digits !== prev.cuit ? { arcaPadron: null as any } : {}),
+                        }))
                       }
                     />
                   </div>

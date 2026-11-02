@@ -12,6 +12,11 @@ export const taxConditionOptions: {
     invoice: "Factura A",
   },
   {
+    value: EClientTaxCondition.MONOTRIBUTO,
+    label: "Monotributo",
+    invoice: "Factura A",
+  },
+  {
     value: EClientTaxCondition.IVA_EXENTO,
     label: "IVA Exento",
     invoice: "Factura B",
@@ -37,6 +42,11 @@ export const taxConditionInfo: Record<
     label: "IVA Inscripto",
     invoice: "Factura A",
     className: "bg-blue-50 text-blue-700 border border-blue-200",
+  },
+  [EClientTaxCondition.MONOTRIBUTO]: {
+    label: "Monotributo",
+    invoice: "Factura A",
+    className: "bg-teal-50 text-teal-700 border border-teal-200",
   },
   [EClientTaxCondition.IVA_EXENTO]: {
     label: "IVA Exento",
