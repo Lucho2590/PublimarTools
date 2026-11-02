@@ -153,6 +153,12 @@ export type TArcaCertInfo = {
   certExpiresAt?: string;
   /** CUIT con el que se generó el CSR (quien entra a ARCA). */
   titularCuit?: string;
+  /** Datos leídos del CSR guardado (sirven también para CSRs viejos sin titularCuit). */
+  csrCuit?: string;
+  csrAlias?: string;
+  csrRazonSocial?: string;
+  /** CN (nombre/alias) del certificado cargado. */
+  certAlias?: string;
   authCuit: TArcaAuthCuit;
 };
 
