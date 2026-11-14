@@ -10,6 +10,8 @@ import { getBotConfig } from "@/lib/bot/store";
 import { TBotReply } from "@/types/bot";
 import { NormalizedInbound } from "./inboundNormalize";
 import { sendText } from "./outbound";
+import { markReadWithTyping } from "./cloudApi";
+import { resolveAccessToken } from "./integration";
 
 const TEXT_TYPES = new Set(["text", "button", "interactive"]);
 
@@ -28,10 +30,13 @@ function replyAsText(reply: TBotReply): string {
 }
 
 /** Un mensaje entrante → bot → respuestas por WhatsApp (marcadas como del agente). */
-export async function runBotForInbound(msg: NormalizedInbound): Promise<void> {
+export async function runBotForInbound(msg: NormalizedInbound, phoneNumberId: string): Promise<void> {
   const isText = TEXT_TYPES.has(msg.type) && !!msg.content;
   const result = await handleIncoming({
     sessionId: msg.waId,
+    // Solo si el bot va a contestar: si lo atiende una persona, el cliente no
+    // debe ver "leído" antes de que alguien del equipo lo lea de verdad.
+    onWillAnswer: async () => markReadWithTyping(phoneNumberId, msg.wamid, await resolveAccessToken()),
     channel: "whatsapp",
     phone: msg.waId,
     text: isText ? msg.content : null,

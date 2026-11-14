@@ -66,6 +66,11 @@ export type TIncoming = {
   mediaType?: string | null;
   /** Teléfono del cliente (WhatsApp) o de prueba (simulador). */
   phone?: string | null;
+  /**
+   * El bot va a responder (pasó las guardas: encendido y sin pausa por humano).
+   * WhatsApp lo usa para marcar leído y mostrar "escribiendo…" mientras piensa.
+   */
+  onWillAnswer?: () => Promise<void>;
   /** Simulador: si es false, el pedido confirmado no se guarda. */
   persistOrders?: boolean;
 };
@@ -391,6 +396,8 @@ export async function handleIncoming(input: TIncoming): Promise<TBotResponse> {
     session.status = "active";
     session.pausedUntil = null;
   }
+  // No se espera: corre en paralelo mientras el bot arma la respuesta.
+  input.onWillAnswer?.().catch((e) => console.error("[bot] onWillAnswer:", e));
 
   pushHistory(session, "user", text || input.replyTitle || (input.mediaType ? `[${input.mediaType}]` : ""));
 

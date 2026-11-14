@@ -39,7 +39,10 @@ function toMessageType(type: string): EWhatsappMessageType {
  * del mensaje (doc id = wamid → `.create()` falla si ya existe → skip). Actualiza
  * los agregados del contacto (lastMessageAt / lastInboundAt / unreadCount).
  */
-async function persistMessage(channelId: string, msg: NormalizedInbound): Promise<boolean> {
+async function persistMessage(
+  channelId: string,
+  msg: NormalizedInbound
+): Promise<{ created: boolean; late: boolean }> {
   const db = getFirestoreAdmin();
   const contactRef = db.collection(collections.WHATSAPP_CONTACTS).doc(msg.waId);
   const messageRef = db.collection(collections.WHATSAPP_MESSAGES).doc(msg.wamid);
@@ -50,13 +53,20 @@ async function persistMessage(channelId: string, msg: NormalizedInbound): Promis
     : EWhatsappMessageDirection.INBOUND;
 
   let created = false;
+  let late = false;
   try {
     await db.runTransaction(async (tx) => {
       created = false;
+      late = false;
       const existing = await tx.get(messageRef);
       if (existing.exists) return; // idempotencia por wamid
       created = true;
       const contactSnap = await tx.get(contactRef);
+      // Atrasado: Meta reintenta durante horas los envíos que fallaron. Si la
+      // charla ya tiene algo más nuevo, se guarda en su lugar del historial
+      // pero no pisa los agregados del contacto ni lo responde el bot.
+      const lastAt: Timestamp | undefined = contactSnap.data()?.lastMessageAt;
+      late = !!lastAt && lastAt.toMillis() > at.toMillis();
 
       // Insert del mensaje.
       tx.set(messageRef, {
@@ -80,6 +90,8 @@ async function persistMessage(channelId: string, msg: NormalizedInbound): Promis
         updatedAt: FieldValue.serverTimestamp(),
         deletedAt: null,
       });
+
+      if (late) return;
 
       // Agregados del contacto. Los echoes NO incrementan unread.
       const contactUpdate: Record<string, any> = {
@@ -113,7 +125,7 @@ async function persistMessage(channelId: string, msg: NormalizedInbound): Promis
     console.error(`[whatsapp inbound] error persistiendo wamid=${msg.wamid}:`, error);
     throw error;
   }
-  return created;
+  return { created, late };
 }
 
 const STATUS_RANK: Record<string, number> = { pending: 0, sent: 1, delivered: 2, read: 3, failed: 4 };
@@ -163,7 +175,7 @@ async function applyStatus(st: any): Promise<void> {
  */
 export async function processInboundPayload(payload: any): Promise<void> {
   // Mensajes nuevos (no reintentos de Meta) para pasarle al bot al final.
-  const fresh: NormalizedInbound[] = [];
+  const fresh: { msg: NormalizedInbound; phoneNumberId: string }[] = [];
   for (const entry of payload?.entry || []) {
     for (const change of entry?.changes || []) {
       const field = change?.field;
@@ -189,17 +201,22 @@ export async function processInboundPayload(payload: any): Promise<void> {
         // Reacciones y borrados no son mensajes nuevos → se manejan en la fase
         // siguiente (actualizan el mensaje objetivo). Por ahora se omiten.
         if (msg.type === "reaction" || msg.type === "deleted") continue;
-        if (await persistMessage(channel.id, msg)) fresh.push(msg);
+        const { created, late } = await persistMessage(channel.id, msg);
+        if (late) {
+          console.warn(`[whatsapp inbound] wamid=${msg.wamid} llegó atrasado (reintento de Meta): se guarda sin responder`);
+        } else if (created) {
+          fresh.push({ msg, phoneNumberId });
+        }
       }
     }
   }
 
   // Bot: responde los entrantes nuevos; si el dueño contestó desde el celular
   // (echo de coexistencia), el bot se calla con ese cliente.
-  for (const msg of fresh) {
+  for (const { msg, phoneNumberId } of fresh) {
     try {
       if (msg.isEcho) await pauseBotForHuman(msg.waId, "Respondió alguien del equipo desde el celular");
-      else await runBotForInbound(msg);
+      else await runBotForInbound(msg, phoneNumberId);
     } catch (error) {
       // El bot nunca rompe el webhook (Meta reintentaría y duplicaría).
       console.error(`[whatsapp bot] error con wamid=${msg.wamid}:`, error);
