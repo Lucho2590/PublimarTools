@@ -55,7 +55,13 @@ export const NavItem = memo(function NavItem({
   const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
   const hasSubItems = item.subItems && item.subItems.length > 0;
   const wa = useWhatsappAttention();
-  const badgeCount = badgeCountFor(item.badge, unviewedCount, wa);
+  // Sin badge propio, suma los de sus sub-ítems (ej. Banderas → Pedidos WhatsApp),
+  // así se ve aunque el menú esté cerrado.
+  const badgeCount = item.badge
+    ? badgeCountFor(item.badge, unviewedCount, wa)
+    : isExpanded && isSidebarOpen
+      ? 0 // abierto: el número ya se ve en el sub-ítem
+      : (item.subItems || []).reduce((n, s) => n + badgeCountFor(s.badge, unviewedCount, wa), 0);
   const showBadge = badgeCount > 0;
 
   const linkContent = (
@@ -135,6 +141,7 @@ export const NavItem = memo(function NavItem({
                 <SubNavItem
                   key={subItem.name}
                   item={subItem}
+                  unviewedCount={unviewedCount}
                   isSidebarOpen={isSidebarOpen}
                   onNavigate={onNavigate}
                 />
@@ -151,10 +158,12 @@ export const NavItem = memo(function NavItem({
 
 const SubNavItem = memo(function SubNavItem({
   item,
+  unviewedCount,
   isSidebarOpen,
   onNavigate,
 }: {
   item: NavItemType;
+  unviewedCount: number;
   isSidebarOpen: boolean;
   onNavigate: () => void;
 }) {
@@ -162,7 +171,7 @@ const SubNavItem = memo(function SubNavItem({
   const Icon = item.icon;
   const isActive = pathname === item.href;
   const wa = useWhatsappAttention();
-  const badgeCount = badgeCountFor(item.badge, 0, wa);
+  const badgeCount = badgeCountFor(item.badge, unviewedCount, wa);
 
   return (
     <li className="py-0.5">

@@ -115,14 +115,24 @@ export function WhatsappAttentionProvider({ children }: { children: ReactNode })
       for (const o of orders as any[]) {
         if (seen.current.orders.has(o.id)) continue;
         const custom = o.kind === "custom_quote";
-        const title = custom ? `🎨 Consulta a cotizar ${o.orderNumber}` : `🛒 Nuevo pedido ${o.orderNumber}`;
-        const body = `${o.clientName || o.customerName || "Cliente"}${o.total ? ` · $${Math.round(o.total).toLocaleString("es-AR")}` : ""}`;
-        const href = "/publimar/whatsapp/pedidos";
+        const who = o.customerName || o.clientName || "Cliente";
+        const title = custom ? `🎨 Personalizada a cotizar: ${who}` : `🛒 El agente vendió: ${who}`;
+        const delivery =
+          o.delivery?.method === "pickup" ? "retira" : o.delivery?.method === "courier" ? "mensajero" : o.delivery?.method === "shipping" ? `envío${o.delivery.place ? ` a ${o.delivery.place}` : ""}` : "";
+        const body = [
+          o.orderNumber,
+          custom ? o.customDetails?.technique : null,
+          o.total ? `$${Math.round(o.total).toLocaleString("es-AR")}` : null,
+          delivery || null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const href = `/publimar/whatsapp/pedidos?p=${encodeURIComponent(o.id)}`;
         playChime();
         toast(title, {
           description: body,
           duration: 15000,
-          action: { label: "Ver", onClick: () => router.push(href) },
+          action: { label: "Ver pedido", onClick: () => router.push(href) },
         });
         systemNotify(title, body, href, (h) => router.push(h));
       }

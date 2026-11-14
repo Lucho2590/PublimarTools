@@ -70,6 +70,13 @@ export const navConfig: NavItem[] = [
         icon: ClipboardList,
       },
       {
+        // Lo que vendió el agente de WhatsApp: el equipo lo toma y lo procesa.
+        name: "Pedidos WhatsApp",
+        href: "/publimar/whatsapp/pedidos",
+        icon: ShoppingBag,
+        badge: "whatsappOrders",
+      },
+      {
         name: "Ventas",
         href: "/publimar/banderas/ventas",
         icon: Banknote,
