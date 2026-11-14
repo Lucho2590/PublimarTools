@@ -751,7 +751,10 @@ export async function runAgent(ctx: TFlowCtx, text: string, isFirst: boolean): P
         // Por si se cuela markdown: **x** → *x*.
         .replace(/\*\*([^*]+)\*\*/g, "*$1*");
       if (!reply) return { ok: false, error: "La IA no escribió respuesta", usage };
-      return { ok: true, reply, usage, actions };
+      // A veces se saltea la presentación del primer mensaje: la agregamos acá.
+      const intro =
+        isFirst && !/agente digital/i.test(reply) ? `¡Hola! ${fillTemplate(ctx.config.messages.intro, ctx.config)}\n\n` : "";
+      return { ok: true, reply: intro + reply, usage, actions };
     }
     return { ok: false, error: "La IA usó demasiadas herramientas sin responder", usage };
   } catch (error) {
