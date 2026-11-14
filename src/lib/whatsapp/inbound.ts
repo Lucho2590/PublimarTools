@@ -163,7 +163,7 @@ async function applyStatus(st: any): Promise<void> {
  */
 export async function processInboundPayload(payload: any): Promise<void> {
   // Mensajes nuevos (no reintentos de Meta) para pasarle al bot al final.
-  const fresh: NormalizedInbound[] = [];
+  const fresh: { msg: NormalizedInbound; phoneNumberId: string }[] = [];
   for (const entry of payload?.entry || []) {
     for (const change of entry?.changes || []) {
       const field = change?.field;
@@ -189,17 +189,17 @@ export async function processInboundPayload(payload: any): Promise<void> {
         // Reacciones y borrados no son mensajes nuevos → se manejan en la fase
         // siguiente (actualizan el mensaje objetivo). Por ahora se omiten.
         if (msg.type === "reaction" || msg.type === "deleted") continue;
-        if (await persistMessage(channel.id, msg)) fresh.push(msg);
+        if (await persistMessage(channel.id, msg)) fresh.push({ msg, phoneNumberId });
       }
     }
   }
 
   // Bot: responde los entrantes nuevos; si el dueño contestó desde el celular
   // (echo de coexistencia), el bot se calla con ese cliente.
-  for (const msg of fresh) {
+  for (const { msg, phoneNumberId } of fresh) {
     try {
       if (msg.isEcho) await pauseBotForHuman(msg.waId, "Respondió alguien del equipo desde el celular");
-      else await runBotForInbound(msg);
+      else await runBotForInbound(msg, phoneNumberId);
     } catch (error) {
       // El bot nunca rompe el webhook (Meta reintentaría y duplicaría).
       console.error(`[whatsapp bot] error con wamid=${msg.wamid}:`, error);

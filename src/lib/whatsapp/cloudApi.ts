@@ -76,6 +76,23 @@ export async function subscribeApps(wabaId: string, token: string): Promise<any>
   return graphFetch(`/${wabaId}/subscribed_apps`, token, { method: "POST" });
 }
 
+/**
+ * Marca el mensaje del cliente como leído (tildes azules) y muestra
+ * "escribiendo…" hasta que sale la respuesta o pasan 25 s.
+ */
+export async function markReadWithTyping(phoneNumberId: string, wamid: string, token: string): Promise<void> {
+  await graphFetch(`/${phoneNumberId}/messages`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: wamid,
+      typing_indicator: { type: "text" },
+    }),
+  });
+}
+
 /** POST /{phoneNumberId}/messages — envía un mensaje de texto. Devuelve el wamid. */
 export async function sendTextMessage(
   phoneNumberId: string,
