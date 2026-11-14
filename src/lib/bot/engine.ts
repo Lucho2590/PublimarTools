@@ -105,7 +105,8 @@ export function isOutOfHours(config: TBotConfig, now = new Date()): boolean {
   const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
   const hhmm = `${get("hour").replace("24", "00")}:${get("minute")}`;
   if (!bh.days.includes(day)) return true;
-  return hhmm < bh.open || hhmm >= bh.close;
+  const { open, close } = bh.dayHours?.[String(day)] || bh;
+  return hhmm < open || hhmm >= close;
 }
 
 // Función (no comparación inline) para que TS no "estreche" el estado: las

@@ -276,6 +276,27 @@ export function ConfigTab() {
               onChange={(e) => set("businessHours", { ...config.businessHours, close: e.target.value })}
             />
           </div>
+          {/* Fin de semana con horario propio (ej. sábados de 8 a 12). */}
+          {[6, 0]
+            .filter((d) => config.businessHours.days.includes(d))
+            .map((d) => {
+              const bh = config.businessHours;
+              const own = bh.dayHours?.[String(d)] || { open: bh.open, close: bh.close };
+              const setOwn = (patch: Partial<typeof own>) =>
+                set("businessHours", { ...bh, dayHours: { ...bh.dayHours, [String(d)]: { ...own, ...patch } } });
+              return (
+                <div key={d} className="flex flex-wrap items-center gap-3">
+                  <span className="w-28 text-sm text-slate-600">{d === 6 ? "Los sábados" : "Los domingos"}</span>
+                  <Input type="time" className="w-32" value={own.open} onChange={(e) => setOwn({ open: e.target.value })} />
+                  <span className="text-sm">a</span>
+                  <Input type="time" className="w-32" value={own.close} onChange={(e) => setOwn({ close: e.target.value })} />
+                </div>
+              );
+            })}
+          <p className="text-xs text-slate-500">
+            El bot atiende y vende a toda hora. Fuera de este horario, si pasa la charla al equipo, avisa que le
+            responden cuando abran.
+          </p>
         </CardContent>
       </Card>
 

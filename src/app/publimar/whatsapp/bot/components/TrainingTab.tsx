@@ -157,6 +157,10 @@ function IntentCard({ intent }: { intent: TBotIntent }) {
   const [example, setExample] = useState("");
   const [answer, setAnswer] = useState(intent.answer || "");
   const isFaq = intent.kind === EBotIntentKind.FAQ;
+  // "{san lorenzo 3145}": texto entre llaves que no es una variable → llega tal cual.
+  const unknownVars = (answer.match(/\{[^}]*\}/g) || []).filter(
+    (m) => !BOT_TEMPLATE_VARS.some((v) => m === `{${v.key}}`)
+  );
 
   useEffect(() => setAnswer(intent.answer || ""), [intent.answer]);
 
@@ -233,6 +237,12 @@ function IntentCard({ intent }: { intent: TBotIntent }) {
         {isFaq && (
           <div className="space-y-2">
             <Textarea rows={3} value={answer} onChange={(e) => setAnswer(e.target.value)} />
+            {unknownVars.length > 0 && (
+              <p className="text-xs text-amber-700">
+                Las llaves {"{ }"} son solo para variables como {"{direccion}"}. Esto le llega al cliente con llaves:{" "}
+                {unknownVars.join(", ")}. Escribí el texto sin llaves.
+              </p>
+            )}
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-slate-500">
                 Variables: {BOT_TEMPLATE_VARS.map((v) => `{${v.key}}`).join(" ")}

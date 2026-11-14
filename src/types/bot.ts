@@ -245,6 +245,8 @@ export type TBotBusinessHours = {
   days: number[];
   open: string; // "09:00"
   close: string; // "18:00"
+  /** Horario distinto para algún día (clave "0"…"6"), ej. sábado de 8 a 12. */
+  dayHours?: Record<string, { open: string; close: string }>;
 };
 
 /**
