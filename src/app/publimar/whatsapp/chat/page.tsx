@@ -27,6 +27,7 @@ import { BotTranscript } from "@/components/whatsapp/BotTranscript";
 import { WhatsappThread } from "@/components/whatsapp/WhatsappThread";
 import { WhatsappHealthBanner } from "@/components/whatsapp/WhatsappHealthBanner";
 import { ClientTagBadge, useClientTagOptions } from "@/components/client/ClientTags";
+import { ClientLink } from "@/components/whatsapp/ClientLink";
 import { toDate } from "../bot/components/shared";
 
 type TChatSession = {
@@ -260,6 +261,9 @@ export default function ChatPage() {
                     <ClientTagBadge id={segmentOf(selected)} options={tagOptions} />
                   )}
                   {selected.lastOrderNumber && <span>· Último pedido {selected.lastOrderNumber}</span>}
+                  {selected.channel === "whatsapp" && selected.phone && (
+                    <ClientLink key={selected.id} waId={selected.phone} fallbackClientId={(selected as any).clientId} />
+                  )}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">

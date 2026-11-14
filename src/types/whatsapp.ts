@@ -148,6 +148,10 @@ export type TWhatsappContact = {
   name?: string | null;
   clientId?: string | null;
   clientName?: string | null;
+  /** Clientes cargados con el mismo teléfono (el bot no pudo elegir): el equipo elige. */
+  clientCandidates?: string[];
+  /** Cómo quedó vinculado: "auto" (teléfono único), "bot_new" (lo creó el bot), "manual" (el equipo). */
+  clientLinkedBy?: "auto" | "bot_new" | "manual";
   channelId: string;
   status: EWhatsappContactStatus;
   lastMessageAt?: Date | null;

@@ -11,7 +11,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { TBotAiUsage, TBotConfig, TBotCustomTechnique, TBotTrace } from "@/types/bot";
-import { lookupOrCreateClient, createWhatsappOrder, createCustomQuoteRequest } from "@/lib/whatsapp/db";
+import { lookupOrCreateClient, createWhatsappOrder, createCustomQuoteRequest, getClientHistory } from "@/lib/whatsapp/db";
 import {
   TBotProduct,
   TBotVariant,
@@ -139,6 +139,11 @@ function buildTools(segmentIds: string[], techniqueIds: string[]): Anthropic.Too
     tool(
       "confirmar_pedido",
       "Confirma y guarda el pedido de banderas comunes. Usala SOLO después de mostrar el resumen y que el cliente diga que sí. Necesita el nombre.",
+      {}
+    ),
+    tool(
+      "ver_historial_cliente",
+      "Compras anteriores de ESTE cliente (órdenes de trabajo con estado, entrega y saldo; ventas; pedidos por WhatsApp). Usala si pregunta por un pedido o compra anterior, cómo va, cuándo está o cuánto debe.",
       {}
     ),
     tool(
@@ -475,6 +480,13 @@ async function runTool(ctx: TFlowCtx, name: string, input: any, actions: string[
         mensaje_sugerido: fillTemplate(config.messages.orderConfirmed, config, { numero, total: money(total) }),
       };
     }
+    case "ver_historial_cliente": {
+      if (!session.phone) return { error: "No tengo el teléfono de este cliente.", sugerencia: "Derivá a una persona." };
+      const h = await getClientHistory({ phone: session.phone, clientId: session.clientId });
+      actions.push(`miró el historial${h.cliente ? ` de ${h.cliente}` : " (sin cliente)"}`);
+      if (!h.cliente) return { cliente: null, mensaje: "No encontré compras con este número. Puede que esté cargado con otro teléfono: derivá a una persona si necesita info de un pedido." };
+      return h;
+    }
     case "derivar_a_persona": {
       handoff(ctx, true, String(input.motivo || "Derivado por el agente IA").slice(0, 120));
       actions.push(`derivó: ${input.motivo}`);
@@ -575,6 +587,10 @@ Es personalizada si quiere logo, escudo, nombre, texto, leyenda, foto, diseño p
 - Fotos: ${b.website ? `pasale la web, ahí están las fotos: ${b.website}` : "por acá no mandás fotos. Si las quiere, derivar_a_persona para que se las mande el equipo (decíselo)."}
 - Envíos fuera de ${b.localCity || "la ciudad"}: la empresa de transporte y el costo los coordina el equipo con cada cliente. No des montos ni empresas. Si quiere avanzar, armá el pedido y en la entrega anotá envío con el destino; el equipo lo coordina.
 - Feriados: respondé SOLO con los "Feriados cargados" del Estado. Si el que pregunta no está cargado, decí que depende del feriado (cuando abren, suele ser medio día) y que lo confirma el equipo; no hace falta derivar.
+
+# Compras anteriores
+- Si pregunta por un pedido o compra anterior (cómo va, cuándo está, cuánto debe, qué llevó): ver_historial_cliente. Contá solo lo que trae (estado, fecha, entrega estimada, saldo), en pocas líneas.
+- Sin fecha de entrega cargada: no inventes plazos, decí que lo confirma el equipo. Si no aparece lo que pregunta, o quiere cambiar algo: derivar_a_persona.
 
 # Pasar a una persona
 - Precio mayorista, descuento por cantidad o precio especial: NO lo decidas (ni lo prometas ni lo niegues). Preguntá qué productos y cuántas unidades, pedí el nombre y derivar_a_persona con ese detalle para que lo confirme el equipo.

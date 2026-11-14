@@ -32,6 +32,7 @@ import { TablePagination } from "@/components/admin/TablePagination";
 import collections from "@/lib/collections";
 import { cn, formatearPrecio } from "@/lib/utils";
 import { ClientTagBadge, useClientTagOptions } from "@/components/client/ClientTags";
+import { ClientLink } from "@/components/whatsapp/ClientLink";
 import { EWhatsappOrderStatus, TWhatsappOrder } from "@/types/whatsapp";
 
 function toDate(value: any): Date | null {
@@ -292,6 +293,11 @@ function OrderDetail({
         <div className="space-y-1">
           <p className="font-medium">{who(o)}</p>
           <p className="text-slate-600">{o.phone ? `+${o.phone}` : "Sin teléfono"}</p>
+          {o.phone && (
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              Cliente en la app: <ClientLink key={o.id} waId={o.phone} fallbackClientId={o.clientId} />
+            </div>
+          )}
           {o.customerSegment && <ClientTagBadge id={o.customerSegment} options={tagOptions} />}
           {deliveryLabel(o) && <p className="text-slate-600">Entrega: {deliveryLabel(o)}</p>}
           {date && <p className="text-xs text-slate-500">{date.toLocaleString("es-AR")}</p>}
