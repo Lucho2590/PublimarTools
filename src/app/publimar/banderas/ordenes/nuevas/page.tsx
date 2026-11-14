@@ -78,6 +78,12 @@ import { EClientStatus, EClientSection } from "@/types/client";
 import { EQuoteStatus, TQuote } from "@/types/quote";
 import { ClientCreditBanner } from "@/components/admin/ClientCreditBanner";
 import { applyCreditNoteToDocument } from "@/lib/creditNotes";
+import {
+  customOrderDescription,
+  markWhatsappOrderProcessed,
+  useWhatsappOrderPrefill,
+  whatsappOrderNote,
+} from "@/lib/whatsapp/orderPrefill";
 
 export default function NuevasOrdenesPage() {
   const router = useRouter();
@@ -671,6 +677,11 @@ export default function NuevasOrdenesPage() {
       }
 
       toast.success(`Orden creada exitosamente con ID: ${orderId}`);
+      if (waOrder && orderId) {
+        await markWhatsappOrderProcessed(firestore, waOrder.id, { type: "order", id: orderId, number: cleanOrderData.number }, user?.uid);
+        router.push(`/publimar/whatsapp/pedidos?p=${encodeURIComponent(waOrder.id)}`);
+        return;
+      }
       router.push("/publimar/banderas/ordenes");
     } catch (error) {
       console.error("Error al crear orden:", error);
@@ -680,6 +691,62 @@ export default function NuevasOrdenesPage() {
       setPendingOrderData(null);
     }
   };
+
+  // ---- Viene de un pedido del agente de WhatsApp (?fromWhatsapp=<id>) -----
+  const { order: waOrder } = useWhatsappOrderPrefill(firestore);
+  const waPrefilled = useRef(false);
+  useEffect(() => {
+    if (waPrefilled.current || !waOrder || productsStatus !== "success" || clientsLoading) return;
+    waPrefilled.current = true;
+    if (waOrder.clientId && clients?.some((c: any) => c.id === waOrder.clientId)) {
+      handleSelectClient(waOrder.clientId);
+      setClienteInput(clients.find((c: any) => c.id === waOrder.clientId)?.name || waOrder.clientName || "");
+    } else {
+      setClienteInput(waOrder.customerName || waOrder.clientName || "");
+      if (waOrder.phone) setTelefono(`+${waOrder.phone}`);
+    }
+    const custom = waOrder.kind === "custom_quote";
+    const catalog = (products ?? []) as any[];
+    const stamp = Date.now();
+    const prefilled = (waOrder.items || []).map((it, index) => {
+      const quantity = it.quantity || 1;
+      const unitPrice = it.unitPrice || 0;
+      const product = !custom && it.productId ? catalog.find((p) => p.id === it.productId) : null;
+      const variant = product?.variants?.find((v: any) => v.id === it.variantId);
+      if (product && (variant || !it.variantId)) {
+        return {
+          id: `wa_${stamp}_${index}`,
+          product,
+          variant: variant || undefined,
+          quantity,
+          unitPrice,
+          discount: 0,
+          discountType: "percent",
+          subtotal: calcItemNet({ quantity, unitPrice, discount: 0, discountType: "percent" }),
+          notes: "",
+        };
+      }
+      // Personalizada o producto que ya no está en el catálogo: ítem manual (así no se pierde el nombre).
+      return {
+        id: `manual_${stamp}_${index}`,
+        productId: `manual_${stamp}_${index}`,
+        productName: it.productName,
+        variantId: null,
+        variantName: it.variantName || waOrder.customDetails?.size || "Sin medida",
+        description: custom ? customOrderDescription(waOrder) : "",
+        quantity,
+        unitPrice,
+        subtotal: quantity * unitPrice,
+        isManual: true,
+      };
+    });
+    setItems(prefilled);
+    setDetalle(whatsappOrderNote(waOrder));
+    const neededBy = waOrder.customDetails?.neededBy;
+    if (neededBy && /^\d{4}-\d{2}-\d{2}/.test(neededBy)) setFechaEntrega(neededBy.slice(0, 10));
+    toast.success(`Cargamos el pedido ${waOrder.orderNumber}: revisalo, poné la seña y guardá`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waOrder, productsStatus, clientsLoading, clients, products]);
 
   // Funciones para Items
   const addItemToOrder = () => {
@@ -899,6 +966,7 @@ export default function NuevasOrdenesPage() {
         number: generateOrderNumber(),
         // Referencia al presupuesto de origen, solo si la orden se importó de uno
         ...(selectedQuoteId && { quoteId: selectedQuoteId }),
+        ...(waOrder && { whatsappOrderId: waOrder.id }),
         invoiceType: facturas.length > 0 ? facturas[0].tipo : "sin factura",
         status: estado,
         subtotal: redondearTotal(applyIVA ? subtotalSinIVA : subtotal),
@@ -1057,6 +1125,11 @@ export default function NuevasOrdenesPage() {
       }
 
       toast.success(`Orden creada exitosamente con ID: ${orderId}`);
+      if (waOrder && orderId) {
+        await markWhatsappOrderProcessed(firestore, waOrder.id, { type: "order", id: orderId, number: cleanOrderData.number }, user?.uid);
+        router.push(`/publimar/whatsapp/pedidos?p=${encodeURIComponent(waOrder.id)}`);
+        return;
+      }
       router.push("/publimar/banderas/ordenes");
     } catch (error) {
       toast.error(
@@ -1118,6 +1191,11 @@ export default function NuevasOrdenesPage() {
           <p className="text-slate-600 text-sm mt-1">
             Cargá el cliente, los items y las condiciones de la orden
           </p>
+          {waOrder && (
+            <p className="mt-2 inline-block rounded-md bg-green-50 border border-green-200 px-2 py-1 text-sm text-green-800">
+              🤖 Viene del {whatsappOrderNote(waOrder)} · {waOrder.customerName || waOrder.clientName || "cliente"}
+            </p>
+          )}
         </div>
       </div>
 

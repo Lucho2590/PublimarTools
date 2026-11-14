@@ -8,7 +8,19 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, doc, orderBy, query, serverTimestamp, updateDoc } from "firebase/firestore";
-import { CheckCircle2, ClipboardCheck, Inbox, MessageSquare, Palette, ShoppingBag, XCircle } from "lucide-react";
+import {
+  Banknote,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  ExternalLink,
+  Inbox,
+  MessageSquare,
+  PackageCheck,
+  Palette,
+  ShoppingBag,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,12 +45,14 @@ function toDate(value: any): Date | null {
 const STATUS: Record<string, { label: string; className: string }> = {
   [EWhatsappOrderStatus.PENDING]: { label: "Nuevo", className: "bg-amber-100 text-amber-800 border-amber-200" },
   [EWhatsappOrderStatus.CONFIRMED]: { label: "Tomado", className: "bg-green-100 text-green-800 border-green-200" },
+  [EWhatsappOrderStatus.PROCESSED]: { label: "Procesado", className: "bg-blue-100 text-blue-800 border-blue-200" },
   [EWhatsappOrderStatus.CANCELLED]: { label: "Cancelado", className: "bg-slate-100 text-slate-500 border-slate-200" },
 };
 
 const FILTERS = [
   { id: "pending", label: "Nuevos" },
   { id: "confirmed", label: "Tomados" },
+  { id: "processed", label: "Procesados" },
   { id: "cancelled", label: "Cancelados" },
   { id: "all", label: "Todos" },
 ];
@@ -70,7 +84,7 @@ export default function WhatsappPedidosPage() {
   const orders = useMemo(() => (data as TWhatsappOrder[] | undefined) || [], [data]);
 
   const counts = useMemo(() => {
-    const c = { pending: 0, confirmed: 0, cancelled: 0 } as Record<string, number>;
+    const c = { pending: 0, confirmed: 0, processed: 0, cancelled: 0 } as Record<string, number>;
     for (const o of orders) c[o.status] = (c[o.status] || 0) + 1;
     return c;
   }, [orders]);
@@ -109,11 +123,11 @@ export default function WhatsappPedidosPage() {
       <div>
         <h1 className="text-2xl font-bold">Pedidos de WhatsApp</h1>
         <p className="text-sm text-slate-600">
-          Lo que vendió el agente. Tomá el pedido, coordiná con el cliente y armá la orden o la venta como siempre.
+          Lo que vendió el agente. Tomá el pedido, coordiná con el cliente y pasalo a venta o a orden de trabajo.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           title="Nuevos (sin tomar)"
           variant="amber"
@@ -128,6 +142,15 @@ export default function WhatsappPedidosPage() {
           icon={ClipboardCheck}
           value={status === "loading" ? <Skeleton className="h-8 w-12" /> : counts.confirmed}
           onClick={() => setFilter("confirmed")}
+          className="cursor-pointer"
+        />
+        <SummaryCard
+          title="Procesados"
+          variant="blue"
+          icon={PackageCheck}
+          subtitle="Pasados a venta u orden"
+          value={status === "loading" ? <Skeleton className="h-8 w-12" /> : counts.processed}
+          onClick={() => setFilter("processed")}
           className="cursor-pointer"
         />
         <SummaryCard
@@ -321,6 +344,44 @@ function OrderDetail({
           </div>
         )}
 
+        {o.status === EWhatsappOrderStatus.PROCESSED && o.convertedTo && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 flex items-center justify-between gap-3">
+            <span>
+              Pasado a {o.convertedTo.type === "sale" ? "venta" : "orden de trabajo"}
+              {o.convertedTo.number ? ` ${o.convertedTo.number}` : ""}
+            </span>
+            <Button variant="outline" size="sm" asChild>
+              <Link
+                href={
+                  o.convertedTo.type === "order"
+                    ? `/publimar/banderas/ordenes/${o.convertedTo.id}`
+                    : "/publimar/banderas/ventas"
+                }
+              >
+                Ver <ExternalLink className="h-3 w-3 ml-1" />
+              </Link>
+            </Button>
+          </div>
+        )}
+
+        {o.status !== EWhatsappOrderStatus.PROCESSED && o.status !== EWhatsappOrderStatus.CANCELLED && (
+          <div className="rounded-lg border p-3 space-y-2">
+            <p className="text-xs text-slate-500">¿Qué es este pedido? Se abre la pantalla de siempre con todo cargado.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link href={`/publimar/banderas/ventas/nueva?fromWhatsapp=${encodeURIComponent(o.id)}`}>
+                  <Banknote className="h-4 w-4 mr-1" /> Pasar a venta
+                </Link>
+              </Button>
+              <Button asChild variant={custom ? "default" : "outline"}>
+                <Link href={`/publimar/banderas/ordenes/nuevas?fromWhatsapp=${encodeURIComponent(o.id)}`}>
+                  <ClipboardList className="h-4 w-4 mr-1" /> Pasar a orden de trabajo
+                </Link>
+              </Button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2 pt-2">
           {o.phone && (
             <Button variant="outline" asChild>
@@ -330,16 +391,16 @@ function OrderDetail({
             </Button>
           )}
           {o.status === EWhatsappOrderStatus.PENDING && (
-            <Button onClick={() => onStatus(EWhatsappOrderStatus.CONFIRMED)}>
+            <Button variant="outline" onClick={() => onStatus(EWhatsappOrderStatus.CONFIRMED)}>
               <CheckCircle2 className="h-4 w-4 mr-1" /> Marcar como tomado
             </Button>
           )}
-          {o.status !== EWhatsappOrderStatus.PENDING && (
+          {(o.status === EWhatsappOrderStatus.CONFIRMED || o.status === EWhatsappOrderStatus.CANCELLED) && (
             <Button variant="outline" onClick={() => onStatus(EWhatsappOrderStatus.PENDING)}>
               Volver a nuevo
             </Button>
           )}
-          {o.status !== EWhatsappOrderStatus.CANCELLED && (
+          {o.status !== EWhatsappOrderStatus.CANCELLED && o.status !== EWhatsappOrderStatus.PROCESSED && (
             <Button variant="ghost" className="text-red-600" onClick={() => onStatus(EWhatsappOrderStatus.CANCELLED)}>
               Cancelar pedido
             </Button>
