@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useFirestore } from "reactfire";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { toast } from "sonner";
-import { Save } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +27,7 @@ import {
   DEFAULT_BOT_CONFIG,
   mergeBotConfig,
 } from "@/lib/bot/defaults";
-import { TBotConfig } from "@/types/bot";
+import { TBotConfig, TBotHoliday } from "@/types/bot";
 import { WhatsappConnectionCard } from "./WhatsappConnectionCard";
 
 const DAYS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -52,6 +52,7 @@ const BUSINESS_FIELDS: { key: keyof TBotConfig["business"]; label: string; rows:
   { key: "payments", label: "Formas de pago", rows: 2 },
   { key: "productionTime", label: "Tiempos de fabricación", rows: 2 },
   { key: "extra", label: "Otros datos útiles para la IA", rows: 3 },
+  { key: "website", label: "Web con fotos (vacía = las fotos las manda el equipo)", rows: 1 },
 ];
 
 export function ConfigTab() {
@@ -92,6 +93,15 @@ export function ConfigTab() {
       : [...config.businessHours.days, d].sort();
     set("businessHours", { ...config.businessHours, days });
   };
+
+  const setHoliday = (i: number, patch: Partial<TBotHoliday>) =>
+    set("holidays", config.holidays.map((h, j) => (j === i ? { ...h, ...patch } : h)));
+  const addHoliday = () =>
+    set("holidays", [
+      ...config.holidays,
+      { date: "", label: "", open: true, openTime: config.businessHours.open, closeTime: "12:00" },
+    ]);
+  const removeHoliday = (i: number) => set("holidays", config.holidays.filter((_, j) => j !== i));
 
   return (
     <div className="space-y-6">
@@ -276,6 +286,82 @@ export function ConfigTab() {
               onChange={(e) => set("businessHours", { ...config.businessHours, close: e.target.value })}
             />
           </div>
+          {/* Fin de semana con horario propio (ej. sábados de 8 a 12). */}
+          {[6, 0]
+            .filter((d) => config.businessHours.days.includes(d))
+            .map((d) => {
+              const bh = config.businessHours;
+              const own = bh.dayHours?.[String(d)] || { open: bh.open, close: bh.close };
+              const setOwn = (patch: Partial<typeof own>) =>
+                set("businessHours", { ...bh, dayHours: { ...bh.dayHours, [String(d)]: { ...own, ...patch } } });
+              return (
+                <div key={d} className="flex flex-wrap items-center gap-3">
+                  <span className="w-28 text-sm text-slate-600">{d === 6 ? "Los sábados" : "Los domingos"}</span>
+                  <Input type="time" className="w-32" value={own.open} onChange={(e) => setOwn({ open: e.target.value })} />
+                  <span className="text-sm">a</span>
+                  <Input type="time" className="w-32" value={own.close} onChange={(e) => setOwn({ close: e.target.value })} />
+                </div>
+              );
+            })}
+          <p className="text-xs text-slate-500">
+            El bot atiende y vende a toda hora. Fuera de este horario, si pasa la charla al equipo, avisa que le
+            responden cuando abran.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Feriados</CardTitle>
+          <p className="text-sm text-slate-600">
+            Cargá cada feriado: si cierran o abren medio día. El bot lo usa para responder &quot;¿abren el
+            feriado?&quot;. Si un feriado no está cargado, dice que lo confirma el equipo.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {config.holidays.map((h, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-3">
+              <Input type="date" className="w-40" value={h.date} onChange={(e) => setHoliday(i, { date: e.target.value })} />
+              <Input
+                className="w-48"
+                placeholder="Ej: Día de la Soberanía"
+                value={h.label}
+                onChange={(e) => setHoliday(i, { label: e.target.value })}
+              />
+              <Select value={h.open ? "open" : "closed"} onValueChange={(v) => setHoliday(i, { open: v === "open" })}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="closed">Cerrado</SelectItem>
+                  <SelectItem value="open">Abre</SelectItem>
+                </SelectContent>
+              </Select>
+              {h.open && (
+                <>
+                  <Input
+                    type="time"
+                    className="w-32"
+                    value={h.openTime || ""}
+                    onChange={(e) => setHoliday(i, { openTime: e.target.value })}
+                  />
+                  <span className="text-sm">a</span>
+                  <Input
+                    type="time"
+                    className="w-32"
+                    value={h.closeTime || ""}
+                    onChange={(e) => setHoliday(i, { closeTime: e.target.value })}
+                  />
+                </>
+              )}
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeHoliday(i)} aria-label="Quitar feriado">
+                <Trash2 className="h-4 w-4 text-red-600" />
+              </Button>
+            </div>
+          ))}
+          <Button variant="outline" size="sm" onClick={addHoliday}>
+            <Plus className="h-4 w-4 mr-1" /> Agregar feriado
+          </Button>
         </CardContent>
       </Card>
 
@@ -294,7 +380,7 @@ export function ConfigTab() {
                 <Label>{f.label}</Label>
                 <Textarea
                   rows={f.rows}
-                  value={config.business[f.key]}
+                  value={config.business[f.key] ?? ""}
                   onChange={(e) => set("business", { ...config.business, [f.key]: e.target.value })}
                 />
               </div>

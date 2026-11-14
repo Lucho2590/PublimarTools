@@ -60,7 +60,9 @@ export const DEFAULT_BOT_CONFIG: TBotConfig = {
     localCity: "Mar del Plata",
     localDelivery:
       "En {ciudad} no hacemos envíos nosotros: trabajamos con un mensajero. Pedinos su contacto y lo coordinás directo con él 🛵",
+    website: "",
   },
+  holidays: [],
   productAliases: {},
   productTypes: [],
   customerSegments: [],
@@ -407,6 +409,7 @@ export function mergeBotConfig(raw: Partial<TBotConfig> | null | undefined): TBo
     customerSegments: Array.isArray(r.customerSegments) ? r.customerSegments : [],
     catalogGroups: Array.isArray(r.catalogGroups) ? r.catalogGroups : [],
     customTechniques: Array.isArray(r.customTechniques) ? r.customTechniques : [],
+    holidays: Array.isArray(r.holidays) ? r.holidays : [],
     askDelivery: r.askDelivery ?? DEFAULT_BOT_CONFIG.askDelivery,
     useButtons: r.useButtons ?? DEFAULT_BOT_CONFIG.useButtons,
     agentMode: r.agentMode ?? DEFAULT_BOT_CONFIG.agentMode,

@@ -245,6 +245,18 @@ export type TBotBusinessHours = {
   days: number[];
   open: string; // "09:00"
   close: string; // "18:00"
+  /** Horario distinto para algún día (clave "0"…"6"), ej. sábado de 8 a 12. */
+  dayHours?: Record<string, { open: string; close: string }>;
+};
+
+/** Feriado cargado: cerrado o con horario propio (ej. medio día). */
+export type TBotHoliday = {
+  /** "2026-11-23" (fecha de Buenos Aires). */
+  date: string;
+  label: string;
+  open: boolean;
+  openTime?: string;
+  closeTime?: string;
 };
 
 /**
@@ -338,7 +350,10 @@ export type TBotConfig = {
     localCity: string;
     /** Qué decir cuando piden envío dentro de la ciudad del local. */
     localDelivery: string;
+    /** Web con fotos del catálogo. Vacía = las fotos las manda el equipo. */
+    website?: string;
   };
+  holidays: TBotHoliday[];
   /** productId → otros nombres con los que lo piden los clientes. */
   productAliases: Record<string, string[]>;
   /** Vacío = se detectan solos por nombre de categoría (Flameo, Ceremonia, Escritorio). */
