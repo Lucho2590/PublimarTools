@@ -4,6 +4,7 @@ import collections from "@/lib/collections";
 import { EClientType, EClientStatus, EClientSection } from "@/types/client";
 import { EQuoteStatus } from "@/types/quote";
 import { EWhatsappConversationStatus, EWhatsappOrderStatus } from "@/types/whatsapp";
+import { phoneMatchKey } from "@/lib/phone";
 
 // ---------------------------------------------------------------------------
 // Helpers internos
@@ -158,21 +159,69 @@ export async function getProductDetails(args: { productId: string }) {
 // Clientes
 // ---------------------------------------------------------------------------
 
+type TClientPhoneEntry = { id: string; name: string | null; keys: string[]; fromBot: boolean };
+const CLIENT_INDEX_MS = 5 * 60_000;
+let clientIndex: { at: number; list: TClientPhoneEntry[] } | null = null;
+
+/** Clientes (no borrados) con las claves de todos sus teléfonos (el suyo y los de sus contactos). Cacheado 5 min. */
+async function getClientPhoneIndex(force = false): Promise<TClientPhoneEntry[]> {
+  if (!force && clientIndex && Date.now() - clientIndex.at < CLIENT_INDEX_MS) return clientIndex.list;
+  const snap = await getFirestoreAdmin().collection(collections.CLIENTS).get();
+  const list = snap.docs
+    // Solo clientes de Banderas (los de Vía Pública son otro negocio).
+    .filter((d) => !(d.data() as any).deleted && [undefined, null, "", EClientSection.BANDERAS].includes((d.data() as any).section))
+    .map((d) => {
+      const x = d.data() as any;
+      const phones = [x.phone, ...((x.contacts || []) as any[]).map((c) => c?.phone)];
+      const keys = Array.from(new Set(phones.map((p) => phoneMatchKey(p)).filter(Boolean)));
+      return { id: d.id, name: x.name ?? null, keys, fromBot: x.source === "whatsapp_bot" };
+    })
+    .filter((c) => c.keys.length);
+  clientIndex = { at: Date.now(), list };
+  return list;
+}
+
+/**
+ * Clientes cuyo teléfono coincide (aunque esté cargado distinto: "2235053759" vs
+ * "5492235053759"). Si hay clientes cargados por el equipo, los creados por el bot
+ * no cuentan (son duplicados a unir).
+ */
+export async function findClientsByPhone(phone: string): Promise<{ id: string; name: string | null }[]> {
+  const key = phoneMatchKey(phone);
+  if (!key) return [];
+  const matches = (await getClientPhoneIndex()).filter((c) => c.keys.includes(key));
+  const real = matches.filter((c) => !c.fromBot);
+  return (real.length ? real : matches).map(({ id, name }) => ({ id, name }));
+}
+
+/**
+ * Cliente del que escribe por WhatsApp:
+ * 1. el que el equipo vinculó a esa conversación (whatsappContacts.clientId);
+ * 2. si no, por teléfono: si hay UNO solo, se vincula solo;
+ * 3. si no hay (o hay varios y no se puede elegir), se crea uno nuevo marcado
+ *    como del bot, y si había varios quedan como sugerencias para el equipo.
+ */
 export async function lookupOrCreateClient(args: { phone: string; name?: string }) {
   const db = getFirestoreAdmin();
   if (!args?.phone) throw new Error("Se requiere phone");
   const norm = normalizePhone(args.phone);
+  const contactRef = db.collection(collections.WHATSAPP_CONTACTS).doc(norm);
+  const contactSnap = await contactRef.get();
 
-  for (const candidate of [norm, args.phone]) {
-    const q = await db
-      .collection(collections.CLIENTS)
-      .where("phone", "==", candidate)
-      .limit(1)
-      .get();
-    if (!q.empty) {
-      const d = q.docs[0];
-      return { clientId: d.id, name: (d.data() as any).name ?? null, created: false };
+  const linkedId: string | undefined = contactSnap.data()?.clientId;
+  if (linkedId) {
+    const c = await db.collection(collections.CLIENTS).doc(linkedId).get();
+    if (c.exists && !(c.data() as any)?.deleted) {
+      return { clientId: c.id, name: (c.data() as any).name ?? null, created: false };
     }
+  }
+
+  const matches = await findClientsByPhone(norm);
+  if (matches.length === 1) {
+    if (contactSnap.exists) {
+      await contactRef.set({ clientId: matches[0].id, clientCandidates: [], clientLinkedBy: "auto" }, { merge: true });
+    }
+    return { clientId: matches[0].id, name: matches[0].name, created: false };
   }
 
   const name = args.name?.trim() || norm;
@@ -182,9 +231,17 @@ export async function lookupOrCreateClient(args: { phone: string; name?: string 
     status: EClientStatus.ACTIVE,
     section: EClientSection.BANDERAS,
     phone: norm,
+    source: "whatsapp_bot",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
+  clientIndex = null;
+  if (contactSnap.exists) {
+    await contactRef.set(
+      { clientId: ref.id, clientCandidates: matches.map((m) => m.id), clientLinkedBy: "bot_new" },
+      { merge: true }
+    );
+  }
   return { clientId: ref.id, name, created: true };
 }
 
@@ -441,4 +498,89 @@ export async function setConversationHandoff(args: { phone: string; reason?: str
   if (!snap.exists) update.createdAt = FieldValue.serverTimestamp();
   await ref.set(update, { merge: true });
   return { ok: true, status: EWhatsappConversationStatus.HANDOFF };
+}
+
+// ---------------------------------------------------------------------------
+// Historial del cliente (para que el agente responda por compras anteriores)
+// ---------------------------------------------------------------------------
+
+const ORDER_STATUS_FOR_CLIENT: Record<string, string> = {
+  draft: "a confirmar",
+  pending: "a confirmar",
+  in_process: "en preparación",
+  completed: "entregada",
+  cancelled: "cancelada",
+};
+const WA_ORDER_STATUS_FOR_CLIENT: Record<string, string> = {
+  pending: "recibido, el equipo lo tiene que confirmar",
+  confirmed: "confirmado por el equipo",
+  processed: "pasado a venta u orden",
+  cancelled: "cancelado",
+};
+
+function dateAR(v: any): string | null {
+  const d = v?.toDate ? v.toDate() : v ? new Date(v) : null;
+  return d && !isNaN(d.getTime())
+    ? d.toLocaleDateString("es-AR", { timeZone: "America/Argentina/Buenos_Aires", day: "numeric", month: "numeric", year: "numeric" })
+    : null;
+}
+
+/**
+ * Compras del cliente que escribe desde ese número: SOLO el cliente vinculado a
+ * esa conversación (o el único con ese teléfono). Nunca crea clientes y nunca
+ * devuelve datos de otro.
+ */
+export async function getClientHistory(args: { phone: string; clientId?: string | null }) {
+  const db = getFirestoreAdmin();
+  const norm = normalizePhone(args.phone);
+  let clientId = args.clientId || null;
+  if (!clientId) {
+    const contact = await db.collection(collections.WHATSAPP_CONTACTS).doc(norm).get();
+    clientId = contact.data()?.clientId || null;
+  }
+  if (!clientId) {
+    const matches = await findClientsByPhone(norm);
+    if (matches.length === 1) clientId = matches[0].id;
+  }
+  if (!clientId) return { cliente: null };
+
+  const client = (await db.collection(collections.CLIENTS).doc(clientId).get()).data() as any;
+  const byClient = async (col: string) =>
+    (await db.collection(col).where("clientId", "==", clientId).get()).docs
+      .map((d) => ({ id: d.id, ...(d.data() as any) }))
+      .filter((x) => !x.deleted)
+      .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
+      .slice(0, 5);
+  const items = (list: any[] = []) =>
+    list
+      .slice(0, 6)
+      .map((i) => `${i.quantity ?? 1} × ${i.productName || i.product?.name || "ítem"}${i.variantName ? ` ${i.variantName}` : ""}`)
+      .join(", ");
+
+  const [orders, sales, waOrders] = await Promise.all([
+    byClient(collections.ORDERS),
+    byClient(collections.SALES),
+    byClient(collections.WHATSAPP_ORDERS),
+  ]);
+  return {
+    cliente: client?.name ?? null,
+    ordenes_de_trabajo: orders.map((o) => ({
+      numero: o.number ?? null,
+      fecha: dateAR(o.createdAt),
+      estado: ORDER_STATUS_FOR_CLIENT[o.status] || o.status,
+      entrega_estimada: dateAR(o.estimatedDeliveryDate),
+      items: items(o.items),
+      total: coerceNumber(o.total),
+      saldo_pendiente: o.balance != null ? coerceNumber(o.balance) : null,
+    })),
+    // Las ventas que salieron de una orden ya están en ordenes_de_trabajo.
+    compras: sales.filter((s) => !s.orderId).map((s) => ({ fecha: dateAR(s.createdAt), items: items(s.items), total: coerceNumber(s.total) })),
+    pedidos_por_whatsapp: waOrders.map((w) => ({
+      numero: w.orderNumber ?? null,
+      fecha: dateAR(w.createdAt),
+      estado: WA_ORDER_STATUS_FOR_CLIENT[w.status] || w.status,
+      items: items(w.items),
+      total: coerceNumber(w.total),
+    })),
+  };
 }
