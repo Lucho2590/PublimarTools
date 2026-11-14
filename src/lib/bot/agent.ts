@@ -10,7 +10,7 @@
 // "edita" (Claude Haiku 5.5 invalida thinking si cambia lo anterior).
 
 import Anthropic from "@anthropic-ai/sdk";
-import { TBotAiUsage, TBotCustomTechnique, TBotTrace } from "@/types/bot";
+import { TBotAiUsage, TBotConfig, TBotCustomTechnique, TBotTrace } from "@/types/bot";
 import { lookupOrCreateClient, createWhatsappOrder, createCustomQuoteRequest } from "@/lib/whatsapp/db";
 import {
   TBotProduct,
@@ -538,7 +538,7 @@ function buildSystemPrompt(ctx: TFlowCtx): string {
 - Lo del negocio (horarios, dirección, pagos, envíos) sale SOLO de "Datos del negocio" y "Preguntas frecuentes". Si algo no está, decí que lo confirma alguien del equipo (y si hace falta, derivar_a_persona).
 - Las "Preguntas frecuentes" son textos escritos por el local: si la pregunta coincide, usá esa respuesta casi tal cual (adaptala a la charla, sin agregar datos que no estén).
 - No digas cuántas unidades hay en stock, salvo que pida más de las que hay.
-- Sin stock: decile que esa no está disponible ahora, ofrecé avisarle cuando vuelva (avisar_cuando_haya_stock) y mostrale opciones que sí hay.
+- Sin stock o no alcanza para lo que pide: decile que ahora no hay (o cuántas hay si pide más) y que se pueden encargar más, pero la cantidad y el plazo los define el equipo. Ofrecé: encargarlas (pedí nombre y cantidad y derivar_a_persona con el detalle) o avisarle cuando vuelva (avisar_cuando_haya_stock). Mostrale también opciones que sí hay.
 
 # Banderas comunes
 1. Si pide una bandera, buscala. Si hay varios tipos (ver "Tipos de bandera") preguntá cuál, salvo que se deduzca ("para el mástil" = flameo, "para el acto" = ceremonia, "de mesa" = escritorio).
@@ -570,9 +570,16 @@ Es personalizada si quiere logo, escudo, nombre, texto, leyenda, foto, diseño p
 - Fuera de ${b.localCity || "la ciudad"}: ${b.shipping || "lo confirma el equipo"}
 - También puede retirar en el local${b.address ? ` (${b.address})` : ""}.
 
+# Fotos, envíos y feriados
+- Fotos: ${b.website ? `pasale la web, ahí están las fotos: ${b.website}` : "por acá no mandás fotos. Si las quiere, derivar_a_persona para que se las mande el equipo (decíselo)."}
+- Envíos fuera de ${b.localCity || "la ciudad"}: la empresa de transporte y el costo los coordina el equipo con cada cliente. No des montos ni empresas. Si quiere avanzar, armá el pedido y en la entrega anotá envío con el destino; el equipo lo coordina.
+- Feriados: respondé SOLO con los "Feriados cargados" del Estado. Si el que pregunta no está cargado, decí que depende del feriado (cuando abren, suele ser medio día) y que lo confirma el equipo; no hace falta derivar.
+
 # Pasar a una persona
 - Precio mayorista, descuento por cantidad o precio especial: NO lo decidas (ni lo prometas ni lo niegues). Preguntá qué productos y cuántas unidades, pedí el nombre y derivar_a_persona con ese detalle para que lo confirme el equipo.
-Si lo pide, está enojado, es un reclamo, una factura, o algo que no podés resolver con las herramientas: derivar_a_persona y avisale que le escriben por acá (si "Estado" dice fuera de horario, que le escriben cuando abran: ${b.hours || "en horario de atención"}).
+Si lo pide, está enojado, es un reclamo, o algo que no podés resolver con las herramientas: derivar_a_persona y avisale que le escriben por acá (si "Estado" dice fuera de horario, que le escriben cuando abran: ${b.hours || "en horario de atención"}).
+
+Después de derivar_a_persona cerrá con ese aviso y no hagas más preguntas: la charla sigue con el equipo.
 
 # Primer mensaje
 Si "Estado" dice que es el primer mensaje de la charla, empezá saludando y presentándote como el agente digital de *${negocio}* 🤖 (una línea), y seguí con lo que pidió.
@@ -589,6 +596,7 @@ ${config.agentInstructions?.trim() || "(sin instrucciones extra)"}
 - Formas de pago: ${b.payments || "(sin cargar)"}
 - Tiempos de fabricación: ${b.productionTime || "(sin cargar)"}
 - Otros: ${b.extra || "(nada)"}
+- Web: ${b.website || "(todavía no)"}
 
 # Preguntas frecuentes (respuestas del negocio)
 ${faqs || "(ninguna)"}
@@ -604,6 +612,21 @@ ${segments || "(sin tipos)"}
 
 # Catálogo (solo nombres y medidas; precios y stock con las herramientas)
 ${catalogSummary(catalog)}`;
+}
+
+/** Feriados cargados de hoy a 60 días, para "¿abren el lunes feriado?". */
+function holidaysLine(config: TBotConfig, now: Date): string {
+  const today = now.toLocaleDateString("en-CA", { timeZone: TZ }); // YYYY-MM-DD
+  const limit = new Date(now.getTime() + 60 * 86400000).toLocaleDateString("en-CA", { timeZone: TZ });
+  const list = (config.holidays || [])
+    .filter((h) => h.date && h.date >= today && h.date <= limit)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((h) => {
+      const d = new Date(`${h.date}T12:00:00-03:00`).toLocaleDateString("es-AR", { timeZone: TZ, weekday: "long", day: "numeric", month: "numeric" });
+      const hours = h.open ? `abre de ${h.openTime || config.businessHours.open} a ${h.closeTime || config.businessHours.close}` : "cerrado";
+      return `${d}${h.label ? ` (${h.label})` : ""}: ${hours}`;
+    });
+  return `Feriados cargados: ${list.length ? list.join("; ") : "ninguno"}.`;
 }
 
 /** Estado de la charla (cambia en cada mensaje): va como mensaje de sistema al final. */
@@ -647,6 +670,7 @@ function buildState(ctx: TFlowCtx, isFirst: boolean): string {
       ? `Entrega: ${session.delivery.method === "pickup" ? "retira" : session.delivery.method === "courier" ? "mensajero" : "envío"}${session.delivery.place ? ` a ${session.delivery.place}` : ""}${session.delivery.address ? `, ${session.delivery.address}` : ""}.`
       : null,
     session.lastOrderNumber ? `Último pedido de este cliente: ${session.lastOrderNumber}.` : null,
+    holidaysLine(config, now),
   ].filter(Boolean);
   return `Estado (para vos, no lo copies textual):\n${lines.join("\n")}`;
 }

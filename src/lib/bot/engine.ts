@@ -97,6 +97,9 @@ export function isOutOfHours(config: TBotConfig, now = new Date()): boolean {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: TZ,
     weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -104,6 +107,8 @@ export function isOutOfHours(config: TBotConfig, now = new Date()): boolean {
   const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
   const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
   const hhmm = `${get("hour").replace("24", "00")}:${get("minute")}`;
+  const holiday = (config.holidays || []).find((h) => h.date === `${get("year")}-${get("month")}-${get("day")}`);
+  if (holiday) return !holiday.open || hhmm < (holiday.openTime || bh.open) || hhmm >= (holiday.closeTime || bh.close);
   if (!bh.days.includes(day)) return true;
   const { open, close } = bh.dayHours?.[String(day)] || bh;
   return hhmm < open || hhmm >= close;
