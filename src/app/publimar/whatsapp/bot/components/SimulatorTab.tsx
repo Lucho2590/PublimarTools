@@ -244,11 +244,12 @@ export function SimulatorTab() {
           <CardContent className="pt-6 space-y-2 text-xs text-slate-600">
             <p className="font-medium text-slate-800 text-sm">Cómo leer la traza</p>
             <p>
-              <LayerBadge layer={EBotLayer.FLOW} /> / <LayerBadge layer={EBotLayer.RULE} /> resuelto sin IA (gratis).
+              <LayerBadge layer={EBotLayer.AI} /> respondió el agente IA: lo normal. Si contesta algo mal, cargá el
+              dato en Entrenamiento (preguntas frecuentes) o en Configuración (datos del negocio, instrucciones).
             </p>
             <p>
-              <LayerBadge layer={EBotLayer.AI} /> tuvo que usar IA: enseñale la frase en &quot;Por aprender&quot;
-              para que la próxima vez salga por reglas.
+              <LayerBadge layer={EBotLayer.FLOW} /> / <LayerBadge layer={EBotLayer.RULE} /> respondió el bot de
+              respaldo (sin IA): pasa si la IA falló o se llegó al tope mensual de gasto.
             </p>
             <p>
               IA en el servidor:{" "}
