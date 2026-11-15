@@ -12,7 +12,7 @@ import { useWhatsappAttention } from "@/components/whatsapp/WhatsappAttention";
 function badgeCountFor(
   badge: NavItemType["badge"],
   unviewedCount: number,
-  wa: { attention: number; pendingOrders: number }
+  wa: { attention: number; pendingOrders: number; pendingQuotes: number }
 ): number {
   switch (badge) {
     case "unviewed":
@@ -23,6 +23,8 @@ function badgeCountFor(
       return wa.attention;
     case "whatsappOrders":
       return wa.pendingOrders;
+    case "botQuotes":
+      return wa.pendingQuotes;
     default:
       return 0;
   }

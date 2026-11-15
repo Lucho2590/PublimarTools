@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy, doc, updateDoc, where } from "firebase/firestore";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -32,7 +32,7 @@ import { Eye, Download, FileText, Send, CheckCircle2, Coins, Plus, Search, Loade
 // jsPDF y jspdf-autotable (~1.6MB) se cargan bajo demanda dentro de handleDownload.
 import { toast } from "sonner";
 import { DocumentData } from "firebase/firestore";
-import { formatearPrecio, generateSlug, redondearTotal } from "@/lib/utils";
+import { cn, formatearPrecio, generateSlug, redondearTotal } from "@/lib/utils";
 import { formatItemDiscount } from "@/lib/totals";
 import QuoteDetailsModal from "./modalPresupuestos/quoteDetailsModal";
 import { EClientSection } from "@/types/client";
@@ -42,6 +42,9 @@ export default function PresupuestosPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebouncedValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState<EQuoteStatus | "all">("all");
+  // ?agente=1 (viene del aviso): solo los borradores que armó el agente de WhatsApp.
+  const searchParams = useSearchParams();
+  const [botOnly, setBotOnly] = useState(searchParams.get("agente") === "1");
   const [downloading, setDownloading] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
@@ -92,13 +95,15 @@ export default function PresupuestosPage() {
   const filteredQuotes = useMemo(() => quotesData
     ?.filter((quote: DocumentData) => {
       const matchesSearch =
-        quote.number.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-        quote.client.name.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+        String(quote.number || "").toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        String(quote.client?.name || "").toLowerCase().includes(debouncedSearchTerm.toLowerCase());
 
       const matchesStatus =
         statusFilter === "all" || quote.status === statusFilter;
 
-      return matchesSearch && matchesStatus;
+      const matchesBot = !botOnly || (quote.source === "whatsapp_bot" && quote.status === EQuoteStatus.DRAFT);
+
+      return matchesSearch && matchesStatus && matchesBot;
     })
     .map((quote: DocumentData) => ({
       ...quote,
@@ -114,7 +119,11 @@ export default function PresupuestosPage() {
           createdAt:
             comment.createdAt?.toDate?.() || new Date(comment.createdAt),
         })) || [],
-    })) as (TQuote & { id: string })[], [quotesData, debouncedSearchTerm, statusFilter]);
+    })) as (TQuote & { id: string })[], [quotesData, debouncedSearchTerm, statusFilter, botOnly]);
+  const botPending = useMemo(
+    () => (quotesData || []).filter((q: DocumentData) => q.source === "whatsapp_bot" && q.status === EQuoteStatus.DRAFT).length,
+    [quotesData]
+  );
 
   // Calcular índices para la paginación
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -522,6 +531,21 @@ export default function PresupuestosPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setBotOnly((v) => !v);
+                  setCurrentPage(1);
+                }}
+                className={cn(
+                  "h-10 px-3 rounded-md border text-sm transition-colors whitespace-nowrap",
+                  botOnly ? "bg-purple-600 text-white border-purple-600" : "bg-white text-slate-700 hover:bg-slate-50"
+                )}
+              >
+                🤖 Del agente, para revisar{botPending ? ` (${botPending})` : ""}
+              </button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -567,6 +591,11 @@ export default function PresupuestosPage() {
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">
                           {quote.client?.name || "-"}
+                          {(quote as any).source === "whatsapp_bot" && (
+                            <span className="ml-2 px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 text-xs font-normal">
+                              🤖 Agente
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-muted-foreground truncate">
                           {meta}

@@ -249,60 +249,205 @@ export async function lookupOrCreateClient(args: { phone: string; name?: string 
 // Cotizaciones (quotes) y pedidos (whatsappOrders)
 // ---------------------------------------------------------------------------
 
-export async function createQuote(args: {
-  clientId: string;
-  items: ItemInput[];
-  notes?: string;
-}) {
-  const db = getFirestoreAdmin();
-  if (!args?.clientId) throw new Error("Se requiere clientId");
-
-  const clientSnap = await db.collection(collections.CLIENTS).doc(args.clientId).get();
-  if (!clientSnap.exists) throw new Error("Cliente no encontrado");
-  const c = clientSnap.data() as any;
-
-  const resolved = await resolveItems(db, parseItems(args.items));
-  const quoteItems = resolved.map((r, idx) => {
-    const item: any = {
+/** Ítems de presupuesto con la forma que usa la UI (anidado `product`/`variant` + campos planos). */
+async function quoteItemsFromCatalog(db: Firestore, items: ItemInput[]) {
+  if (!Array.isArray(items) || !items.length) throw new Error("Se requiere al menos un item");
+  const out: any[] = [];
+  for (let idx = 0; idx < items.length; idx++) {
+    const it = items[idx];
+    const snap = await db.collection(collections.PRODUCTS).doc(it.productId).get();
+    const p = snap.data() as any;
+    if (!snap.exists || p?.deleted) throw new Error(`Producto no disponible: ${it.productId}`);
+    const v = it.variantId ? (p.variants || []).find((x: any) => x.id === it.variantId) : null;
+    const unitPrice = coerceNumber(v ? v.price : p.price);
+    const quantity = coerceNumber(it.quantity) || 1;
+    out.push({
       id: `${Date.now()}-${idx}`,
-      productId: r.productId,
-      productName: r.productName,
-      description: r.variantName ? `${r.productName} - ${r.variantName}` : r.productName,
-      quantity: r.quantity,
-      unitPrice: r.unitPrice,
-      subtotal: r.subtotal,
+      product: {
+        id: snap.id,
+        name: p.name ?? "",
+        description: p.description ?? "",
+        categories: p.categories ?? [],
+        imageUrls: p.imageUrls ?? [],
+        hasVariants: !!p.hasVariants,
+        price: coerceNumber(p.price),
+        taxRate: p.taxRate ?? 0,
+      },
+      variant: v ? { id: v.id, size: v.size ?? "", price: unitPrice } : null,
+      productId: snap.id,
+      productName: p.name ?? "",
+      variantId: v?.id ?? null,
+      variantName: v?.size ?? null,
+      description: p.description ?? "",
+      quantity,
+      unitPrice,
+      discount: 0,
+      discountType: "percent",
+      subtotal: unitPrice * quantity,
       tax: 0,
       taxAmount: 0,
-    };
-    if (r.variantId) item.variantId = r.variantId;
-    if (r.variantName) item.variantName = r.variantName;
-    return item;
-  });
+      notes: "",
+    });
+  }
+  return out;
+}
 
-  const subtotal = quoteItems.reduce((s, i) => s + i.subtotal, 0);
+/** Cliente embebido en el presupuesto, como lo guarda presupuestos/nuevo (con section: banderas). */
+function quoteClientSnapshot(id: string, c: any) {
+  return {
+    id,
+    section: EClientSection.BANDERAS,
+    name: c.name || "Sin nombre",
+    type: c.type ?? EClientType.INDIVIDUAL,
+    status: c.status ?? EClientStatus.ACTIVE,
+    email: c.email ?? "",
+    phone: c.phone ?? "",
+    address: c.address ?? "",
+    cuit: c.cuit ?? "",
+    dni: c.dni ?? "",
+    taxCondition: c.taxCondition ?? null,
+    notes: c.notes ?? "",
+    contacts: c.contacts ?? [],
+  };
+}
+
+async function writeDraftQuote(db: Firestore, clientId: string, client: any, items: any[], notes: string) {
+  const total = items.reduce((s, i) => s + i.subtotal, 0);
   const number = generateQuoteNumber();
-  const validUntil = Timestamp.fromDate(new Date(Date.now() + 15 * 24 * 60 * 60 * 1000));
-
-  const data: any = {
+  const ref = await db.collection(collections.QUOTES).add({
     number,
-    // snapshot plano del cliente (sin DocumentReference)
-    client: { id: args.clientId, name: c.name ?? null, phone: c.phone ?? null },
-    items: quoteItems,
-    subtotal,
+    client: quoteClientSnapshot(clientId, client),
+    section: EClientSection.BANDERAS,
+    items,
+    subtotal: total,
+    applyIVA: false,
     taxRate: 0,
     tax: 0,
     taxAmount: 0,
-    total: subtotal,
+    discountPercentage: 0,
+    manualDiscount: 0,
+    total,
     status: EQuoteStatus.DRAFT,
-    validUntil,
+    validUntil: Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
+    notes,
+    comments: [],
     source: "whatsapp_bot",
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-  };
-  if (args.notes) data.notes = args.notes;
+  });
+  return { id: ref.id, number, total };
+}
 
-  const ref = await db.collection(collections.QUOTES).add(data);
-  return { id: ref.id, number, total: subtotal };
+/** Presupuesto en borrador para un cliente ya conocido (endpoint viejo de n8n). */
+export async function createQuote(args: { clientId: string; items: ItemInput[]; notes?: string }) {
+  const db = getFirestoreAdmin();
+  if (!args?.clientId) throw new Error("Se requiere clientId");
+  const clientSnap = await db.collection(collections.CLIENTS).doc(args.clientId).get();
+  if (!clientSnap.exists) throw new Error("Cliente no encontrado");
+  const items = await quoteItemsFromCatalog(db, parseItems(args.items));
+  return writeDraftQuote(db, args.clientId, clientSnap.data(), items, args.notes || "");
+}
+
+const onlyDigits = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+
+/**
+ * El agente arma un presupuesto en BORRADOR para que el equipo lo revise y lo
+ * mande. Cliente: 1) por CUIT/CUIL/DNI, 2) el vinculado a la conversación,
+ * 3) el único con ese teléfono; si no, lo crea (con datos del padrón de ARCA si
+ * se puede). Completa CUIT/DNI/teléfono que le falten, sin pisar lo cargado.
+ */
+export async function createBotDraftQuote(args: {
+  phone: string;
+  nombre: string;
+  documento: string;
+  items: ItemInput[];
+}) {
+  const db = getFirestoreAdmin();
+  const norm = normalizePhone(args.phone);
+  const docDigits = onlyDigits(args.documento);
+  const isCuit = docDigits.length === 11;
+
+  // 1) Por documento (solo clientes de Banderas).
+  const all = await db.collection(collections.CLIENTS).get();
+  const banderas = all.docs.filter((d) => {
+    const x = d.data() as any;
+    return !x.deleted && [undefined, null, "", EClientSection.BANDERAS].includes(x.section);
+  });
+  let match = banderas.find((d) => {
+    const x = d.data() as any;
+    return (
+      (isCuit &&
+        (onlyDigits(x.cuit) === docDigits ||
+          ((x.razonesSociales || []) as any[]).some((r) => onlyDigits(r?.cuit) === docDigits))) ||
+      (!isCuit && onlyDigits(x.dni) === docDigits)
+    );
+  });
+  // 2) El vinculado a la conversación / 3) el único con ese teléfono.
+  const contactRef = db.collection(collections.WHATSAPP_CONTACTS).doc(norm);
+  const contactSnap = await contactRef.get();
+  if (!match) {
+    const linked = contactSnap.data()?.clientId;
+    const linkedDoc = linked ? banderas.find((d) => d.id === linked) : undefined;
+    // Un cliente creado por el bot sin documento se completa; uno con OTRO documento no se usa.
+    const linkedData = linkedDoc?.data() as any;
+    const otherDoc = linkedData && (isCuit ? linkedData.cuit && onlyDigits(linkedData.cuit) !== docDigits : linkedData.dni && onlyDigits(linkedData.dni) !== docDigits);
+    if (linkedDoc && !otherDoc) match = linkedDoc;
+  }
+  if (!match) {
+    const byPhone = await findClientsByPhone(norm);
+    if (byPhone.length === 1) match = banderas.find((d) => d.id === byPhone[0].id);
+  }
+
+  let clientId: string;
+  let client: any;
+  let existing = false;
+  if (match) {
+    existing = !(match.data() as any).source;
+    clientId = match.id;
+    client = match.data();
+    const fill: Record<string, any> = {};
+    if (isCuit && !client.cuit) fill.cuit = docDigits;
+    if (!isCuit && !client.dni) fill.dni = docDigits;
+    if (!client.phone) fill.phone = norm;
+    if (Object.keys(fill).length) {
+      await match.ref.set({ ...fill, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      client = { ...client, ...fill };
+    }
+  } else {
+    let padron: any = null;
+    if (isCuit) {
+      try {
+        const { consultarCuit } = await import("@/lib/arca/server/padron");
+        padron = await consultarCuit(docDigits);
+      } catch {
+        padron = null; // ARCA sin configurar o CUIT sin constancia: seguimos con lo que dijo el cliente
+      }
+    }
+    client = {
+      name: padron?.razonSocial || args.nombre.trim() || norm,
+      type: isCuit && /^3[034]/.test(docDigits) ? EClientType.COMPANY : EClientType.INDIVIDUAL,
+      status: EClientStatus.ACTIVE,
+      section: EClientSection.BANDERAS,
+      phone: norm,
+      ...(isCuit ? { cuit: docDigits } : { dni: docDigits }),
+      ...(padron?.condicion ? { taxCondition: padron.condicion } : {}),
+      ...(padron?.domicilio ? { address: padron.domicilio } : {}),
+      source: "whatsapp_bot",
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    };
+    const ref = await db.collection(collections.CLIENTS).add(client);
+    clientId = ref.id;
+  }
+  clientIndex = null;
+  if (contactSnap.exists) {
+    await contactRef.set({ clientId, clientName: client.name ?? null, clientLinkedBy: existing ? "auto" : "bot_new" }, { merge: true });
+  }
+
+  const items = await quoteItemsFromCatalog(db, args.items);
+  const notes = `Armado por el agente de WhatsApp (+${norm}). A nombre de: ${args.nombre.trim()} · ${isCuit ? "CUIT/CUIL" : "DNI"} ${docDigits}. Revisar y enviar.`;
+  const q = await writeDraftQuote(db, clientId, client, items, notes);
+  return { ...q, clientId, clientName: client.name as string, existingClient: existing };
 }
 
 export async function createWhatsappOrder(args: {
