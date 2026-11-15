@@ -63,6 +63,12 @@ import { EClientSection } from "@/types/client";
 import { useAuditLog } from "@/hooks/useAuditLog";
 import { AccountSelect } from "@/components/admin/AccountSelect";
 import { createSale, hydrateLineFromCatalog } from "@/lib/sales";
+import {
+  customOrderDescription,
+  markWhatsappOrderProcessed,
+  useWhatsappOrderPrefill,
+  whatsappOrderNote,
+} from "@/lib/whatsapp/orderPrefill";
 import { variantDiscountsStock } from "@/lib/stock";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounts } from "@/hooks/useAccounts";
@@ -88,7 +94,7 @@ export default function NuevaVentaPage() {
   const router = useRouter();
   const firestore = useFirestore();
   const { logEvent } = useAuditLog();
-  const { userRole } = useAuth();
+  const { userRole, user } = useAuth();
   const { accounts: allAccounts } = useAccounts({ includeArchived: true });
   const { defaults: paymentDefaults } = usePaymentAccountDefaults();
 
@@ -511,6 +517,52 @@ export default function NuevaVentaPage() {
       idField: "id",
     }
   );
+
+  // ---- Viene de un pedido del agente de WhatsApp (?fromWhatsapp=<id>) -----
+  const { order: waOrder } = useWhatsappOrderPrefill(firestore);
+  const waPrefilled = useRef(false);
+  useEffect(() => {
+    if (waPrefilled.current || !waOrder || productsStatus !== "success" || clientsLoading) return;
+    waPrefilled.current = true;
+    if (waOrder.clientId && clients?.some((c: any) => c.id === waOrder.clientId)) {
+      handleSelectClient(waOrder.clientId);
+      setClienteInput(clients.find((c: any) => c.id === waOrder.clientId)?.name || waOrder.clientName || "");
+    } else {
+      setClienteInput(waOrder.customerName || waOrder.clientName || "");
+      if (waOrder.phone) setTelefono(`+${waOrder.phone}`);
+    }
+    const catalog = (products ?? []) as unknown as TProduct[];
+    const custom = waOrder.kind === "custom_quote";
+    const sinStock: string[] = [];
+    const prefilled: SaleItem[] = (waOrder.items || []).map((it, index) => {
+      const { product, variant, tracksStock } = hydrateLineFromCatalog(catalog, {
+        productId: it.productId,
+        variantId: it.variantId,
+        productName: it.productName,
+        variantName: it.variantName,
+        description: custom ? customOrderDescription(waOrder) : "",
+        unitPrice: it.unitPrice,
+        isManual: custom || !it.productId,
+      });
+      if (!custom && it.productId && !tracksStock) sinStock.push(`${it.productName}${it.variantName ? ` (${it.variantName})` : ""}`);
+      const quantity = it.quantity || 1;
+      const unitPrice = it.unitPrice || 0;
+      return {
+        id: `wa_${Date.now()}_${index}`,
+        product,
+        variant,
+        quantity,
+        unitPrice,
+        discount: 0,
+        discountType: "percent" as TDiscountType,
+        total: calcItemNet({ quantity, unitPrice, discount: 0, discountType: "percent" }),
+      };
+    });
+    setItems(prefilled);
+    if (sinStock.length) toast.warning(`Estos items ya no están en el catálogo y no van a descontar stock: ${sinStock.join(", ")}`);
+    toast.success(`Cargamos el pedido ${waOrder.orderNumber}: revisalo, agregá la forma de pago y guardá`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waOrder, productsStatus, clientsLoading, clients, products]);
 
   // Cantidad de productos activos (sin eliminados) para los contadores
   const activeProductsCount = useMemo(
@@ -967,11 +1019,12 @@ export default function NuevaVentaPage() {
         formasPago: formasPagoValidas,
         invoiceNumber: isInvoiced ? invoiceNumber : null,
         facturas: facturas.length > 0 ? facturas : [],
+        ...(waOrder ? { whatsappOrderId: waOrder.id } : {}),
         // Datos del cliente (solo se incluyen si tienen valor)
         ...clientData,
       };
 
-      const { stockWarning } = await createSale(firestore, logEvent, userRole || "", {
+      const { saleId, stockWarning } = await createSale(firestore, logEvent, userRole || "", {
         saleData,
         items,
         formasPagoValidas,
@@ -982,6 +1035,11 @@ export default function NuevaVentaPage() {
 
       if (stockWarning) toast.warning(stockWarning);
       else toast.success("Venta registrada con éxito");
+      if (waOrder && saleId) {
+        await markWhatsappOrderProcessed(firestore, waOrder.id, { type: "sale", id: saleId, number: saleData.number }, user?.uid);
+        router.push(`/publimar/whatsapp/pedidos?p=${encodeURIComponent(waOrder.id)}`);
+        return;
+      }
       router.push("/publimar/banderas/ventas");
       
     } catch (error) {
@@ -1016,6 +1074,11 @@ export default function NuevaVentaPage() {
             <p className="text-slate-600 text-sm mt-1">
               Registrá una nueva venta en el sistema
             </p>
+            {waOrder && (
+              <p className="mt-2 inline-block rounded-md bg-green-50 border border-green-200 px-2 py-1 text-sm text-green-800">
+                🤖 Viene del {whatsappOrderNote(waOrder)} · {waOrder.customerName || waOrder.clientName || "cliente"}
+              </p>
+            )}
           </div>
         </div>
       </div>

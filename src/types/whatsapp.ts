@@ -31,6 +31,8 @@ export enum EWhatsappOrderStatus {
   PENDING = "pending",
   CONFIRMED = "confirmed",
   CANCELLED = "cancelled",
+  /** El equipo lo pasó a una venta o a una orden de trabajo. */
+  PROCESSED = "processed",
 }
 
 export type TWhatsappOrderItem = {
@@ -73,6 +75,8 @@ export type TWhatsappOrder = {
     estimatedTotal?: number | null;
   };
   source: "whatsapp_bot";
+  /** A qué se pasó (venta u orden de trabajo) cuando quedó "processed". */
+  convertedTo?: { type: "sale" | "order"; id: string; number?: string | null; at?: any; by?: string | null };
   createdAt: Date;
   updatedAt: Date;
 };
@@ -144,6 +148,10 @@ export type TWhatsappContact = {
   name?: string | null;
   clientId?: string | null;
   clientName?: string | null;
+  /** Clientes cargados con el mismo teléfono (el bot no pudo elegir): el equipo elige. */
+  clientCandidates?: string[];
+  /** Cómo quedó vinculado: "auto" (teléfono único), "bot_new" (lo creó el bot), "manual" (el equipo). */
+  clientLinkedBy?: "auto" | "bot_new" | "manual";
   channelId: string;
   status: EWhatsappContactStatus;
   lastMessageAt?: Date | null;

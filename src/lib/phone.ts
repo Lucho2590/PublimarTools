@@ -77,3 +77,27 @@ export function isValidPhone(e164: string | undefined | null): boolean {
   if (d.startsWith("54")) return /^549?\d{9,11}$/.test(d); // AR: tolerante
   return d.length >= 8;
 }
+
+/**
+ * Clave para comparar teléfonos argentinos cargados de cualquier forma:
+ * "5492235053759" (WhatsApp), "2235053759", "0223 15 505-3759", "+54 223 505 3759"
+ * → "2235053759" (característica + número, 10 dígitos). Otros países: los
+ * últimos 10 dígitos. Menos de 8 dígitos → "" (no sirve para comparar).
+ */
+export function phoneMatchKey(value: string | undefined | null): string {
+  let d = onlyDigits(value);
+  if (d.length < 8) return "";
+  if (d.startsWith("549") && d.length >= 12) d = d.slice(3);
+  else if (d.startsWith("54") && d.length >= 11) d = d.slice(2);
+  d = d.replace(/^0+/, "");
+  // "223 15 5053759": el 15 de celular después de la característica (2 a 4 dígitos).
+  if (d.length === 12) {
+    for (const area of [2, 3, 4]) {
+      if (d.slice(area, area + 2) === "15") {
+        d = d.slice(0, area) + d.slice(area + 2);
+        break;
+      }
+    }
+  }
+  return d.slice(-10);
+}
