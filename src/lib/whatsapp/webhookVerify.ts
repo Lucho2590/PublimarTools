@@ -32,6 +32,8 @@ export function classifyEventType(payload: any): string {
     return "messages";
   }
   if (field === "smb_message_echoes") return "message_echoes";
+  // Coexistencia: "history", "smb_app_state_sync" y "account_update" se
+  // guardan con su propio nombre (cae en el caso genérico de abajo).
   if (typeof field === "string" && field) return field;
   return "unknown";
 }

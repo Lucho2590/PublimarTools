@@ -105,7 +105,7 @@ export function ConfigTab() {
 
   return (
     <div className="space-y-6">
-      <WhatsappConnectionCard />
+      <WhatsappConnectionCard handoffHours={config.handoffPauseHours || 12} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>

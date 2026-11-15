@@ -49,6 +49,8 @@ const collections = {
   WHATSAPP_INTEGRATION: "whatsappIntegration",
   WHATSAPP_CHANNELS: "whatsappChannels",
   WHATSAPP_CONTACTS: "whatsappContacts",
+  /** Agenda del celular del negocio (coexistencia): doc id = wa_id, { name }. */
+  WHATSAPP_PHONEBOOK: "whatsappPhonebook",
   WHATSAPP_MESSAGES: "whatsappMessages",
   WHATSAPP_TEMPLATES: "whatsappTemplates",
   WHATSAPP_TEMPLATE_SENDS: "whatsappTemplateSends",

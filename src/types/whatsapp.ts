@@ -89,8 +89,47 @@ export type TWhatsappOrder = {
 export enum EWhatsappIntegrationStatus {
   DISCONNECTED = "disconnected",
   CONNECTED = "connected",
+  /** Desvinculación pedida desde la app: falta que el dueño desconecte desde el celular. */
+  DISCONNECTING = "disconnecting",
   ERROR = "error",
 }
+
+/** Cómo se dio de alta el número. */
+export type TWhatsappOnboardingMethod = "embedded_signup" | "manual";
+
+/** Pedido de sincronización a Meta (`smb_app_data`): se puede pedir una sola vez por alta. */
+export type TWhatsappSyncRequest = {
+  requestId?: string | null;
+  requestedAt?: Date | null;
+  error?: string | null;
+};
+
+/** Progreso del historial que Meta manda por el webhook `history`. */
+export type TWhatsappHistorySync = {
+  status: "requested" | "in_progress" | "done" | "declined" | "error";
+  /** 0–100 (100 = terminó). */
+  progress?: number | null;
+  phase?: number | null;
+  messagesImported?: number;
+  error?: string | null;
+  updatedAt?: Date | null;
+};
+
+/** Datos de la última desvinculación (pedida desde la app o avisada por Meta). */
+export type TWhatsappDisconnectInfo = {
+  requestedAt?: Date | null;
+  requestedBy?: string | null;
+  /** Meta confirmó que el número salió (webhook `account_update` o chequeo). */
+  confirmedAt?: Date | null;
+  /** true si se terminó sin confirmación de Meta (botón "forzar"). */
+  forced?: boolean;
+  /** `disconnection_info.reason` de Meta (ej. PRIMARY_INACTIVITY). */
+  reason?: string | null;
+  /** USER (desde el celular) o SYSTEM (Meta). */
+  initiatedBy?: string | null;
+  /** Número que se desvinculó (para mostrarlo después). */
+  displayPhoneNumber?: string | null;
+};
 
 /** Credenciales del WABA. Doc id fijo "default". El token va CIFRADO en reposo. */
 export type TWhatsappIntegration = {
@@ -104,6 +143,14 @@ export type TWhatsappIntegration = {
   coexistenceEnabled: boolean;
   /** Constante configurable del Embedded Signup de coexistencia. */
   featureType: string;
+  onboardingMethod?: TWhatsappOnboardingMethod;
+  onboardedAt?: Date | null;
+  /** Número activo (doc id del canal). */
+  phoneNumberId?: string | null;
+  contactsSync?: TWhatsappSyncRequest | null;
+  historySyncRequest?: TWhatsappSyncRequest | null;
+  historySync?: TWhatsappHistorySync | null;
+  disconnect?: TWhatsappDisconnectInfo | null;
   error?: string | null;
   createdBy?: string;
   createdAt: Date;
@@ -126,6 +173,8 @@ export type TWhatsappChannel = {
   verifiedName?: string | null;
   qualityRating?: string | null;
   registered: boolean;
+  /** El número está en la app WhatsApp Business del celular además de la API. */
+  coexistence?: boolean;
   status: EWhatsappChannelStatus;
   defaultForSending: boolean;
   metadata?: Record<string, unknown>;
@@ -146,6 +195,10 @@ export type TWhatsappContact = {
   waId: string;
   phoneE164: string;
   name?: string | null;
+  /** De dónde salió `name`: perfil de WhatsApp o agenda del celular (coexistencia). */
+  nameSource?: "profile" | "phonebook";
+  /** Nombre agendado en el celular del negocio (webhook `smb_app_state_sync`). */
+  phonebookName?: string | null;
   clientId?: string | null;
   clientName?: string | null;
   /** Clientes cargados con el mismo teléfono (el bot no pudo elegir): el equipo elige. */
@@ -215,6 +268,8 @@ export type TWhatsappMessageDoc = {
   sentAt?: Date | null;
   deliveredAt?: Date | null;
   readAt?: Date | null;
+  /** Importado del historial del celular al conectar (coexistencia): el bot no lo contesta. */
+  fromHistory?: boolean;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date | null;

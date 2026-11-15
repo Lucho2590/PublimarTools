@@ -1,31 +1,17 @@
 // Alta manual de la integración de WhatsApp (token de System User).
-// Autenticado con el ID token de Firebase del usuario + gate de rol admin/superuser.
-// Desbloquea todo el desarrollo sin depender del review de Tech Provider de Meta.
+// Para el número de prueba de Meta o números solo-API (sin coexistencia). El
+// número del local se conecta con el asistente (Embedded Signup).
 
 import { NextRequest, NextResponse } from "next/server";
-import { getFirestoreAdmin, verifyAuthToken } from "@/lib/apiAuth";
-import collections from "@/lib/collections";
-import { isAdminOrAbove } from "@/lib/permissions";
+import { requireWhatsappAdmin } from "@/lib/whatsapp/auth";
 import { connectManual } from "@/lib/whatsapp/integration";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const auth = await verifyAuthToken(request);
-  if (!auth.authenticated || !auth.uid) {
-    return NextResponse.json(
-      { error: auth.error || "No autorizado" },
-      { status: 401 }
-    );
-  }
-
-  // Gate de rol: solo admin/superuser puede cargar credenciales.
-  const db = getFirestoreAdmin();
-  const userSnap = await db.collection(collections.USERS).doc(auth.uid).get();
-  if (!isAdminOrAbove(userSnap.data()?.role ?? null)) {
-    return NextResponse.json({ error: "Permisos insuficientes" }, { status: 403 });
-  }
+  const gate = await requireWhatsappAdmin(request);
+  if (gate instanceof NextResponse) return gate;
 
   try {
     const body = await request.json().catch(() => ({}));
@@ -40,7 +26,7 @@ export async function POST(request: NextRequest) {
       wabaId,
       phoneNumberId,
       token,
-      createdBy: auth.uid,
+      createdBy: gate.uid,
     });
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
