@@ -33,6 +33,8 @@ export type TBotProduct = {
   salesCount: number;
   /** Tokens distintivos del nombre (sin "bandera" y otras genéricas). */
   keyTokens: string[];
+  /** Productos para ofrecer cuando agregan este al pedido (configurado en el producto). */
+  recommendedIds: string[];
 };
 
 export type TBotCatalog = {
@@ -96,10 +98,16 @@ export async function getCatalog(force = false): Promise<TBotCatalog> {
         variants,
         salesCount: toNumber(data.salesCount),
         keyTokens: tokenize(name).filter((t) => !GENERIC.has(t)),
+        recommendedIds: Array.isArray(data.recommendedProductIds)
+          ? data.recommendedProductIds.filter((x: unknown) => typeof x === "string")
+          : [],
       };
     })
     .filter((p) => p.name)
     .sort((a, b) => a.name.localeCompare(b.name, "es"));
+
+  const ids = new Set(products.map((p) => p.id));
+  for (const p of products) p.recommendedIds = p.recommendedIds.filter((id) => id !== p.id && ids.has(id));
 
   const catalog: TBotCatalog = {
     products,

@@ -305,6 +305,18 @@ async function runTool(ctx: TFlowCtx, name: string, input: any, actions: string[
           unitPrice: variant ? variant.price : product.price,
         });
       actions.push(`+${qty} ${product.name}${variant ? ` ${variant.size}` : ""}`);
+      // Recomendados del producto (configurados en la app): se ofrecen UNA vez por pedido.
+      const offered = session.offeredRecs || [];
+      const recs = offered.includes(product.id)
+        ? []
+        : product.recommendedIds
+            .map((id) => ctx.catalog.byId.get(id))
+            .filter((p): p is TBotProduct => !!p && !session.cart.some((i) => i.productId === p.id));
+      if (recs.length) {
+        session.offeredRecs = [...offered, product.id];
+        actions.push(`ofrece: ${recs.map((r) => r.name).join(", ")}`);
+        return { ok: true, ...cartView(ctx), para_ofrecer: recs.map((r) => productInfo(r, 8)) };
+      }
       return { ok: true, ...cartView(ctx) };
     }
     case "cambiar_cantidad": {
@@ -556,7 +568,7 @@ function buildSystemPrompt(ctx: TFlowCtx): string {
 # Banderas comunes
 1. Si pide una bandera, buscala. Si hay varios tipos (ver "Tipos de bandera") preguntá cuál, salvo que se deduzca ("para el mástil" = flameo, "para el acto" = ceremonia, "de mesa" = escritorio).
 2. Medida: mostrá las medidas disponibles con su precio (si son muchas, las más comunes y ofrecé el resto).
-3. Cantidad → agregar_al_pedido. Si dice "una"/"un" o no dice cantidad, es 1: agregala sin preguntar (en el resumen la puede cambiar). Después preguntá si suma algo más.
+3. Cantidad → agregar_al_pedido. Si la respuesta trae "para_ofrecer" (lo que el local recomienda con ese producto), ofrecelo UNA vez, en una línea y con precio, en la medida que corresponde (Jardín con Jardín, Grande con Grande): "¿Le sumás moño ($X), banda ($Y) o tahalí ($Z) Jardín?". Si dice que no o sigue con otra cosa, no vuelvas a ofrecerlo. Fuera de eso, no ofrezcas productos que no pidió. Si dice "una"/"un" o no dice cantidad, es 1: agregala sin preguntar (en el resumen la puede cambiar). Después preguntá si suma algo más.
 - Tela: si duda entre acetato y poliamida, preguntale para qué la va a usar. Para flamear (mástil, exterior) → poliamida. Para pared, fotos o stand → acetato.
 4. Para cerrar solo hace falta el nombre: si no lo sabés, pedilo. NO preguntes para quién es (escuela, particular…) ni cómo la recibe (retira, envío, mensajero). Si el cliente lo dice solo ("soy de una escuela", "la paso a buscar", "mandámela a Rosario"), guardalo con guardar_datos_cliente sin comentarlo.
 5. Mostrá el resumen (cada bandera, total) y preguntá si lo confirmamos. Solo con un sí: confirmar_pedido, y pasale el número.

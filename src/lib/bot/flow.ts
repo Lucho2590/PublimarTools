@@ -166,6 +166,7 @@ export function resetOrder(session: TBotSession) {
   session.delivery = null;
   session.custom = null;
   session.offeredQuantity = null;
+  session.offeredRecs = [];
   // segmentId y customerName se conservan: son datos del cliente, no del pedido.
 }
 

@@ -31,6 +31,7 @@ import { generateSlug } from "@/lib/utils";
 import { recordPriceChanges } from "@/lib/priceHistory";
 import { EPriceChangeSource, TPriceChangeInput } from "@/types/priceHistory";
 import { useAuditLog } from "@/hooks/useAuditLog";
+import { RecommendedProductsPicker } from "@/components/products/RecommendedProductsPicker";
 
 export default function NuevoProductoPage() {
   const [loading, setLoading] = useState(false);
@@ -62,6 +63,7 @@ export default function NuevoProductoPage() {
     description: "",
     categories: [] as string[],
     group: "",
+    recommendedProductIds: [] as string[],
     imageUrls: [] as string[],
     sku: "",
     lowStock: false,
@@ -305,6 +307,11 @@ export default function NuevoProductoPage() {
                 })}
               </div>
             </div>
+
+            <RecommendedProductsPicker
+              value={formData.recommendedProductIds}
+              onChange={(ids) => setFormData((prev) => ({ ...prev, recommendedProductIds: ids }))}
+            />
           </CardContent>
         </Card>
 

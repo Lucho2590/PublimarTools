@@ -110,6 +110,7 @@ function emptySession(id: string, channel: TBotChannel): TBotSession {
     history: [],
     agentHistory: [],
     lastOptions: [],
+    offeredRecs: [],
     createdAt: now,
     updatedAt: now,
   };
