@@ -187,6 +187,8 @@ export type TBotSession = {
   /** Mensajes seguidos sin entender (2 → deriva a humano). */
   failCount: number;
   lastOrderNumber: string | null;
+  /** Último presupuesto que armó el agente en esta charla. */
+  lastQuoteNumber?: string | null;
   history: TBotHistoryEntry[];
   /** Charla completa (texto) para el agente IA: más larga que `history`. */
   agentHistory: TBotHistoryEntry[];

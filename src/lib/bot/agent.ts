@@ -11,13 +11,21 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { TBotAiUsage, TBotConfig, TBotCustomTechnique, TBotTrace } from "@/types/bot";
-import { lookupOrCreateClient, createWhatsappOrder, createCustomQuoteRequest, getClientHistory } from "@/lib/whatsapp/db";
+import {
+  lookupOrCreateClient,
+  createWhatsappOrder,
+  createCustomQuoteRequest,
+  getClientHistory,
+  createBotDraftQuote,
+} from "@/lib/whatsapp/db";
+import { isValidCuitChecksum } from "@/lib/cuit";
 import {
   TBotProduct,
   TBotVariant,
   availableUnits,
   catalogSummary,
   findFamily,
+  findVariant,
   isAvailable,
   resolveTypes,
 } from "./catalog";
@@ -35,7 +43,6 @@ import {
   leadTimeFor,
   leadTimeLabel,
   money,
-  priceVariant,
   techniqueProduct,
 } from "./flow";
 
@@ -142,6 +149,28 @@ function buildTools(segmentIds: string[], techniqueIds: string[]): Anthropic.Too
       {}
     ),
     tool(
+      "armar_presupuesto",
+      "Arma un presupuesto en BORRADOR para que el equipo lo revise y se lo mande en PDF. No depende del stock. Pedí antes nombre o razón social y CUIT/CUIL o DNI.",
+      {
+        nombre: { type: "string", description: "Nombre o razón social a quien va el presupuesto." },
+        documento: { type: "string", description: "CUIT/CUIL (11 dígitos) o DNI (7 u 8 dígitos)." },
+        items: {
+          type: "array",
+          description: "Productos del presupuesto (ids de buscar_productos / ver_producto). Vacío = lo que está en el pedido.",
+          items: {
+            type: "object",
+            properties: {
+              producto_id: { type: "string" },
+              medida_id: { anyOf: [{ type: "string" }, { type: "null" }] },
+              cantidad: { type: "integer" },
+            },
+            required: ["producto_id", "medida_id", "cantidad"],
+            additionalProperties: false,
+          },
+        },
+      }
+    ),
+    tool(
       "ver_historial_cliente",
       "Compras anteriores de ESTE cliente (órdenes de trabajo con estado, entrega y saldo; ventas; pedidos por WhatsApp). Usala si pregunta por un pedido o compra anterior, cómo va, cuándo está o cuánto debe.",
       {}
@@ -227,13 +256,18 @@ function businessDays(ctx: TFlowCtx): number | null {
   return c.days == null ? null : Math.floor((c.days * 5) / 7);
 }
 
+/** Precio de personalizada SOLO con la medida exacta: si no está, lo cotiza el equipo. */
+function exactVariant(product: TBotProduct, size: string | null | undefined): TBotVariant | null {
+  return size ? findVariant(product, size) : null;
+}
+
 function quoteTechniques(ctx: TFlowCtx) {
   const c = ctx.session.custom!;
   const days = businessDays(ctx);
   return resolveTechniques(ctx.config).map((t: TBotCustomTechnique) => {
     const lt = leadTimeFor(t, c.size);
     const product = techniqueProduct(ctx, t);
-    const variant = product ? priceVariant(product, c.size) : null;
+    const variant = product ? exactVariant(product, c.size) : null;
     const llega = days == null || lt.min <= days;
     const cantidadOk = c.quantity == null || c.quantity >= t.minQty;
     return {
@@ -252,12 +286,10 @@ function quoteTechniques(ctx: TFlowCtx) {
               por_unidad: money(variant.price),
               ...(c.quantity ? { total: money(variant.price * c.quantity) } : {}),
               medida_cotizada: variant.size,
-              nota:
-                c.size && variant.sizeKey !== parseSize(c.size)
-                  ? `No hay exactamente ${displaySize(c.size)}: se cotiza la medida siguiente que la cubre.`
-                  : undefined,
             }
-          : product
+          : product && c.size
+            ? `No está la medida exacta (${displaySize(c.size)}): el precio lo pasa el equipo. No des precio ni otra medida como referencia.`
+            : product
             ? { por_medida: product.variants.map((v) => `${v.size} ${money(v.price)}`), nota: "Falta la medida para dar el precio exacto." }
             : "Se cotiza con el diseño (lo pasa el equipo).",
     };
@@ -396,7 +428,7 @@ async function runTool(ctx: TFlowCtx, name: string, input: any, actions: string[
       if (!c || !t) return { error: "Primero usá cotizar_personalizada con los datos." };
       c.techniqueId = t.id;
       const product = techniqueProduct(ctx, t);
-      const variant = product ? priceVariant(product, c.size) : null;
+      const variant = product ? exactVariant(product, c.size) : null;
       c.unitPrice = variant ? variant.price : null;
       let numero: string | null = null;
       if (ctx.persistOrders && session.phone) {
@@ -492,6 +524,52 @@ async function runTool(ctx: TFlowCtx, name: string, input: any, actions: string[
         mensaje_sugerido: fillTemplate(config.messages.orderConfirmed, config, { numero, total: money(total) }),
       };
     }
+    case "armar_presupuesto": {
+      // Ítems pedidos (sin mirar stock: es un presupuesto) o, si no vienen, lo anotado en el pedido.
+      const wanted: { productId: string; variantId?: string; quantity: number; label: string }[] = [];
+      for (const it of Array.isArray(input.items) ? input.items : []) {
+        const { product, variant } = findLine(ctx, String(it.producto_id), it.medida_id ?? null);
+        if (!product) return { error: `No existe el producto_id ${it.producto_id}.` };
+        if (product.variants.length && !variant) return { error: `Falta la medida (medida_id) de ${product.name}.` };
+        wanted.push({
+          productId: product.id,
+          variantId: variant?.id,
+          quantity: Math.max(1, Math.floor(Number(it.cantidad) || 1)),
+          label: `${product.name}${variant ? ` ${variant.size}` : ""}`,
+        });
+      }
+      if (!wanted.length) {
+        for (const i of session.cart.filter((x) => x.productId)) {
+          wanted.push({ productId: i.productId, variantId: i.variantId ?? undefined, quantity: i.quantity, label: `${i.productName}${i.variantName ? ` ${i.variantName}` : ""}` });
+        }
+      }
+      if (!wanted.length) return { error: "No hay productos: pasalos en items (de buscar_productos)." };
+      const nombre = String(input.nombre || "").trim();
+      const documento = String(input.documento || "").replace(/\D/g, "");
+      if (!nombre) return { error: "Falta el nombre o razón social." };
+      const isCuit = documento.length === 11;
+      if (isCuit && !isValidCuitChecksum(documento)) return { error: "El CUIT/CUIL no es válido (revisá los números). Pedíselo de nuevo." };
+      if (!isCuit && (documento.length < 7 || documento.length > 8)) return { error: "El documento tiene que ser un CUIT/CUIL de 11 números o un DNI de 7 u 8. Pedíselo de nuevo." };
+      if (session.customerName == null) session.customerName = nombre;
+      if (!ctx.persistOrders || !session.phone) {
+        const total = wanted.reduce((sum, w) => {
+          const { product, variant } = findLine(ctx, w.productId, w.variantId ?? null);
+          return sum + (variant ? variant.price : product?.price || 0) * w.quantity;
+        }, 0);
+        actions.push(`armó presupuesto SIM (simulador, no se guardó) a nombre de ${nombre}: ${wanted.map((w) => `${w.quantity} × ${w.label}`).join(", ")}`);
+        return { ok: true, numero: "P-SIM (simulador, no se guardó)", cliente: nombre, total: money(total), asociado_a_cliente_existente: false };
+      }
+      const q = await createBotDraftQuote({
+        phone: session.phone,
+        nombre,
+        documento,
+        items: wanted.map(({ productId, variantId, quantity }) => ({ productId, variantId, quantity })),
+      });
+      session.clientId = q.clientId;
+      session.lastQuoteNumber = q.number;
+      actions.push(`armó presupuesto ${q.number} (${q.clientName})`);
+      return { ok: true, numero: q.number, cliente: q.clientName, total: money(q.total), asociado_a_cliente_existente: q.existingClient };
+    }
     case "ver_historial_cliente": {
       if (!session.phone) return { error: "No tengo el teléfono de este cliente.", sugerencia: "Derivá a una persona." };
       const h = await getClientHistory({ phone: session.phone, clientId: session.clientId });
@@ -578,7 +656,7 @@ Es personalizada si quiere logo, escudo, nombre, texto, leyenda, foto, diseño p
 - Averiguá (de a una, salvo lo que ya dijo): para cuándo la necesita, cuántas, medida aproximada y si ya tiene el logo/diseño.
 - Usá cotizar_personalizada con lo que sepas y ofrecé SOLO las técnicas que llegan a tiempo y cumplen la cantidad, con plazo (días hábiles) y precio.
 - Si una técnica trae "precio" con "por_unidad", ese es el precio REAL: decilo (y el total si hay cantidad). Solo las que dicen "Se cotiza con el diseño" las cotiza el equipo.
-- Si pregunta cuánto sale antes de tener los datos, dale una referencia real ("la sublimada arranca en $X en 60x90", usando cotizar_personalizada) y seguí con la próxima pregunta.
+- Si pregunta cuánto sale antes de decir la medida, dale una referencia real ("la sublimada arranca en $X en 60x90", usando cotizar_personalizada) y seguí con la próxima pregunta.
 - No preguntes si le parece bien el precio: es lo que vale.
 - Cuando elige técnica: si no sabés su nombre, pedíselo primero (guardar_datos_cliente). Con el nombre: registrar_personalizada y decile que alguien del equipo le escribe por acá para ver el diseño (lo puede mandar por este chat). Después de registrar o derivar no hagas más preguntas: la charla pasa al equipo.
 - Si quiere personalizar una bandera que ya estaba en el pedido, sacala (cambiar_cantidad en 0) y seguí como personalizada.
@@ -599,6 +677,13 @@ Es personalizada si quiere logo, escudo, nombre, texto, leyenda, foto, diseño p
 - Fotos: ${b.website ? `pasale la web, ahí están las fotos: ${b.website}` : "por acá no mandás fotos. Si las quiere, derivar_a_persona para que se las mande el equipo (decíselo)."}
 - Envíos fuera de ${b.localCity || "la ciudad"}: la empresa de transporte y el costo los coordina el equipo con cada cliente. No des montos ni empresas. Si quiere avanzar, armá el pedido y en la entrega anotá envío con el destino; el equipo lo coordina.
 - Feriados: respondé SOLO con los "Feriados cargados" del Estado. Si el que pregunta no está cargado, decí que depende del feriado (cuando abren, suele ser medio día) y que lo confirma el equipo; no hace falta derivar.
+
+# Presupuestos
+- Si pide un presupuesto (formal, en PDF, para una escuela, institución o empresa): buscá los productos y medidas (buscar_productos), mostrale los precios, y NO uses agregar_al_pedido ni mires el stock: un presupuesto no reserva nada. Los productos van en "items" de armar_presupuesto.
+- Después pedí en UN mensaje: nombre o razón social, y CUIT/CUIL o DNI (el teléfono ya lo tenés). Con eso: armar_presupuesto.
+- Decile: "Listo, armé el presupuesto P-… por $X a nombre de …. Alguien del equipo lo revisa y te lo manda por acá en PDF." No digas que no podés hacer presupuestos ni mandar PDF.
+- Si armar_presupuesto da error con el documento, pedíselo de nuevo.
+- Personalizadas: van por su flujo (cotizar_personalizada / registrar_personalizada), no en armar_presupuesto. Si cotizar_personalizada dice que no está la medida exacta, no des precio ni uses otra medida como referencia: tomá los datos y registrar_personalizada para que la cotice el equipo.
 
 # Compras anteriores
 - Si pregunta por un pedido o compra anterior (cómo va, cuándo está, cuánto debe, qué llevó): ver_historial_cliente. Contá solo lo que trae (estado, fecha, entrega estimada, saldo), en pocas líneas.

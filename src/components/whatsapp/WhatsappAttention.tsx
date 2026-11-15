@@ -12,9 +12,9 @@ import collections from "@/lib/collections";
  * sin confirmar. Alimenta los contadores del menú y avisa cuando entra algo
  * nuevo (cartel + sonido + notificación del sistema si está permitida).
  */
-type TAttention = { attention: number; pendingOrders: number };
+type TAttention = { attention: number; pendingOrders: number; pendingQuotes: number };
 
-const AttentionContext = createContext<TAttention>({ attention: 0, pendingOrders: 0 });
+const AttentionContext = createContext<TAttention>({ attention: 0, pendingOrders: 0, pendingQuotes: 0 });
 
 export const useWhatsappAttention = () => useContext(AttentionContext);
 
@@ -77,13 +77,25 @@ export function WhatsappAttentionProvider({ children }: { children: ReactNode })
     () => query(collection(firestore, collections.WHATSAPP_ORDERS), where("status", "==", "pending")),
     [firestore]
   );
+  // Presupuestos que armó el agente y el equipo todavía no revisó (siguen en borrador).
+  const quotesQuery = useMemo(
+    () =>
+      query(
+        collection(firestore, collections.QUOTES),
+        where("source", "==", "whatsapp_bot"),
+        where("status", "==", "draft")
+      ),
+    [firestore]
+  );
   const { data: sessions } = useFirestoreCollectionData(attentionQuery, { idField: "id" });
   const { data: orders } = useFirestoreCollectionData(ordersQuery, { idField: "id" });
+  const { data: quotes } = useFirestoreCollectionData(quotesQuery, { idField: "id" });
 
   // Lo que ya estaba al abrir la app no avisa; solo lo que entra después.
-  const seen = useRef<{ sessions: Set<string> | null; orders: Set<string> | null }>({
+  const seen = useRef<{ sessions: Set<string> | null; orders: Set<string> | null; quotes: Set<string> | null }>({
     sessions: null,
     orders: null,
+    quotes: null,
   });
 
   useEffect(() => {
@@ -140,9 +152,28 @@ export function WhatsappAttentionProvider({ children }: { children: ReactNode })
     seen.current.orders = ids;
   }, [orders, router]);
 
+  useEffect(() => {
+    if (!quotes) return;
+    const ids = new Set(quotes.map((q: any) => q.id as string));
+    if (seen.current.quotes) {
+      for (const q of quotes as any[]) {
+        if (seen.current.quotes.has(q.id)) continue;
+        const title = `📄 El agente armó un presupuesto: ${q.client?.name || "Cliente"}`;
+        const body = [q.number, q.total ? `$${Math.round(q.total).toLocaleString("es-AR")}` : null, "para revisar y enviar"]
+          .filter(Boolean)
+          .join(" · ");
+        const href = "/publimar/banderas/presupuestos?agente=1";
+        playChime();
+        toast(title, { description: body, duration: 15000, action: { label: "Revisar", onClick: () => router.push(href) } });
+        systemNotify(title, body, href, (h) => router.push(h));
+      }
+    }
+    seen.current.quotes = ids;
+  }, [quotes, router]);
+
   const value = useMemo(
-    () => ({ attention: sessions?.length || 0, pendingOrders: orders?.length || 0 }),
-    [sessions, orders]
+    () => ({ attention: sessions?.length || 0, pendingOrders: orders?.length || 0, pendingQuotes: quotes?.length || 0 }),
+    [sessions, orders, quotes]
   );
   return <AttentionContext.Provider value={value}>{children}</AttentionContext.Provider>;
 }

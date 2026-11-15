@@ -34,7 +34,7 @@ export interface NavItem {
   href: string;
   icon: LucideIcon;
   /** unviewed = tienda online; whatsapp* = pendientes de WhatsApp (en vivo). */
-  badge?: "unviewed" | "whatsapp" | "whatsappAttention" | "whatsappOrders";
+  badge?: "unviewed" | "whatsapp" | "whatsappAttention" | "whatsappOrders" | "botQuotes";
   subItems?: NavItem[];
 }
 
@@ -63,6 +63,8 @@ export const navConfig: NavItem[] = [
         name: "Presupuestos",
         href: "/publimar/banderas/presupuestos",
         icon: FileText,
+        // Borradores que armó el agente de WhatsApp, para revisar y enviar.
+        badge: "botQuotes",
       },
       {
         name: "Ordenes",
