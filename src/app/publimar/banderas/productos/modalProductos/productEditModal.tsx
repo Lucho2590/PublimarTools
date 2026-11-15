@@ -1,5 +1,6 @@
 'use client';
 
+import { RecommendedProductsPicker } from "@/components/products/RecommendedProductsPicker";
 import { useState, useEffect, useCallback } from "react";
 import { useFirestore, useFirestoreDoc, useFirestoreCollectionData } from "reactfire";
 import { collection, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
@@ -73,6 +74,7 @@ export default function ProductEditModal({
     description: "",
     categories: [] as string[],
     group: "",
+    recommendedProductIds: [] as string[],
     imageUrls: [] as string[],
     hasVariants: true,
     price: "",
@@ -97,6 +99,7 @@ export default function ProductEditModal({
       description: "",
       categories: [] as string[],
       group: "",
+      recommendedProductIds: [] as string[],
       imageUrls: [] as string[],
       hasVariants: true,
       price: "",
@@ -158,6 +161,7 @@ export default function ProductEditModal({
           description: product.description || "",
           categories: Array.isArray(product.categories) ? product.categories : [],
           group: product.group || "",
+          recommendedProductIds: Array.isArray(product.recommendedProductIds) ? product.recommendedProductIds : [],
           imageUrls: Array.isArray(product.imageUrls) ? product.imageUrls : [],
           hasVariants: true,
           price: "",
@@ -321,6 +325,7 @@ export default function ProductEditModal({
         description: formData.description || "",
         categories: formData.categories || [],
         group: formData.group || "",
+        recommendedProductIds: formData.recommendedProductIds || [],
         imageUrls: formData.imageUrls,
         hasVariants: true,
         price: null,
@@ -390,7 +395,7 @@ export default function ProductEditModal({
       );
 
       const productWatched = [
-        "name","description","categories","group","sku","lowStock","ecommerce","imageUrls","variants"
+        "name","description","categories","group","recommendedProductIds","sku","lowStock","ecommerce","imageUrls","variants"
       ];
       const productChanges = buildChanges(before as any, productData as any, productWatched);
       const changedFields = Object.keys(productChanges.after ?? {});
@@ -622,6 +627,12 @@ export default function ProductEditModal({
                   })}
                 </div>
               </div>
+
+              <RecommendedProductsPicker
+                value={formData.recommendedProductIds || []}
+                onChange={(ids) => setFormData((prev) => ({ ...prev, recommendedProductIds: ids }))}
+                excludeId={productId}
+              />
             </CardContent>
           </Card>
 

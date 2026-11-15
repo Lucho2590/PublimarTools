@@ -49,6 +49,8 @@ export enum EProductCategory {
     variants: TProductVariant[];
     categories: string[];
     group?: string; // ID del grupo al que pertenece
+    /** Productos que el agente de WhatsApp ofrece cuando agregan este al pedido (en orden). */
+    recommendedProductIds?: string[];
     taxRate?: number; // Opcional para compatibilidad con productos existentes
     price: number | string;
     stock: number | string;

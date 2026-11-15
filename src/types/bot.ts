@@ -192,6 +192,8 @@ export type TBotSession = {
   agentHistory: TBotHistoryEntry[];
   /** Ids de la última lista numerada: "2" o "la 2" eligen esa opción. */
   lastOptions: string[];
+  /** Productos cuyos recomendados ya se ofrecieron en este pedido (no se repiten). */
+  offeredRecs?: string[];
   createdAt: Date;
   updatedAt: Date;
 };
