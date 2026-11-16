@@ -4,6 +4,9 @@ import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
+/** Rutas que no piden login (ej. la política de privacidad que exige Meta). */
+const PUBLIC_PATHS = ['/privacidad'];
+
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -15,8 +18,12 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     : pathname;
 
   const isLoginPage = normalizedPathname === '/login';
+  // Páginas públicas (sin login): se muestran siempre, también al renderizar en
+  // el servidor, para que las lean Meta y cualquier visitante.
+  const isPublicPage = PUBLIC_PATHS.includes(normalizedPathname);
 
   useEffect(() => {
+    if (isPublicPage) return;
     if (!loading) {
       if (!user && !isLoginPage) {
         // Usuario no autenticado y no está en login -> redirigir a login
@@ -27,7 +34,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, loading, isLoginPage]);
+  }, [user, loading, isLoginPage, isPublicPage]);
+
+  if (isPublicPage) return <>{children}</>;
 
   // Mostrar loading mientras verifica autenticación
   if (loading) {

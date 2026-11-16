@@ -21,3 +21,13 @@ export const MEDIA_LIMITS = {
 
 // Ventana de servicio de atención al cliente (24 h desde el último ENTRANTE).
 export const SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// Campos del webhook que la app tiene que tener suscriptos en el panel de Meta
+// (WhatsApp → Configuración → Webhooks) para que la coexistencia funcione.
+export const REQUIRED_WEBHOOK_FIELDS = [
+  "messages",
+  "smb_message_echoes",
+  "history",
+  "smb_app_state_sync",
+  "account_update",
+] as const;

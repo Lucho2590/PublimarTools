@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
+import { getFirestoreAdmin, verifyAuthToken } from "@/lib/apiAuth";
+import collections from "@/lib/collections";
+import { isAdminOrAbove } from "@/lib/permissions";
+import { EUserRole } from "@/types/user";
 
 /**
  * Valida el secreto compartido que n8n envía en cada request al header
@@ -34,4 +38,24 @@ export function requireBot(request: NextRequest): NextResponse | null {
     return NextResponse.json({ error: "Secreto inválido o ausente" }, { status: 403 });
   }
   return null;
+}
+
+/**
+ * Gate de los endpoints de administración de WhatsApp (conectar/desvincular):
+ * ID token de Firebase + rol admin/superuser. Devuelve el uid y el rol, o la
+ * respuesta de error lista para devolver.
+ */
+export async function requireWhatsappAdmin(
+  request: NextRequest
+): Promise<{ uid: string; role: EUserRole | null } | NextResponse> {
+  const auth = await verifyAuthToken(request);
+  if (!auth.authenticated || !auth.uid) {
+    return NextResponse.json({ error: auth.error || "No autorizado" }, { status: 401 });
+  }
+  const userSnap = await getFirestoreAdmin().collection(collections.USERS).doc(auth.uid).get();
+  const role = (userSnap.data()?.role ?? null) as EUserRole | null;
+  if (!isAdminOrAbove(role)) {
+    return NextResponse.json({ error: "Permisos insuficientes" }, { status: 403 });
+  }
+  return { uid: auth.uid, role };
 }

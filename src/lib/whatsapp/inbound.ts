@@ -9,8 +9,18 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/apiAuth";
 import collections from "@/lib/collections";
-import { getChannelByPhoneNumberId } from "./integration";
-import { NormalizedInbound, normalizeChangeValue } from "./inboundNormalize";
+import {
+  applyHistoryProgress,
+  applyPhonebook,
+  getChannelByPhoneNumberId,
+  handleAccountUpdate,
+} from "./integration";
+import {
+  NormalizedInbound,
+  normalizeChangeValue,
+  normalizeHistoryValue,
+  normalizeStateSyncValue,
+} from "./inboundNormalize";
 import { pauseBotForHuman, runBotForInbound } from "./botBridge";
 import {
   EWhatsappContactStatus,
@@ -47,10 +57,13 @@ async function persistMessage(
   const contactRef = db.collection(collections.WHATSAPP_CONTACTS).doc(msg.waId);
   const messageRef = db.collection(collections.WHATSAPP_MESSAGES).doc(msg.wamid);
   const at = msg.timestampMs ? Timestamp.fromMillis(msg.timestampMs) : Timestamp.now();
-  const isInbound = !msg.isEcho;
-  const direction = msg.isEcho
-    ? EWhatsappMessageDirection.OUTBOUND
-    : EWhatsappMessageDirection.INBOUND;
+  // Los echoes (lo que el dueño mandó desde el celular) y los salientes del
+  // historial vienen con direction=outbound.
+  const isInbound = msg.direction === "inbound" && !msg.isEcho;
+  const direction = isInbound
+    ? EWhatsappMessageDirection.INBOUND
+    : EWhatsappMessageDirection.OUTBOUND;
+  const fromHistory = !!msg.fromHistory;
 
   let created = false;
   let late = false;
@@ -62,6 +75,11 @@ async function persistMessage(
       if (existing.exists) return; // idempotencia por wamid
       created = true;
       const contactSnap = await tx.get(contactRef);
+      // Contacto nuevo: si está agendado en el celular (coexistencia), ese nombre gana.
+      const bookSnap = contactSnap.exists
+        ? null
+        : await tx.get(db.collection(collections.WHATSAPP_PHONEBOOK).doc(msg.waId));
+      const phonebookName: string | null = bookSnap?.data()?.name ?? null;
       // Atrasado: Meta reintenta durante horas los envíos que fallaron. Si la
       // charla ya tiene algo más nuevo, se guarda en su lugar del historial
       // pero no pisa los agregados del contacto ni lo responde el bot.
@@ -76,16 +94,20 @@ async function persistMessage(
         direction,
         type: toMessageType(msg.type),
         content: msg.content ?? null,
-        metadata: msg.isEcho ? { isEcho: true } : {},
+        metadata: {
+          ...(msg.isEcho ? { isEcho: true } : {}),
+          ...(fromHistory ? { fromHistory: true } : {}),
+        },
         replyToWamid: msg.replyToWamid ?? null,
-        status: msg.isEcho
-          ? EWhatsappMessageStatus.SENT
-          : EWhatsappMessageStatus.DELIVERED,
+        status: isInbound
+          ? EWhatsappMessageStatus.DELIVERED
+          : EWhatsappMessageStatus.SENT,
         errorCode: null,
         errorMessage: null,
-        sentAt: msg.isEcho ? at : null,
+        sentAt: isInbound ? null : at,
         deliveredAt: isInbound ? at : null,
         readAt: null,
+        ...(fromHistory ? { fromHistory: true } : {}),
         createdAt: at,
         updatedAt: FieldValue.serverTimestamp(),
         deletedAt: null,
@@ -93,7 +115,7 @@ async function persistMessage(
 
       if (late) return;
 
-      // Agregados del contacto. Los echoes NO incrementan unread.
+      // Agregados del contacto. Los echoes y el historial NO incrementan unread.
       const contactUpdate: Record<string, any> = {
         waId: msg.waId,
         phoneE164: `+${msg.waId}`,
@@ -105,18 +127,26 @@ async function persistMessage(
       };
       if (isInbound) {
         contactUpdate.lastInboundAt = at;
-        contactUpdate.unreadCount = FieldValue.increment(1);
+        if (!fromHistory) contactUpdate.unreadCount = FieldValue.increment(1);
       }
       if (!contactSnap.exists) {
         contactUpdate.status = EWhatsappContactStatus.OPEN;
-        contactUpdate.unreadCount = isInbound ? 1 : 0;
+        contactUpdate.unreadCount = isInbound && !fromHistory ? 1 : 0;
         contactUpdate.createdAt = at;
         contactUpdate.deletedAt = null;
-        if (msg.contactName) contactUpdate.name = msg.contactName;
+        if (phonebookName) {
+          contactUpdate.name = phonebookName;
+          contactUpdate.nameSource = "phonebook";
+          contactUpdate.phonebookName = phonebookName;
+        } else if (msg.contactName) {
+          contactUpdate.name = msg.contactName;
+          contactUpdate.nameSource = "profile";
+        }
         tx.set(contactRef, contactUpdate);
       } else {
         if (msg.contactName && !contactSnap.data()?.name) {
           contactUpdate.name = msg.contactName;
+          contactUpdate.nameSource = "profile";
         }
         tx.set(contactRef, contactUpdate, { merge: true });
       }
@@ -169,6 +199,53 @@ async function applyStatus(st: any): Promise<void> {
 }
 
 /**
+ * Webhook `history`: chats viejos del celular (hasta 6 meses). Se guardan en la
+ * bandeja como cualquier mensaje (idempotente por wamid) pero NUNCA disparan
+ * el bot, no pausan nada y no cuentan como no leídos.
+ */
+const HISTORY_CONCURRENCY = 8;
+
+async function importHistory(value: any): Promise<void> {
+  const history = normalizeHistoryValue(value);
+  const phoneNumberId = value?.metadata?.phone_number_id;
+  const channel = phoneNumberId ? await getChannelByPhoneNumberId(phoneNumberId) : null;
+  let imported = 0;
+  if (channel) {
+    // Un lote puede traer cientos de mensajes: las charlas van en paralelo (de a
+    // varias) y los mensajes de una misma charla en orden, para no pisarse en
+    // la transacción del contacto.
+    const byContact = new Map<string, NormalizedInbound[]>();
+    for (const msg of history.messages) {
+      if (msg.type === "reaction" || msg.type === "deleted") continue;
+      byContact.set(msg.waId, [...(byContact.get(msg.waId) || []), msg]);
+    }
+    const queue = Array.from(byContact.values());
+    const worker = async () => {
+      for (let msgs = queue.shift(); msgs; msgs = queue.shift()) {
+        msgs.sort((a, b) => (a.timestampMs ?? 0) - (b.timestampMs ?? 0));
+        for (const msg of msgs) {
+          try {
+            const { created } = await persistMessage(channel.id, msg);
+            if (created) imported++;
+          } catch {
+            // Ya logueado en persistMessage; un mensaje roto no frena el resto.
+          }
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: HISTORY_CONCURRENCY }, worker));
+  } else if (history.messages.length) {
+    console.warn(`[whatsapp inbound] historial de un canal desconocido/inactivo (${phoneNumberId}), se descarta`);
+  }
+  await applyHistoryProgress({
+    progress: history.progress,
+    phase: history.phase,
+    imported,
+    error: history.error,
+  });
+}
+
+/**
  * Procesa un payload completo del webhook: por cada change resuelve el canal por
  * phone_number_id (desconocido → warning + skip, no error), normaliza y persiste.
  * Reacciones/borrados y estados/errores se manejan en la fase siguiente.
@@ -176,9 +253,35 @@ async function applyStatus(st: any): Promise<void> {
 export async function processInboundPayload(payload: any): Promise<void> {
   // Mensajes nuevos (no reintentos de Meta) para pasarle al bot al final.
   const fresh: { msg: NormalizedInbound; phoneNumberId: string }[] = [];
+  // El aviso de "no compartió el historial" puede venir sin entry/changes.
+  if (!payload?.entry && Array.isArray(payload?.history)) {
+    await importHistory(payload).catch((error) => console.error("[whatsapp inbound] history:", error));
+    return;
+  }
   for (const entry of payload?.entry || []) {
     for (const change of entry?.changes || []) {
       const field = change?.field;
+
+      // Coexistencia: avisos de cuenta, agenda e historial del celular.
+      if (field === "account_update") {
+        await handleAccountUpdate(entry?.id, change?.value).catch((error) =>
+          console.error("[whatsapp inbound] account_update:", error)
+        );
+        continue;
+      }
+      if (field === "smb_app_state_sync") {
+        await applyPhonebook(normalizeStateSyncValue(change?.value)).catch((error) =>
+          console.error("[whatsapp inbound] smb_app_state_sync:", error)
+        );
+        continue;
+      }
+      if (field === "history") {
+        await importHistory(change?.value).catch((error) =>
+          console.error("[whatsapp inbound] history:", error)
+        );
+        continue;
+      }
+
       if (field === "messages" && Array.isArray(change?.value?.statuses)) {
         for (const st of change.value.statuses) await applyStatus(st);
       }

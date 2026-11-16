@@ -5,7 +5,12 @@
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/apiAuth";
 import collections from "@/lib/collections";
-import { INTEGRATION_DOC_ID, getChannelByPhoneNumberId, resolveAccessToken } from "./integration";
+import {
+  INTEGRATION_DOC_ID,
+  getChannelByPhoneNumberId,
+  getDefaultChannel,
+  resolveAccessToken,
+} from "./integration";
 import { sendTextMessage } from "./cloudApi";
 import { isWithinServiceWindow } from "./outboundHelpers";
 import {
@@ -72,10 +77,12 @@ export async function sendText(args: {
     };
   }
 
-  const channel = contact.channelId
-    ? await getChannelByPhoneNumberId(contact.channelId)
-    : null;
-  if (!channel) return { ok: false, error: "Canal de WhatsApp no configurado" };
+  // El número de la charla, o el activo si ese se desvinculó (nunca se manda
+  // desde un número desvinculado).
+  const channel =
+    (contact.channelId ? await getChannelByPhoneNumberId(contact.channelId) : null) ??
+    (await getDefaultChannel());
+  if (!channel) return { ok: false, error: "No hay ningún número de WhatsApp conectado" };
 
   let token: string;
   try {

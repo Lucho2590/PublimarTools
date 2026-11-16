@@ -107,3 +107,125 @@ export async function sendTextMessage(
   });
   return { wamid: json?.messages?.[0]?.id ?? null };
 }
+
+// ---------------------------------------------------------------------------
+// Embedded Signup + coexistencia (número en la app WhatsApp Business del
+// celular Y en la Cloud API a la vez).
+// ---------------------------------------------------------------------------
+
+/**
+ * Canjea el `code` que devuelve FB.login (Embedded Signup) por el token de
+ * negocio. El code vence a los ~30 s: llamarlo apenas llega. Server-side
+ * (usa el App Secret).
+ */
+export async function exchangeCodeForToken(code: string): Promise<string> {
+  const appId = process.env.META_APP_ID;
+  const secret = process.env.META_APP_SECRET;
+  if (!appId || !secret) {
+    throw new CloudApiError("Faltan META_APP_ID o META_APP_SECRET en el servidor");
+  }
+  const qs = new URLSearchParams({ client_id: appId, client_secret: secret, code });
+  const res = await fetch(`${GRAPH_BASE_URL}/oauth/access_token?${qs.toString()}`);
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok || !json?.access_token) {
+    const err = json?.error || {};
+    throw new CloudApiError(
+      err.message || "Meta no devolvió el token",
+      err.code,
+      err.error_subcode,
+      res.status
+    );
+  }
+  return json.access_token as string;
+}
+
+/**
+ * Estado de coexistencia de un número: `is_on_biz_app: true` + `platform_type:
+ * "CLOUD_API"` = está en la app del celular y en la API. Devuelve null si Meta
+ * no expone los campos (no rompe el alta).
+ */
+export async function getPhoneCoexistence(
+  phoneNumberId: string,
+  token: string
+): Promise<{ isOnBizApp: boolean; platformType: string | null } | null> {
+  try {
+    const json = await graphFetch(`/${phoneNumberId}?fields=is_on_biz_app,platform_type`, token, {
+      method: "GET",
+    });
+    return { isOnBizApp: json?.is_on_biz_app === true, platformType: json?.platform_type ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST /{phoneNumberId}/smb_app_data — pide a Meta que mande por webhook los
+ * contactos (`smb_app_state_sync`) o el historial de chats (`history`) del
+ * celular. Solo se puede pedir UNA vez por alta y dentro de las 24 h.
+ */
+export async function requestSmbSync(
+  phoneNumberId: string,
+  token: string,
+  syncType: "smb_app_state_sync" | "history"
+): Promise<{ requestId: string | null }> {
+  const json = await graphFetch(`/${phoneNumberId}/smb_app_data`, token, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", sync_type: syncType }),
+  });
+  return { requestId: json?.request_id ?? null };
+}
+
+/** DELETE /{wabaId}/subscribed_apps — Meta deja de mandar webhooks de esa cuenta. */
+export async function unsubscribeApps(wabaId: string, token: string): Promise<any> {
+  return graphFetch(`/${wabaId}/subscribed_apps`, token, { method: "DELETE" });
+}
+
+export type MetaAppSubscription = {
+  object: string;
+  callback_url: string;
+  active: boolean;
+  fields: { name: string; version?: string }[];
+};
+
+/**
+ * GET /{appId}/subscriptions con el app token (`appId|appSecret`): qué webhooks
+ * tiene configurados la app en el panel de Meta (URL + campos).
+ */
+export async function getAppSubscriptions(): Promise<MetaAppSubscription[]> {
+  const appId = process.env.META_APP_ID;
+  const secret = process.env.META_APP_SECRET;
+  if (!appId || !secret) throw new CloudApiError("Faltan META_APP_ID o META_APP_SECRET");
+  const json = await graphFetch(`/${appId}/subscriptions`, `${appId}|${secret}`, { method: "GET" });
+  return (json.data || []) as MetaAppSubscription[];
+}
+
+/** Datos de la app que Meta exige para publicarla (sin publicar no llegan mensajes reales). */
+export async function getAppPublishInfo(): Promise<{ privacyPolicyUrl: string | null; category: string | null }> {
+  const appId = process.env.META_APP_ID;
+  const secret = process.env.META_APP_SECRET;
+  if (!appId || !secret) throw new CloudApiError("Faltan META_APP_ID o META_APP_SECRET");
+  const json = await graphFetch(`/${appId}?fields=privacy_policy_url,category`, `${appId}|${secret}`, {
+    method: "GET",
+  });
+  return { privacyPolicyUrl: json?.privacy_policy_url ?? null, category: json?.category ?? null };
+}
+
+/**
+ * Cuándo vence un token (GET /debug_token con el app token). `null` = no vence
+ * (token permanente de usuario del sistema); `undefined` = no se pudo saber.
+ */
+export async function getTokenExpiry(token: string): Promise<Date | null | undefined> {
+  const appId = process.env.META_APP_ID;
+  const secret = process.env.META_APP_SECRET;
+  if (!appId || !secret) return undefined;
+  try {
+    const qs = new URLSearchParams({ input_token: token });
+    const json = await graphFetch(`/debug_token?${qs.toString()}`, `${appId}|${secret}`, { method: "GET" });
+    const exp = Number(json?.data?.expires_at);
+    if (!Number.isFinite(exp)) return undefined;
+    return exp === 0 ? null : new Date(exp * 1000);
+  } catch {
+    return undefined;
+  }
+}
