@@ -210,3 +210,22 @@ export async function getAppPublishInfo(): Promise<{ privacyPolicyUrl: string | 
   });
   return { privacyPolicyUrl: json?.privacy_policy_url ?? null, category: json?.category ?? null };
 }
+
+/**
+ * Cuándo vence un token (GET /debug_token con el app token). `null` = no vence
+ * (token permanente de usuario del sistema); `undefined` = no se pudo saber.
+ */
+export async function getTokenExpiry(token: string): Promise<Date | null | undefined> {
+  const appId = process.env.META_APP_ID;
+  const secret = process.env.META_APP_SECRET;
+  if (!appId || !secret) return undefined;
+  try {
+    const qs = new URLSearchParams({ input_token: token });
+    const json = await graphFetch(`/debug_token?${qs.toString()}`, `${appId}|${secret}`, { method: "GET" });
+    const exp = Number(json?.data?.expires_at);
+    if (!Number.isFinite(exp)) return undefined;
+    return exp === 0 ? null : new Date(exp * 1000);
+  } catch {
+    return undefined;
+  }
+}

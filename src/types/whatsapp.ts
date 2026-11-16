@@ -138,7 +138,10 @@ export type TWhatsappIntegration = {
   wabaId: string;
   /** AES-256-GCM (ver src/lib/whatsapp/crypto.ts). Nunca en claro. */
   accessTokenEnc: string;
+  /** Vencimiento del token. null + tokenExpiryKnown=true = no vence (usuario del sistema). */
   tokenExpiresAt?: Date | null;
+  tokenExpiryKnown?: boolean;
+  tokenUpdatedAt?: Date | null;
   status: EWhatsappIntegrationStatus;
   coexistenceEnabled: boolean;
   /** Constante configurable del Embedded Signup de coexistencia. */

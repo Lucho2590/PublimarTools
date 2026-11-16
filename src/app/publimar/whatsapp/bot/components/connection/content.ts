@@ -229,3 +229,27 @@ export const TECH_NOTES: string[] = [
   "Después de cargar o cambiar variables en Vercel hay que hacer Redeploy para que tomen efecto.",
   "Si en la ventana de Meta no aparece la opción \"Conectar tu app de WhatsApp Business existente\", Meta puede estar pidiendo la verificación del negocio (business.facebook.com → Centro de seguridad).",
 ];
+
+/** Paso a paso para crear un token PERMANENTE de usuario del sistema (reemplaza el de 60 días). */
+export const PERMANENT_TOKEN_STEPS: { title: string; text: string }[] = [
+  {
+    title: "Abrí la configuración del negocio",
+    text: "Entrá a business.facebook.com → ícono de engranaje (Configuración) → \"Configuración del negocio\" o \"Más configuraciones del negocio\".",
+  },
+  {
+    title: "Elegí o creá un usuario del sistema",
+    text: "Menú Usuarios → Usuarios del sistema. Si ya tenés uno (el que usaste para el número de prueba), elegilo. Si no: \"Agregar\" → nombre \"Agente WhatsApp\" → rol Administrador → Crear.",
+  },
+  {
+    title: "Asignale la app y la cuenta de WhatsApp",
+    text: "Con el usuario elegido, tocá \"Asignar activos\": en Apps elegí \"Banderas MDP Agente\" con control total; en Cuentas de WhatsApp elegí la cuenta del número que conectaste, con control total. Guardá.",
+  },
+  {
+    title: "Generá el token que no vence",
+    text: "Tocá \"Generar nuevo token\" → App: \"Banderas MDP Agente\" → Caducidad: \"Nunca\" → permisos whatsapp_business_management y whatsapp_business_messaging → Generar.",
+  },
+  {
+    title: "Copialo y pegalo acá abajo",
+    text: "Empieza con \"EAA…\". Meta lo muestra una sola vez: si lo perdés, generás otro.",
+  },
+];

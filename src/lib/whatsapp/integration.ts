@@ -4,7 +4,7 @@
 // Hay un solo número activo a la vez: conectar uno nuevo desactiva los demás, y
 // un canal inactivo se ignora en el webhook y en los envíos.
 
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getFirestoreAdmin } from "@/lib/apiAuth";
 import collections from "@/lib/collections";
 import { decryptToken, encryptToken } from "./crypto";
@@ -13,6 +13,7 @@ import {
   MetaPhoneNumber,
   exchangeCodeForToken,
   getPhoneCoexistence,
+  getTokenExpiry,
   listPhoneNumbers,
   requestSmbSync,
   subscribeApps,
@@ -86,6 +87,12 @@ async function deactivateChannels(keepId?: string): Promise<void> {
   );
 }
 
+/** Campos del vencimiento del token para la integración (`undefined` = no se pudo saber). */
+function tokenExpiryFields(expiry: Date | null | undefined): Record<string, unknown> {
+  if (expiry === undefined) return { tokenExpiresAt: null, tokenExpiryKnown: false };
+  return { tokenExpiresAt: expiry ? Timestamp.fromDate(expiry) : null, tokenExpiryKnown: true };
+}
+
 /**
  * Guarda la integración (token cifrado) y el canal, y deja ese número como el
  * único activo. Idempotente: reconectar el mismo número no duplica nada.
@@ -103,12 +110,14 @@ async function saveConnection(args: {
 
   const integRef = integrationRef();
   const integSnap = await integRef.get();
+  const expiry = await getTokenExpiry(token);
   await integRef.set(
     {
       provider: "meta_whatsapp",
       wabaId,
       phoneNumberId: phone.id,
       accessTokenEnc: encryptToken(token),
+      ...tokenExpiryFields(expiry),
       status: "connected",
       coexistenceEnabled: coexistence,
       featureType: COEXISTENCE_FEATURE_TYPE,
@@ -295,6 +304,54 @@ export async function connectEmbedded(args: {
     contactsSyncError,
     historySyncError,
   };
+}
+
+/**
+ * Cambia SOLO el token del número conectado (ej. el de 60 días del Embedded
+ * Signup por uno permanente de usuario del sistema). No toca la coexistencia,
+ * el canal ni la sincronización: el número sigue igual.
+ */
+export async function replaceToken(args: {
+  token: string;
+  updatedBy?: string;
+}): Promise<{ expiresAt: Date | null | undefined }> {
+  const integ = await getIntegration();
+  if (!integ?.wabaId || !integ?.phoneNumberId || integ.status === "disconnected") {
+    throw new Error("No hay ningún número conectado para renovarle el token");
+  }
+  const token = args.token.trim();
+
+  // El token nuevo tiene que poder ver ESTE número.
+  let numbers: MetaPhoneNumber[];
+  try {
+    numbers = await listPhoneNumbers(integ.wabaId, token);
+  } catch (error) {
+    if (error instanceof CloudApiError && (error.code === 190 || error.httpStatus === 401)) {
+      throw new Error("Meta dice que ese token no es válido. Copialo de nuevo, completo.");
+    }
+    throw new Error(
+      "Ese token no tiene acceso a la cuenta de WhatsApp del número. Revisá que el usuario del sistema tenga asignada la cuenta de WhatsApp con control total."
+    );
+  }
+  if (!numbers.some((n) => n.id === integ.phoneNumberId)) {
+    throw new Error("Ese token no ve el número conectado. Revisá los activos asignados al usuario del sistema.");
+  }
+
+  await subscribeApps(integ.wabaId, token);
+  const expiry = await getTokenExpiry(token);
+  await integrationRef().set(
+    {
+      accessTokenEnc: encryptToken(token),
+      ...tokenExpiryFields(expiry),
+      status: "connected",
+      error: null,
+      tokenUpdatedAt: FieldValue.serverTimestamp(),
+      ...(args.updatedBy ? { tokenUpdatedBy: args.updatedBy } : {}),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+  return { expiresAt: expiry };
 }
 
 // ---------------------------------------------------------------------------

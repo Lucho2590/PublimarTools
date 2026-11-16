@@ -343,6 +343,13 @@ export function ConnectionWizard({
                   de WhatsApp.
                 </p>
               )}
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-medium">Último paso recomendado: hacé permanente el permiso</p>
+                <p className="mt-1">
+                  El permiso que dio Meta vence a los 60 días. Cerrá esta ventana y tocá &quot;Hacer permanente el
+                  permiso&quot; en la tarjeta de conexión: son 5 minutos y el agente no se corta nunca.
+                </p>
+              </div>
               <div className="rounded-lg border bg-white p-4 text-sm">
                 <p className="font-medium">Probalo</p>
                 <p className="mt-1 text-slate-600">

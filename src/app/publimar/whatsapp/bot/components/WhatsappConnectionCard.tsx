@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   BookOpen,
   CheckCircle2,
+  KeyRound,
   ChevronDown,
   Link2,
   Loader2,
@@ -31,8 +32,18 @@ import { ConnectionWizard } from "./connection/ConnectionWizard";
 import { DisconnectDialog } from "./connection/DisconnectDialog";
 import { HistorySyncProgress } from "./connection/HistorySyncProgress";
 import { TechSetupPanel } from "./connection/TechSetupPanel";
+import { TokenDialog } from "./connection/TokenDialog";
 import { DISCONNECT_REASONS, FOURTEEN_DAY_RULE } from "./connection/content";
 import { useWhatsappAdminApi, useWhatsappSetup } from "./connection/useWhatsappSetup";
+
+/** Estado del permiso (token) de Meta: permanente, vence en N días, o desconocido. */
+function tokenStatus(integ: any): { permanent: boolean; daysLeft: number | null; date: string | null } {
+  const exp: Date | null = integ?.tokenExpiresAt?.toDate?.() ?? null;
+  if (integ?.tokenExpiryKnown && !exp) return { permanent: true, daysLeft: null, date: null };
+  if (!exp) return { permanent: false, daysLeft: null, date: null };
+  const daysLeft = Math.ceil((exp.getTime() - Date.now()) / 86400000);
+  return { permanent: false, daysLeft, date: exp.toLocaleDateString("es-AR") };
+}
 
 function formatDate(ts: any): string | null {
   const d: Date | null = ts?.toDate?.() ?? (ts instanceof Date ? ts : null);
@@ -61,6 +72,7 @@ export function WhatsappConnectionCard({ handoffHours = 12 }: { handoffHours?: n
   const [howOpen, setHowOpen] = useState(false);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
+  const [tokenOpen, setTokenOpen] = useState(false);
 
   const status: string = integ?.status || "disconnected";
   const connected = status === "connected";
@@ -73,6 +85,7 @@ export function WhatsappConnectionCard({ handoffHours = 12 }: { handoffHours?: n
     return list.find((c) => c.id === integ?.phoneNumberId) || list.find((c) => c.defaultForSending) || null;
   }, [channels, integ?.phoneNumberId]);
   const disconnect = integ?.disconnect;
+  const token = tokenStatus(integ);
 
   // La configuración técnica se abre sola para el superuser si falta algo.
   useEffect(() => {
@@ -142,6 +155,21 @@ export function WhatsappConnectionCard({ handoffHours = 12 }: { handoffHours?: n
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {connected && (token.permanent || token.daysLeft !== null) && (
+          <p
+            className={cn(
+              "flex items-center gap-2 text-sm",
+              token.permanent ? "text-green-700" : token.daysLeft! <= 10 ? "text-red-700" : "text-amber-700"
+            )}
+          >
+            <KeyRound className="h-4 w-4 shrink-0" />
+            {token.permanent
+              ? "Permiso de Meta permanente: no vence."
+              : token.daysLeft! <= 0
+                ? "El permiso de Meta venció: el agente no puede mandar mensajes. Hacelo permanente para arreglarlo."
+                : `El permiso de Meta vence el ${token.date} (en ${token.daysLeft} días). Hacelo permanente para que no se corte.`}
+          </p>
+        )}
         {connected && coexistence && <HistorySyncProgress integration={integ} />}
         {connected && coexistence && (
           <p className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -158,9 +186,19 @@ export function WhatsappConnectionCard({ handoffHours = 12 }: { handoffHours?: n
                 <Link2 className="mr-2 h-4 w-4" /> Conectar WhatsApp
               </Button>
             )}
+            {broken && coexistence && (
+              <Button onClick={() => setTokenOpen(true)}>
+                <KeyRound className="mr-2 h-4 w-4" /> Cargar token nuevo
+              </Button>
+            )}
             {broken && (
-              <Button onClick={() => setWizardOpen(true)}>
+              <Button variant={coexistence ? "outline" : "default"} onClick={() => setWizardOpen(true)}>
                 <RefreshCw className="mr-2 h-4 w-4" /> Reconectar
+              </Button>
+            )}
+            {connected && !token.permanent && integ?.onboardingMethod === "embedded_signup" && (
+              <Button onClick={() => setTokenOpen(true)}>
+                <KeyRound className="mr-2 h-4 w-4" /> Hacer permanente el permiso
               </Button>
             )}
             {disconnecting && (
@@ -206,7 +244,8 @@ export function WhatsappConnectionCard({ handoffHours = 12 }: { handoffHours?: n
         )}
 
         {/* Alta manual por token (número de prueba de Meta) */}
-        {isAdmin && <ManualConnect integration={integ} channel={channel} />}
+        {/* Con coexistencia el token se cambia con "Hacer permanente": el alta manual la desactivaría. */}
+        {isAdmin && !(hasNumber && coexistence) && <ManualConnect integration={integ} channel={channel} />}
       </CardContent>
 
       <ConnectionWizard
@@ -232,6 +271,7 @@ export function WhatsappConnectionCard({ handoffHours = 12 }: { handoffHours?: n
         canSeeTechSetup={false}
         onOpenTechSetup={() => {}}
       />
+      <TokenDialog open={tokenOpen} onOpenChange={setTokenOpen} />
       <DisconnectDialog
         open={disconnectOpen}
         onOpenChange={setDisconnectOpen}

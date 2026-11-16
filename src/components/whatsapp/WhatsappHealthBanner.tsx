@@ -48,6 +48,29 @@ export function WhatsappHealthBanner() {
     );
   }
 
+  // El permiso de Meta (token de 60 días del alta) está por vencer.
+  const exp = (integration as any)?.tokenExpiresAt?.toDate?.() as Date | undefined;
+  if (integration?.status === "connected" && exp) {
+    const daysLeft = Math.ceil((exp.getTime() - Date.now()) / 86400000);
+    if (daysLeft <= 10) {
+      return (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="flex-1 min-w-[16rem]">
+            <b>WhatsApp:</b>{" "}
+            {daysLeft <= 0
+              ? "venció el permiso de Meta y el agente no puede mandar mensajes."
+              : `el permiso de Meta vence en ${daysLeft} día${daysLeft === 1 ? "" : "s"}.`}{" "}
+            Hacelo permanente para que no se corte.
+          </span>
+          <Link href="/publimar/whatsapp/bot?tab=config" className="font-medium underline underline-offset-2">
+            Arreglarlo
+          </Link>
+        </div>
+      );
+    }
+  }
+
   if (integration?.status !== "error") return null;
 
   return (
