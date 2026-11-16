@@ -5,13 +5,14 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireWhatsappAdmin } from "@/lib/whatsapp/auth";
-import { getAppSubscriptions } from "@/lib/whatsapp/cloudApi";
+import { getAppPublishInfo, getAppSubscriptions } from "@/lib/whatsapp/cloudApi";
 import { GRAPH_VERSION, REQUIRED_WEBHOOK_FIELDS } from "@/lib/whatsapp/constants";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-type TSetupCheck = { id: string; ok: boolean; detail?: string };
+/** `manual`: Meta no lo informa por API; se muestra como "revisalo vos" y no cuenta para `ready`. */
+type TSetupCheck = { id: string; ok: boolean; detail?: string; manual?: boolean };
 
 const ENV_VARS = [
   "META_APP_ID",
@@ -21,10 +22,14 @@ const ENV_VARS = [
   "WHATSAPP_ENCRYPTION_KEY",
 ] as const;
 
-function publicOrigin(request: NextRequest): string {
-  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
-  const proto = request.headers.get("x-forwarded-proto") || "https";
-  return host ? `${proto}://${host}` : request.nextUrl.origin;
+/**
+ * URL pública del webhook. En Vercel sale del dominio de producción. En local
+ * no hay forma confiable de saberla desde el servidor (el host es una
+ * dirección interna del dev server): devuelve null y el navegador usa la suya.
+ */
+function productionWebhookUrl(): string | null {
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  return host ? `https://${host}/api/whatsapp/webhook` : null;
 }
 
 export async function GET(request: NextRequest) {
@@ -38,10 +43,11 @@ export async function GET(request: NextRequest) {
     checks.push({ id: `env:${k}`, ok: !missingEnv.includes(k) });
   }
 
-  const expectedUrl = `${publicOrigin(request)}/api/whatsapp/webhook`;
+  let expectedUrl = productionWebhookUrl();
   let webhook: {
     callbackUrl: string | null;
-    expectedUrl: string;
+    /** URL que hay que cargar en Meta (null = la arma el navegador con su dominio). */
+    expectedUrl: string | null;
     missingFields: string[];
     error?: string;
   } = { callbackUrl: null, expectedUrl, missingFields: [...REQUIRED_WEBHOOK_FIELDS] };
@@ -51,20 +57,21 @@ export async function GET(request: NextRequest) {
       const subs = await getAppSubscriptions();
       const waba = subs.find((s) => s.object === "whatsapp_business_account");
       const fields = new Set((waba?.fields || []).map((f) => f.name));
+      // Alcanza con que apunte al webhook de la app (desde local, Meta apunta a
+      // Vercel y está bien). Si ya apunta, esa es la URL que se muestra.
+      const url = waba?.callback_url || "";
+      const pointsToApp = /\/api\/whatsapp\/webhook\/?$/.test(url);
+      if (pointsToApp) expectedUrl = url;
       webhook = {
         callbackUrl: waba?.callback_url ?? null,
         expectedUrl,
         missingFields: REQUIRED_WEBHOOK_FIELDS.filter((f) => !fields.has(f)),
       };
-      // Alcanza con que apunte al webhook de la app (en local el origen es
-      // localhost y Meta apunta a Vercel: no es un error).
-      const url = waba?.callback_url || "";
-      const pointsToApp = /\/api\/whatsapp\/webhook\/?$/.test(url);
       checks.push({
         id: "webhook:url",
         ok: !!waba?.active && pointsToApp,
         detail: url
-          ? `Configurada: ${url}${pointsToApp && url !== expectedUrl ? " (otro dominio que esta pantalla)" : ""}`
+          ? `En Meta está: ${url}${pointsToApp ? "" : " (no es el webhook de esta app)"}`
           : "No hay webhook de WhatsApp configurado",
       });
     } catch (error) {
@@ -80,8 +87,33 @@ export async function GET(request: NextRequest) {
     detail: webhook.missingFields.length ? `Faltan: ${webhook.missingFields.join(", ")}` : undefined,
   });
 
+  // Publicación de la app: sin publicar, Meta no entrega mensajes de números reales.
+  if (process.env.META_APP_ID && process.env.META_APP_SECRET) {
+    try {
+      const info = await getAppPublishInfo();
+      const missing = [
+        !info.privacyPolicyUrl && "URL de la política de privacidad",
+        !info.category && "categoría",
+      ].filter(Boolean);
+      checks.push({
+        id: "app:publish",
+        ok: missing.length === 0,
+        detail: missing.length ? `Faltan: ${missing.join(", ")}` : undefined,
+      });
+    } catch (error) {
+      checks.push({
+        id: "app:publish",
+        ok: false,
+        detail: `No pudimos leer los datos de la app: ${error instanceof Error ? error.message : error}`,
+      });
+    }
+  } else {
+    checks.push({ id: "app:publish", ok: false, detail: "Primero cargá META_APP_ID y META_APP_SECRET" });
+  }
+  checks.push({ id: "app:live", ok: false, manual: true });
+
   return NextResponse.json({
-    ready: checks.every((c) => c.ok),
+    ready: checks.every((c) => c.ok || c.manual),
     checks,
     webhook,
     appId: process.env.META_APP_ID?.trim() || null,

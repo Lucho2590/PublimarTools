@@ -199,3 +199,14 @@ export async function getAppSubscriptions(): Promise<MetaAppSubscription[]> {
   const json = await graphFetch(`/${appId}/subscriptions`, `${appId}|${secret}`, { method: "GET" });
   return (json.data || []) as MetaAppSubscription[];
 }
+
+/** Datos de la app que Meta exige para publicarla (sin publicar no llegan mensajes reales). */
+export async function getAppPublishInfo(): Promise<{ privacyPolicyUrl: string | null; category: string | null }> {
+  const appId = process.env.META_APP_ID;
+  const secret = process.env.META_APP_SECRET;
+  if (!appId || !secret) throw new CloudApiError("Faltan META_APP_ID o META_APP_SECRET");
+  const json = await graphFetch(`/${appId}?fields=privacy_policy_url,category`, `${appId}|${secret}`, {
+    method: "GET",
+  });
+  return { privacyPolicyUrl: json?.privacy_policy_url ?? null, category: json?.category ?? null };
+}

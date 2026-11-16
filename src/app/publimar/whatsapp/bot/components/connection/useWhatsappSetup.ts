@@ -5,8 +5,8 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export type TSetupStatus = {
   ready: boolean;
-  checks: { id: string; ok: boolean; detail?: string }[];
-  webhook: { callbackUrl: string | null; expectedUrl: string; missingFields: string[]; error?: string };
+  checks: { id: string; ok: boolean; detail?: string; manual?: boolean }[];
+  webhook: { callbackUrl: string | null; expectedUrl: string | null; missingFields: string[]; error?: string };
   appId: string | null;
   configId: string | null;
   graphVersion: string;

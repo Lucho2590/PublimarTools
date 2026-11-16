@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, ChevronDown, Copy, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, Copy, Eye, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -40,9 +40,11 @@ export function TechSetupPanel({
   onRefresh: () => void;
 }) {
   const [openIds, setOpenIds] = useState<Record<string, boolean>>({});
-  const webhookUrl = setup?.webhook.expectedUrl || "";
+  const webhookUrl =
+    setup?.webhook.expectedUrl ||
+    (typeof window !== "undefined" ? `${window.location.origin}/api/whatsapp/webhook` : "");
   const visible = (setup?.checks || []).filter((c) => TECH_STEPS[c.id]);
-  const pending = visible.filter((c) => !c.ok);
+  const pending = visible.filter((c) => !c.ok && !c.manual);
   // Solo se despliega el primer punto pendiente: de a uno, sin abrumar.
   const firstPendingId = pending[0]?.id;
 
@@ -52,8 +54,8 @@ export function TechSetupPanel({
         <p className="text-sm text-slate-600">
           {setup
             ? pending.length
-              ? `Faltan ${pending.length} de ${visible.length} puntos. Se hace una sola vez, en el panel de Meta y en Vercel.`
-              : "Todo configurado."
+              ? `Faltan ${pending.length} puntos. Se hace una sola vez, en el panel de Meta y en Vercel.`
+              : "Todo lo que se puede revisar solo está OK. Confirmá vos que la app esté publicada."
             : "Se hace una sola vez, en el panel de Meta y en Vercel."}
         </p>
         <Button size="sm" variant="outline" onClick={onRefresh} disabled={loading}>
@@ -71,9 +73,15 @@ export function TechSetupPanel({
           {setup.checks.map((check) => {
             const info = TECH_STEPS[check.id];
             if (!info) return null;
-            const expanded = openIds[check.id] ?? check.id === firstPendingId;
+            const expanded = openIds[check.id] ?? (check.id === firstPendingId || !!check.manual);
             return (
-              <li key={check.id} className={cn("rounded-lg border", check.ok ? "bg-white" : "border-red-200 bg-red-50")}>
+              <li
+                key={check.id}
+                className={cn(
+                  "rounded-lg border",
+                  check.ok ? "bg-white" : check.manual ? "border-amber-200 bg-amber-50" : "border-red-200 bg-red-50"
+                )}
+              >
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 p-3 text-left text-sm"
@@ -81,10 +89,13 @@ export function TechSetupPanel({
                 >
                   {check.ok ? (
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                  ) : check.manual ? (
+                    <Eye className="h-4 w-4 shrink-0 text-amber-600" />
                   ) : (
                     <XCircle className="h-4 w-4 shrink-0 text-red-600" />
                   )}
                   <span className="flex-1 font-medium">{info.title}</span>
+                  {check.manual && <span className="text-xs font-normal text-amber-700">Revisalo vos</span>}
                   <ChevronDown className={cn("h-4 w-4 text-slate-400 transition-transform", expanded && "rotate-180")} />
                 </button>
                 {expanded && (

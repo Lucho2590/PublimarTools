@@ -190,7 +190,7 @@ export const TECH_STEPS: Record<string, TTechStep> = {
     id: "webhook:url",
     title: "Webhook de WhatsApp apuntando a la app",
     steps: [
-      "En tu app → WhatsApp → Configuración → Webhook → Editar.",
+      "En tu app → Casos de uso → WhatsApp → Personalizar → \"Configuración de producción\" → Configurar webhooks (en apps viejas: WhatsApp → Configuración → Webhook).",
       "URL de devolución de llamada: {webhookUrl}",
       "Token de verificación: el mismo de META_WEBHOOK_VERIFY_TOKEN. Tocá \"Verificar y guardar\".",
     ],
@@ -199,14 +199,33 @@ export const TECH_STEPS: Record<string, TTechStep> = {
     id: "webhook:fields",
     title: "Campos del webhook suscriptos",
     steps: [
-      "En la misma pantalla, Campos del webhook → Administrar.",
+      "En la misma pantalla, bajá hasta \"Campos del webhook\" y activá \"Suscribirse\" en cada uno.",
       "Suscribí: messages, smb_message_echoes, history, smb_app_state_sync y account_update.",
     ],
   },
 };
 
+TECH_STEPS["app:publish"] = {
+  id: "app:publish",
+  title: "Datos obligatorios para publicar la app",
+  steps: [
+    "En developers.facebook.com → tu app → Configuración de la app → Básica.",
+    "Cargá la \"URL de la política de privacidad\" (una página pública, sin login, que explique qué datos se usan) y elegí una \"Categoría\" (por ejemplo: Empresas y páginas).",
+    "Guardá los cambios.",
+  ],
+};
+
+TECH_STEPS["app:live"] = {
+  id: "app:live",
+  title: "Publicar la app (modo Live)",
+  steps: [
+    "Sin publicar, Meta NO entrega los mensajes de números reales: solo los de prueba del panel. El agente no recibiría nada.",
+    "En tu app → Publicar (o el interruptor \"Modo de la app\": Desarrollo → Activo). Meta te dice si falta algún dato.",
+    "Meta no informa este punto por API: revisalo en el panel. Cuando diga \"Publicada\" o \"Activo\", listo.",
+  ],
+};
+
 export const TECH_NOTES: string[] = [
   "Después de cargar o cambiar variables en Vercel hay que hacer Redeploy para que tomen efecto.",
-  "Si la app de Meta está en modo Desarrollo, solo pueden usar el asistente las cuentas de Facebook que tengan un rol en la app (Roles de la app → Roles).",
   "Si en la ventana de Meta no aparece la opción \"Conectar tu app de WhatsApp Business existente\", Meta puede estar pidiendo la verificación del negocio (business.facebook.com → Centro de seguridad).",
 ];
