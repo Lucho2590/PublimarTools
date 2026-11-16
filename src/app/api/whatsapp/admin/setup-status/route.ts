@@ -32,7 +32,8 @@ export async function GET(request: NextRequest) {
   if (gate instanceof NextResponse) return gate;
 
   const checks: TSetupCheck[] = [];
-  const missingEnv = ENV_VARS.filter((k) => !process.env[k]);
+  // Vacía o con solo espacios cuenta como que falta.
+  const missingEnv = ENV_VARS.filter((k) => !process.env[k]?.trim());
   for (const k of ENV_VARS) {
     checks.push({ id: `env:${k}`, ok: !missingEnv.includes(k) });
   }
@@ -83,8 +84,8 @@ export async function GET(request: NextRequest) {
     ready: checks.every((c) => c.ok),
     checks,
     webhook,
-    appId: process.env.META_APP_ID || null,
-    configId: process.env.META_ES_CONFIG_ID || null,
+    appId: process.env.META_APP_ID?.trim() || null,
+    configId: process.env.META_ES_CONFIG_ID?.trim() || null,
     graphVersion: GRAPH_VERSION,
   });
 }
