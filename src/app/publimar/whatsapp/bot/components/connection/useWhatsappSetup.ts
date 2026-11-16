@@ -58,5 +58,16 @@ export function useWhatsappSetup(enabled = true) {
     if (enabled) refresh();
   }, [enabled, refresh]);
 
+  // La configuración se hace en otra pestaña (Meta, Vercel): al volver a esta,
+  // se revisa de nuevo sola para no mostrar un estado viejo.
+  useEffect(() => {
+    if (!enabled) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [enabled, refresh]);
+
   return { status, loading, error, refresh };
 }
