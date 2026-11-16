@@ -14,9 +14,9 @@ const CITY = "Mar del Plata, Argentina";
 const CONTACT_EMAIL = "";
 const UPDATED = "15 de noviembre de 2026";
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-2">
+    <section id={id} className="scroll-mt-6 space-y-2">
       <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
       <div className="space-y-2 text-slate-700">{children}</div>
     </section>
@@ -88,7 +88,7 @@ export default function PrivacidadPage() {
           </p>
         </Section>
 
-        <Section title="Cómo pedir que borremos tus datos">
+        <Section id="borrar-datos" title="Cómo pedir que borremos tus datos">
           <p>
             Escribinos por WhatsApp al mismo número con el que hablaste con nosotros, diciendo &quot;quiero que borren
             mis datos&quot;
