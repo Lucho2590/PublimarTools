@@ -14,6 +14,7 @@ import {
   exchangeCodeForToken,
   getPhoneCoexistence,
   getTokenExpiry,
+  getTokenWabaIds,
   listPhoneNumbers,
   requestSmbSync,
   subscribeApps,
@@ -214,6 +215,37 @@ async function pickPhoneNumber(
   );
 }
 
+/** Mensaje cuando Meta reusó un permiso anterior en vez de hacer el alta nueva. */
+const REUSED_GRANT_ERROR =
+  "Meta usó la configuración anterior en vez de conectar tu número. Volvé a tocar \"Abrir Meta\" y, si aparece \"¿Quieres continuar con tu configuración anterior?\", tocá \"Editar configuración\" (no \"Continuar\") y elegí \"Conectar tu app de WhatsApp Business existente\".";
+
+/**
+ * Cuenta + número del alta. Con el waba_id del popup, se busca el número ahí.
+ * Sin él (Meta no mandó los datos de la sesión), se buscan en las cuentas que
+ * habilita el permiso, pero SOLO se acepta un número que esté en la app del
+ * celular (coexistencia): si no, el permiso es uno viejo reutilizado (por
+ * ejemplo el del número de prueba de Meta) y conectarlo sería un error.
+ */
+async function resolveAccountAndPhone(
+  token: string,
+  wabaId?: string | null,
+  phoneNumberId?: string | null
+): Promise<{ wabaId: string; phone: MetaPhoneNumber }> {
+  if (wabaId) {
+    const numbers = await listPhoneNumbers(wabaId, token);
+    return { wabaId, phone: await pickPhoneNumber(numbers, token, phoneNumberId) };
+  }
+  const candidates = await getTokenWabaIds(token);
+  if (!candidates.length) throw new Error(REUSED_GRANT_ERROR);
+  for (const id of candidates) {
+    const numbers = await listPhoneNumbers(id, token).catch(() => [] as MetaPhoneNumber[]);
+    for (const n of numbers) {
+      if ((await getPhoneCoexistence(n.id, token))?.isOnBizApp) return { wabaId: id, phone: n };
+    }
+  }
+  throw new Error(REUSED_GRANT_ERROR);
+}
+
 export type EmbeddedConnectResult = {
   wabaId: string;
   phoneNumberId: string;
@@ -232,20 +264,22 @@ export type EmbeddedConnectResult = {
  */
 export async function connectEmbedded(args: {
   code: string;
-  wabaId: string;
+  /** Lo manda el popup de Meta; si no llegó, se averigua con el token. */
+  wabaId?: string | null;
   phoneNumberId?: string | null;
   /** El popup terminó por el camino "conectar la app WhatsApp Business existente". */
   businessAppOnboarding?: boolean;
   createdBy?: string;
 }): Promise<EmbeddedConnectResult> {
-  const { code, wabaId, createdBy } = args;
+  const { code, createdBy } = args;
 
   // 1. Canjear el code (vence a los ~30 s) por el token del negocio.
   const token = await exchangeCodeForToken(code);
 
-  // 2. Buscar el número en la WABA (en coexistencia Meta solo devuelve el waba_id).
-  const numbers = await listPhoneNumbers(wabaId, token);
-  const phone = await pickPhoneNumber(numbers, token, args.phoneNumberId);
+  // 2. Cuenta de WhatsApp: la que mandó el popup o, si no llegó, la que el
+  //    permiso dice que se compartió. Después, el número dentro de la cuenta
+  //    (en coexistencia Meta solo devuelve el waba_id).
+  const { wabaId, phone } = await resolveAccountAndPhone(token, args.wabaId, args.phoneNumberId);
 
   // 3. ¿Quedó en coexistencia? Lo dice Meta; si no expone el dato, vale cómo terminó el popup.
   const coex = await getPhoneCoexistence(phone.id, token);

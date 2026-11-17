@@ -20,7 +20,7 @@ declare global {
 
 export type TSignupResult = {
   code: string;
-  wabaId: string;
+  wabaId: string | null;
   phoneNumberId: string | null;
   businessAppOnboarding: boolean;
 };
@@ -33,7 +33,7 @@ export class SignupError extends Error {
 
 const SDK_ID = "facebook-jssdk";
 /** Después del code, cuánto esperamos los datos de la cuenta. */
-const SESSION_INFO_WAIT_MS = 8000;
+const SESSION_INFO_WAIT_MS = 3000;
 
 export function useEmbeddedSignup(appId: string | null, graphVersion: string) {
   const [sdkReady, setSdkReady] = useState(false);
@@ -91,14 +91,11 @@ export function useEmbeddedSignup(appId: string | null, graphVersion: string) {
         const tryResolve = () => {
           if (!code || !session) return;
           const wabaId = session.data?.waba_id;
-          if (!wabaId) {
-            finish(() => reject(new SignupError("Meta no devolvió la cuenta de WhatsApp. Volvé a intentar.", "error")));
-            return;
-          }
           finish(() =>
             resolve({
               code: code!,
-              wabaId: String(wabaId),
+              // Sin waba_id el servidor lo averigua con el permiso.
+              wabaId: wabaId ? String(wabaId) : null,
               phoneNumberId: session!.data?.phone_number_id ? String(session!.data.phone_number_id) : null,
               businessAppOnboarding: session!.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
             })
@@ -166,15 +163,13 @@ export function useEmbeddedSignup(appId: string | null, graphVersion: string) {
               code = c;
               tryResolve();
               if (!settled) {
+                // Meta a veces no manda los datos de la sesión (por ejemplo si
+                // se reutilizó una configuración anterior): el servidor
+                // averigua la cuenta con el permiso.
                 waitTimer = setTimeout(
                   () =>
                     finish(() =>
-                      reject(
-                        new SignupError(
-                          "Meta terminó pero no mandó los datos de la cuenta. Volvé a intentar; si se repite, avisale al administrador.",
-                          "error"
-                        )
-                      )
+                      resolve({ code: code!, wabaId: null, phoneNumberId: null, businessAppOnboarding: false })
                     ),
                   SESSION_INFO_WAIT_MS
                 );

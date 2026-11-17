@@ -229,3 +229,22 @@ export async function getTokenExpiry(token: string): Promise<Date | null | undef
     return undefined;
   }
 }
+
+/**
+ * Cuentas de WhatsApp (WABA) a las que el token da acceso, según Meta
+ * (`granular_scopes` de /debug_token). Sirve para el Embedded Signup cuando el
+ * popup no manda el waba_id: el permiso dice qué cuenta se compartió.
+ */
+export async function getTokenWabaIds(token: string): Promise<string[]> {
+  const appId = process.env.META_APP_ID;
+  const secret = process.env.META_APP_SECRET;
+  if (!appId || !secret) throw new CloudApiError("Faltan META_APP_ID o META_APP_SECRET");
+  const qs = new URLSearchParams({ input_token: token });
+  const json = await graphFetch(`/debug_token?${qs.toString()}`, `${appId}|${secret}`, { method: "GET" });
+  const ids = new Set<string>();
+  for (const s of json?.data?.granular_scopes || []) {
+    if (s?.scope !== "whatsapp_business_management" && s?.scope !== "whatsapp_business_messaging") continue;
+    for (const id of s?.target_ids || []) ids.add(String(id));
+  }
+  return Array.from(ids);
+}
