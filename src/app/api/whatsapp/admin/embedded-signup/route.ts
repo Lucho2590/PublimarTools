@@ -34,15 +34,15 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const { code, wabaId, phoneNumberId, businessAppOnboarding } = body || {};
-    if (!code || !wabaId) {
+    if (!code) {
       return NextResponse.json(
-        { error: "Meta no devolvió los datos de la cuenta. Volvé a intentar." },
+        { error: "Meta no devolvió el permiso. Volvé a intentar." },
         { status: 400 }
       );
     }
     const result = await connectEmbedded({
       code: String(code),
-      wabaId: String(wabaId),
+      wabaId: wabaId ? String(wabaId) : null,
       phoneNumberId: phoneNumberId ? String(phoneNumberId) : null,
       businessAppOnboarding: !!businessAppOnboarding,
       createdBy: gate.uid,

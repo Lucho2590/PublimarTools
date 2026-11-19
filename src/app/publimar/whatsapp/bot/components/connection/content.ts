@@ -94,6 +94,11 @@ export type TMetaStep = { title: string; text: string; warning?: string };
 export const META_STEPS: TMetaStep[] = [
   { title: "Iniciá sesión con Facebook", text: "Usá la cuenta que administra el negocio." },
   {
+    title: "Si pregunta \"¿Quieres continuar con tu configuración anterior?\"",
+    text: "Tocá \"Editar configuración\" para hacer el paso a paso completo.",
+    warning: "NO toques \"Continuar como…\": reutiliza la conexión vieja y no conecta tu número.",
+  },
+  {
     title: "Elegí el portfolio comercial",
     text: "Elegí el del negocio, o creá uno nuevo si Meta te lo pide.",
   },
