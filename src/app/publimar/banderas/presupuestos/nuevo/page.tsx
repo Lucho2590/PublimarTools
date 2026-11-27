@@ -510,6 +510,8 @@ export default function NuevoPresupuestoPage() {
               price: item.variant.price,
             }
           : null,
+        productName: item.product.name,
+        variantName: item.variant?.size || "",
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         discount: item.discount || 0,
@@ -707,6 +709,8 @@ export default function NuevoPresupuestoPage() {
               price: item.variant.price,
             }
           : null,
+        productName: item.product.name,
+        variantName: item.variant?.size || "",
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         discount: item.discount || 0,

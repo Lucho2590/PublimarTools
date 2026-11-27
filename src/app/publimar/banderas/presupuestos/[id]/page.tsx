@@ -884,9 +884,10 @@ export default function QuoteDetailsPage({
                     <TableCell>
                       <div>
                         <p className="font-medium">{item.productName || item.product?.name}</p>
-                        {item.variantName && (
+                        {/* Los presupuestos creados desde "Nuevo" guardan la medida sólo en variant.size */}
+                        {(item.variantName || item.variant?.size) && (
                           <p className="text-sm text-gray-500">
-                            {item.variantName}
+                            Medida: {item.variantName || item.variant?.size}
                           </p>
                         )}
                       </div>
