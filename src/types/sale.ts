@@ -168,6 +168,8 @@ export interface TSale {
   createdAt: Date;
   updatedAt: Date;
   orderId?: string;
+  /** Presupuesto del que se importaron los items al crear la venta. */
+  quoteId?: string;
   /** Pedido del agente de WhatsApp del que salió (whatsappOrders). */
   whatsappOrderId?: string;
   // Sistema de devoluciones y cambios

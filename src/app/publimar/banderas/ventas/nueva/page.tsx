@@ -1020,6 +1020,8 @@ export default function NuevaVentaPage() {
         invoiceNumber: isInvoiced ? invoiceNumber : null,
         facturas: facturas.length > 0 ? facturas : [],
         ...(waOrder ? { whatsappOrderId: waOrder.id } : {}),
+        // Presupuesto del que se importaron los items (trazabilidad presupuesto→venta)
+        ...(selectedQuoteId ? { quoteId: selectedQuoteId } : {}),
         // Datos del cliente (solo se incluyen si tienen valor)
         ...clientData,
       };
