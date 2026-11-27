@@ -74,8 +74,22 @@ export default function ClienteDetallePage({
   )
 
   // Filtrar ventas eliminadas
-  const activeSales = sales?.filter((s: any) => !s.deleted);
-  const activeSales2 = sales2?.filter((s: any) => !s.deleted);
+  // Las ventas que salen de convertir una orden se guardaron históricamente con
+  // `client: <id>` (string) en vez de `clientId`, así que hay que juntar las dos
+  // queries. Antes se mostraba una u otra y las convertidas desde orden quedaban
+  // ocultas cuando el cliente tenía también ventas directas.
+  const saleTime = (s: any) => {
+    const v = s.saleDate || s.createdAt;
+    const d = v?.toDate ? v.toDate() : v ? new Date(v) : null;
+    return d && !isNaN(d.getTime()) ? d.getTime() : 0;
+  };
+  const clientSales = Array.from(
+    new Map(
+      [...(sales ?? []), ...(sales2 ?? [])]
+        .filter((s: any) => !s.deleted)
+        .map((s: any) => [s.id, s])
+    ).values()
+  ).sort((a: any, b: any) => saleTime(b) - saleTime(a));
 
   // Estados para el modal de ventas
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
@@ -436,9 +450,9 @@ export default function ClienteDetallePage({
                 <div className="flex justify-center py-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-slate-900"></div>
                 </div>
-              ) : activeSales && activeSales.length > 0 || activeSales2 && activeSales2.length > 0 ? (
+              ) : clientSales.length > 0 ? (
                 <div className="space-y-4">
-                  {(activeSales && activeSales.length > 0 ? activeSales : activeSales2).map((sale: any) => (
+                  {clientSales.map((sale: any) => (
                     <div
                       key={sale.id}
                       className="border rounded-lg p-4 hover:bg-slate-50 transition-colors"

@@ -122,8 +122,22 @@ export default function ClienteDetallePage({
     { idField: "id" }
   );
 
-  const activeSales = sales?.filter((s: any) => !s.deleted);
-  const activeSales2 = sales2?.filter((s: any) => !s.deleted);
+  // Las ventas que salen de convertir una orden se guardaron históricamente con
+  // `client: <id>` (string) en vez de `clientId`, así que hay que juntar las dos
+  // queries. Antes se mostraba una u otra y las convertidas desde orden quedaban
+  // ocultas cuando el cliente tenía también ventas directas.
+  const saleTime = (s: any) => {
+    const v = s.saleDate || s.createdAt;
+    const d = v?.toDate ? v.toDate() : v ? new Date(v) : null;
+    return d && !isNaN(d.getTime()) ? d.getTime() : 0;
+  };
+  const clientSales = Array.from(
+    new Map(
+      [...(sales ?? []), ...(sales2 ?? [])]
+        .filter((s: any) => !s.deleted)
+        .map((s: any) => [s.id, s])
+    ).values()
+  ).sort((a: any, b: any) => saleTime(b) - saleTime(a));
 
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
@@ -606,13 +620,9 @@ export default function ClienteDetallePage({
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
                 </div>
-              ) : (activeSales && activeSales.length > 0) ||
-                (activeSales2 && activeSales2.length > 0) ? (
+              ) : clientSales.length > 0 ? (
                 <div className="space-y-2">
-                  {(activeSales && activeSales.length > 0
-                    ? activeSales
-                    : activeSales2
-                  )?.map((sale: any) => {
+                  {clientSales.map((sale: any) => {
                     const isFacturado =
                       sale.facturas && sale.facturas.length > 0;
                     const paymentLabel =

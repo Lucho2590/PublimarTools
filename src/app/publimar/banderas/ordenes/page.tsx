@@ -90,6 +90,8 @@ export default function PedidosPage() {
       const saleData = {
         clientName: order.clientName || null,
         client: order.clientId || null,
+        // Referencia normalizada: la ficha del cliente y ARCA buscan por clientId.
+        clientId: order.clientId || null,
         number: order.number, // Prefijo para distinguir de la orden
         items: saleItems,
         subtotal: order.subtotal,
