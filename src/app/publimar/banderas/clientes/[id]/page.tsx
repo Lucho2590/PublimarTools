@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -14,7 +14,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { softDelete } from "@/lib/softDelete";
+import { softDelete, isDeleted } from "@/lib/softDelete";
 import { formatCuit } from "@/lib/cuit";
 import { Button } from "@/components/ui/button";
 import {
@@ -90,20 +90,30 @@ export default function ClienteDetallePage({
     idField: "id",
   });
 
-  const { status: quotesStatus, data: quotes } = useFirestoreCollectionData(
+  const { status: quotesStatus, data: rawQuotes } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.QUOTES),
       where("client.id", "==", clientId)
     ),
     { idField: "id" }
   );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const quotes = useMemo(
+    () => rawQuotes?.filter((x: any) => !isDeleted(x)),
+    [rawQuotes]
+  );
 
-  const { status: ordersStatus, data: orders } = useFirestoreCollectionData(
+  const { status: ordersStatus, data: rawOrders } = useFirestoreCollectionData(
     query(
       collection(firestore, collections.ORDERS),
       where("clientId", "==", clientId)
     ),
     { idField: "id" }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const orders = useMemo(
+    () => rawOrders?.filter((x: any) => !isDeleted(x)),
+    [rawOrders]
   );
 
   const { status: salesStatus, data: sales } = useFirestoreCollectionData(
@@ -165,7 +175,8 @@ export default function ClienteDetallePage({
     );
   }
 
-  if (!client) {
+  // Un cliente eliminado (soft delete) se trata como inexistente: solo se ve en /sudo.
+  if (!client || isDeleted(client)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <h2 className="text-2xl font-bold tracking-tight">

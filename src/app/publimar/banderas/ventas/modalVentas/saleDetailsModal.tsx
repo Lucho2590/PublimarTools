@@ -2514,7 +2514,9 @@ export function SaleDetailsModal({
                         </SelectTrigger>
                         <SelectContent className="max-h-48 overflow-y-auto">
                           <SelectItem value="all">Todas</SelectItem>
-                          {Object.entries(categories).map(([id, category]) => (
+                          {Object.entries(categories)
+                            .filter(([, category]) => !isDeleted(category))
+                            .map(([id, category]) => (
                             <SelectItem key={id} value={id}>
                               {category.name}
                             </SelectItem>

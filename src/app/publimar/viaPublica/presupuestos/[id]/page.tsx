@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useUser, useFirestoreCollectionData } from "reactfire";
 import { doc, getDoc, updateDoc, collection, query, serverTimestamp, Timestamp, CollectionReference, orderBy, addDoc, getDocs } from "firebase/firestore";
-import { softDelete } from '@/lib/softDelete';
+import { softDelete, isDeleted } from '@/lib/softDelete';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -145,9 +145,14 @@ export default function PresupuestoDetailPage({
 
   // Cargar dispositivos
   const devicesCollection = collection(firestore, "devices");
-  const { data: devices } = useFirestoreCollectionData<TDeviceType>(devicesCollection as CollectionReference<TDeviceType>, {
+  const { data: rawDevices } = useFirestoreCollectionData<TDeviceType>(devicesCollection as CollectionReference<TDeviceType>, {
     idField: "id",
   }) as { data: TDeviceType[] };
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const devices = useMemo(
+    () => rawDevices?.filter((x: any) => !isDeleted(x)),
+    [rawDevices]
+  );
 
   // Helper para obtener fecha
   const getDate = (dateField: any): Date | undefined => {

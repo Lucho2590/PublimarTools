@@ -1,7 +1,8 @@
 "use client";
 export const dynamic = "force-dynamic";
 
-import { useState, useRef } from "react";
+import { isDeleted } from "@/lib/softDelete";
+import { useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useUser, useFirestoreCollectionData } from "reactfire";
 import { collection, addDoc, serverTimestamp, Timestamp, query, where, orderBy, Query, CollectionReference } from "firebase/firestore";
@@ -192,18 +193,28 @@ export default function NuevoPresupuestoPage() {
     where("section", "==", EClientSection.VIA_PUBLICA),
     orderBy("name")
   );
-  const { data: viaPublicaClients } = useFirestoreCollectionData<TClient>(
+  const { data: rawViaPublicaClients } = useFirestoreCollectionData<TClient>(
     viaPublicaQuery as Query<TClient>,
     { idField: "id" }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const viaPublicaClients = useMemo(
+    () => rawViaPublicaClients?.filter((x: any) => !isDeleted(x)),
+    [rawViaPublicaClients]
   );
   const banderasQuery = query(
     clientsCollection,
     where("section", "==", EClientSection.BANDERAS),
     orderBy("name")
   );
-  const { data: banderasClients } = useFirestoreCollectionData<TClient>(
+  const { data: rawBanderasClients } = useFirestoreCollectionData<TClient>(
     banderasQuery as Query<TClient>,
     { idField: "id" }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const banderasClients = useMemo(
+    () => rawBanderasClients?.filter((x: any) => !isDeleted(x)),
+    [rawBanderasClients]
   );
 
   const [includeBanderas, setIncludeBanderas] = useState(false);
@@ -265,9 +276,14 @@ export default function NuevoPresupuestoPage() {
 
   // Cargar dispositivos
   const devicesCollection = collection(firestore, "devices");
-  const { data: devices } = useFirestoreCollectionData<TDeviceType>(devicesCollection as CollectionReference<TDeviceType>, {
+  const { data: rawDevices } = useFirestoreCollectionData<TDeviceType>(devicesCollection as CollectionReference<TDeviceType>, {
     idField: "id",
   }) as { data: TDeviceType[] };
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const devices = useMemo(
+    () => rawDevices?.filter((x: any) => !isDeleted(x)),
+    [rawDevices]
+  );
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;

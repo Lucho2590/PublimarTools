@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData, useUser } from "reactfire";
 import {
@@ -159,11 +159,16 @@ export default function NuevoPresupuestoPage() {
     where("section", "==", EClientSection.BANDERAS),
     orderBy("name")
   );
-  const { status: clientsStatus, data: clients } = useFirestoreCollectionData(
+  const { status: clientsStatus, data: rawClients } = useFirestoreCollectionData(
     clientsQuery,
     {
       idField: "id",
     }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const clients = useMemo(
+    () => rawClients?.filter((x: any) => !isDeleted(x)),
+    [rawClients]
   );
 
   // Fetch products
@@ -177,11 +182,16 @@ export default function NuevoPresupuestoPage() {
 
   // Fetch categories
   const categoriesCollection = collection(firestore, collections.products.CATEGORIES);
-  const { status: categoriesStatus, data: categories } = useFirestoreCollectionData(
+  const { status: categoriesStatus, data: rawCategories } = useFirestoreCollectionData(
     categoriesCollection,
     {
       idField: "id",
     }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const categories = useMemo(
+    () => rawCategories?.filter((x: any) => !isDeleted(x)),
+    [rawCategories]
   );
 
   // Basic quote info

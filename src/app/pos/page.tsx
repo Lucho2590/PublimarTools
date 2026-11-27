@@ -1,5 +1,6 @@
 "use client";
 
+import { isDeleted } from "@/lib/softDelete";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection } from "firebase/firestore";
@@ -84,9 +85,14 @@ export default function PuntoDeVentaPage() {
     firestore,
     collections.products.CATEGORIES,
   );
-  const { data: categoriesData } = useFirestoreCollectionData(
+  const { data: rawCategoriesData } = useFirestoreCollectionData(
     categoriesCollection,
     { idField: "id" },
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const categoriesData = useMemo(
+    () => rawCategoriesData?.filter((x: any) => !isDeleted(x)),
+    [rawCategoriesData]
   );
   const categories = (categoriesData as unknown as TProductCategory[]) || [];
 

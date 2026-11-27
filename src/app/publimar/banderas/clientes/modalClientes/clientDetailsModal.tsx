@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { isDeleted } from "@/lib/softDelete";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   useFirestore,
   useFirestoreCollectionData,
@@ -120,7 +121,7 @@ export default function ClientDetailsModal({
   );
 
   // Get client quotes
-  const { status: quotesStatus, data: quotes } = useFirestoreCollectionData(
+  const { status: quotesStatus, data: rawQuotes } = useFirestoreCollectionData(
     clientId
       ? query(
           collection(firestore, collections.QUOTES),
@@ -131,6 +132,11 @@ export default function ClientDetailsModal({
           where("__name__", "==", "nonexistent")
         ),
     { idField: "id" }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const quotes = useMemo(
+    () => rawQuotes?.filter((x: any) => !isDeleted(x)),
+    [rawQuotes]
   );
 
   // Reset form when modal closes or client changes

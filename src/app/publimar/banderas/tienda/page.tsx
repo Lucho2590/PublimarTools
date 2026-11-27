@@ -1,6 +1,7 @@
 'use client';
 export const dynamic = "force-dynamic";
 
+import { isDeleted } from "@/lib/softDelete";
 import { useState, useEffect } from "react";
 import { useFirestore } from "reactfire";
 import { usePathname } from "next/navigation";
@@ -110,7 +111,7 @@ export default function TiendaDashboardPage() {
         orderBy("createdAt", "desc")
       );
       const todayOrdersSnap = await getDocs(todayOrdersQuery);
-      const todayOrdersData = todayOrdersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder));
+      const todayOrdersData = todayOrdersSnap.docs.filter(doc => !isDeleted(doc.data())).map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder));
       setTodayOrders(todayOrdersData.length);
       setTodayRevenue(todayOrdersData.reduce((sum, order) => sum + order.total, 0));
 
@@ -120,7 +121,7 @@ export default function TiendaDashboardPage() {
         orderBy("createdAt", "desc")
       );
       const monthOrdersSnap = await getDocs(monthOrdersQuery);
-      const monthOrdersData = monthOrdersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder));
+      const monthOrdersData = monthOrdersSnap.docs.filter(doc => !isDeleted(doc.data())).map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder));
       setMonthOrders(monthOrdersData.length);
       setMonthRevenue(monthOrdersData.reduce((sum, order) => sum + order.total, 0));
 
@@ -130,7 +131,7 @@ export default function TiendaDashboardPage() {
         limit(5)
       );
       const recentOrdersSnap = await getDocs(recentOrdersQuery);
-      setRecentOrders(recentOrdersSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder)));
+      setRecentOrders(recentOrdersSnap.docs.filter(doc => !isDeleted(doc.data())).map(doc => ({ ...doc.data(), id: doc.id } as TEcommerceOrder)));
 
       const abandonedQuery = query(
         collection(firestore, "abandonedCarts"),
@@ -139,7 +140,7 @@ export default function TiendaDashboardPage() {
         orderBy("abandonedAt", "desc")
       );
       const abandonedSnap = await getDocs(abandonedQuery);
-      const abandonedData = abandonedSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TAbandonedCart));
+      const abandonedData = abandonedSnap.docs.filter(doc => !isDeleted(doc.data())).map(doc => ({ ...doc.data(), id: doc.id } as TAbandonedCart));
       setAbandonedCartsCount(abandonedData.length);
       setAbandonedCartsValue(abandonedData.reduce((sum, cart) => sum + cart.total, 0));
       setRecentAbandoned(abandonedData.slice(0, 5));

@@ -48,7 +48,7 @@ import {
 } from "lucide-react";
 import { TAbandonedCart } from "@/types/abandonedCart";
 import { updateDoc, doc, serverTimestamp } from "firebase/firestore";
-import { softDelete } from '@/lib/softDelete';
+import { softDelete, isDeleted } from '@/lib/softDelete';
 import { toast } from "sonner";
 
 // Helper para convertir Timestamp a Date
@@ -132,7 +132,8 @@ export default function CarritosAbandonadosPage() {
         where("converted", "==", false)
       );
       const cartsSnap = await getDocs(cartsQuery);
-      let cartsData = cartsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as TAbandonedCart));
+      // Los eliminados (soft delete) solo se ven en /sudo.
+      let cartsData = cartsSnap.docs.filter(doc => !isDeleted(doc.data())).map(doc => ({ ...doc.data(), id: doc.id } as TAbandonedCart));
 
       // Ordenar en memoria por updatedAt
       cartsData = cartsData.sort((a, b) => {

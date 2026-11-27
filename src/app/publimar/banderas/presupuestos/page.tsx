@@ -1,5 +1,6 @@
 'use client';
 
+import { isDeleted } from "@/lib/softDelete";
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -87,9 +88,14 @@ export default function PresupuestosPage() {
   const quotesQuery = query(quotesCollection, orderBy("createdAt", "desc"),
   where("client.section", "==", EClientSection.BANDERAS));
 
-  const { status, data: quotesData } = useFirestoreCollectionData(quotesQuery, {
+  const { status, data: rawQuotesData } = useFirestoreCollectionData(quotesQuery, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const quotesData = useMemo(
+    () => rawQuotesData?.filter((x: any) => !isDeleted(x)),
+    [rawQuotesData]
+  );
 
   // Filtrar presupuestos según la búsqueda y estado
   const filteredQuotes = useMemo(() => quotesData

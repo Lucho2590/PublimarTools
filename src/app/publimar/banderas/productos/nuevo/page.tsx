@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from "react";
+import { isDeleted } from "@/lib/softDelete";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData, useUser } from "reactfire";
@@ -45,18 +46,28 @@ export default function NuevoProductoPage() {
     firestore,
     collections.products.CATEGORIES
   );
-  const { data: categories } = useFirestoreCollectionData(categoriesCollection, {
+  const { data: rawCategories } = useFirestoreCollectionData(categoriesCollection, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const categories = useMemo(
+    () => rawCategories?.filter((x: any) => !isDeleted(x)),
+    [rawCategories]
+  );
 
   // Obtener grupos
   const groupsCollection = collection(
     firestore,
     collections.products.GROUPS
   );
-  const { data: groups } = useFirestoreCollectionData(groupsCollection, {
+  const { data: rawGroups } = useFirestoreCollectionData(groupsCollection, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const groups = useMemo(
+    () => rawGroups?.filter((x: any) => !isDeleted(x)),
+    [rawGroups]
+  );
 
   const [formData, setFormData] = useState({
     name: "",

@@ -1,5 +1,6 @@
 'use client';
 
+import { isDeleted } from "@/lib/softDelete";
 import { useState, useMemo } from "react";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, where } from "firebase/firestore";
@@ -72,9 +73,14 @@ export default function SalidasPage() {
     where("status", "==", EQuoteStatus.CONFIRMED)
   );
 
-  const { data: quotes, status } = useFirestoreCollectionData(quotesQuery, {
+  const { data: rawQuotes, status } = useFirestoreCollectionData(quotesQuery, {
     idField: "id",
   }) as { data: any[]; status: string };
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const quotes = useMemo(
+    () => rawQuotes?.filter((x: any) => !isDeleted(x)),
+    [rawQuotes]
+  );
 
   // Helper para convertir fecha de Firestore
   const getDate = (dateField: any): Date | null => {
