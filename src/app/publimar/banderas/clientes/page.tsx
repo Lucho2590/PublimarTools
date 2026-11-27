@@ -25,6 +25,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import collections from "@/lib/collections";
+import { isDeleted } from "@/lib/softDelete";
 import {
   EClientType,
   EClientStatus,
@@ -76,9 +77,14 @@ export default function ClientesPage() {
     orderBy("name")
   );
 
-  const { status, data: clients } = useFirestoreCollectionData(clientsQuery, {
+  const { status, data: rawClients } = useFirestoreCollectionData(clientsQuery, {
     idField: "id",
   });
+  // Los eliminados (soft delete) no se ven acá: solo en /sudo.
+  const clients = useMemo(
+    () => rawClients?.filter((c) => !isDeleted(c)),
+    [rawClients]
+  );
 
   const handleViewClient = (clientId: string, clientName: string) => {
     const slug = generateSlug(clientName, clientId);

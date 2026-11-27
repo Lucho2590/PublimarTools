@@ -1,5 +1,6 @@
 'use client';
 
+import { isDeleted } from "@/lib/softDelete";
 import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useFirestore } from "reactfire";
@@ -131,7 +132,12 @@ export default function ComprasAdminPage() {
   // Obtener proveedores para el select
   const providersCollection = collection(firestore, "providers");
   const providersQuery = query(providersCollection, orderBy("name"));
-  const { status: provStatus, data: providers } = useFirestoreCollectionData(providersQuery, { idField: "id" });
+  const { status: provStatus, data: rawProviders } = useFirestoreCollectionData(providersQuery, { idField: "id" });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const providers = useMemo(
+    () => rawProviders?.filter((x: any) => !isDeleted(x)),
+    [rawProviders]
+  );
 
   // Obtener compras ordenadas por fecha descendente
   const purchasesCollection = collection(firestore, "purchases");

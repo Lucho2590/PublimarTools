@@ -116,9 +116,14 @@ export default function DashboardPage() {
     quotesCollection,
     where("status", "==", EQuoteStatus.SENT)
   );
-  const { data: allQuotesData, status: quotesStatus } = useFirestoreCollectionData(
+  const { data: rawAllQuotesData, status: quotesStatus } = useFirestoreCollectionData(
     quotesQuery,
     { idField: "id" }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const allQuotesData = useMemo(
+    () => rawAllQuotesData?.filter((x: any) => !isDeleted(x)),
+    [rawAllQuotesData]
   );
 
   // Consulta productos (bajo stock)
@@ -146,9 +151,14 @@ export default function DashboardPage() {
     where("status", "==", EOrderStatus.IN_PROCESS),
     orderBy("createdAt", "desc")
   );
-  const { data: inProcessOrders, status: inProcessOrdersStatus } = useFirestoreCollectionData(inProcessOrdersQuery, {
+  const { data: rawInProcessOrders, status: inProcessOrdersStatus } = useFirestoreCollectionData(inProcessOrdersQuery, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const inProcessOrders = useMemo(
+    () => rawInProcessOrders?.filter((x: any) => !isDeleted(x)),
+    [rawInProcessOrders]
+  );
 
   // Consulta eventos del calendario (Banderas o legacy sin sección)
   const eventsCollection = collection(firestore, collections.EVENTS);

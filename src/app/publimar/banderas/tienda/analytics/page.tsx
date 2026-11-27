@@ -1,5 +1,6 @@
 "use client";
 
+import { isDeleted } from "@/lib/softDelete";
 import { useState, useEffect, useMemo } from "react";
 import { useFirestore } from "reactfire";
 import {
@@ -194,7 +195,9 @@ export default function AnalyticsPage() {
         limit(100)
       );
       const cartsSnapshot = await getDocs(cartsQuery);
-      const cartsData = cartsSnapshot.docs.map((doc) => ({
+      const cartsData = cartsSnapshot.docs
+        .filter((doc) => !isDeleted(doc.data()))
+        .map((doc) => ({
         ...doc.data(),
         id: doc.id,
       })) as TAbandonedCart[];

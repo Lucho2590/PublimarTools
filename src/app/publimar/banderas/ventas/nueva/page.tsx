@@ -575,11 +575,16 @@ export default function NuevaVentaPage() {
     firestore,
     collections.products.CATEGORIES
   );
-  const { data: categories } = useFirestoreCollectionData(
+  const { data: rawCategories } = useFirestoreCollectionData(
     categoriesCollection,
     {
       idField: "id",
     }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const categories = useMemo(
+    () => rawCategories?.filter((x: any) => !isDeleted(x)),
+    [rawCategories]
   );
 
   // Filtrar productos con filtro súper combinado (memoizado)

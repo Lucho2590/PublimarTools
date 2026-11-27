@@ -1,5 +1,6 @@
 'use client';
 
+import { isDeleted } from "@/lib/softDelete";
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
@@ -254,9 +255,14 @@ export default function PedidosPage() {
     return query(ordersCollection, ...constraints);
   }, [ordersCollection, statusFilter]);
 
-  const { status, data: orders } = useFirestoreCollectionData(ordersQuery, {
+  const { status, data: rawOrders } = useFirestoreCollectionData(ordersQuery, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const orders = useMemo(
+    () => rawOrders?.filter((x: any) => !isDeleted(x)),
+    [rawOrders]
+  );
 
   // Filtrar solo por búsqueda de texto (estado ya filtrado en Firestore)
   const filteredOrders = useMemo(() => {

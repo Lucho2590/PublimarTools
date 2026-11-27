@@ -5,7 +5,7 @@ import { useFirestore, useFirestoreDocData, useFirestoreCollectionData } from 'r
 import { doc, updateDoc, collection, query, where, getDocs, addDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "@/lib/firebase";
-import { softDelete } from '@/lib/softDelete';
+import { softDelete, isDeleted } from '@/lib/softDelete';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
@@ -454,7 +454,10 @@ export default function PurchaseEditModal({
                     <SelectValue placeholder="Seleccionar proveedor" />
                   </SelectTrigger>
                   <SelectContent>
-                    {providers && providers.map((provider: any) => (
+                    {providers && providers
+                      // Ocultar proveedores eliminados, salvo el que ya tiene asignado esta compra.
+                      .filter((provider: any) => !isDeleted(provider) || provider.id === formData.providerId)
+                      .map((provider: any) => (
                       <SelectItem key={provider.id} value={provider.id}>
                         {provider.name}
                       </SelectItem>

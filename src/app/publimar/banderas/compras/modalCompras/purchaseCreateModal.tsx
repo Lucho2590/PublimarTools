@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { isDeleted } from "@/lib/softDelete";
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useFirestore, useFirestoreCollectionData } from 'reactfire';
 import {
   collection,
@@ -94,7 +95,12 @@ export default function PurchaseCreateModal({
 
   const providersCollection = collection(firestore, 'providers');
   const providersQuery = query(providersCollection, orderBy('name'));
-  const { data: providers } = useFirestoreCollectionData(providersQuery, { idField: 'id' });
+  const { data: rawProviders } = useFirestoreCollectionData(providersQuery, { idField: 'id' });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const providers = useMemo(
+    () => rawProviders?.filter((x: any) => !isDeleted(x)),
+    [rawProviders]
+  );
 
   useEffect(() => {
     if (userRole) {

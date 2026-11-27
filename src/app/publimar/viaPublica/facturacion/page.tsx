@@ -1,5 +1,6 @@
 'use client';
 
+import { isDeleted } from "@/lib/softDelete";
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
@@ -66,7 +67,9 @@ export default function FacturacionPage() {
         where("status", "==", EQuoteStatus.CONFIRMED)
       );
       const quotesSnap = await getDocs(quotesQuery);
-      const confirmedQuotes = quotesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const confirmedQuotes = quotesSnap.docs
+        .filter(doc => !isDeleted(doc.data()))
+        .map(doc => ({ id: doc.id, ...doc.data() }));
 
       // Obtener billings existentes
       const billingsSnap = await getDocs(collection(firestore, collections.BILLINGS));

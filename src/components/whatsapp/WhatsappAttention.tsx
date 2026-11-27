@@ -1,5 +1,6 @@
 "use client";
 
+import { isDeleted } from "@/lib/softDelete";
 import { createContext, ReactNode, useContext, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
@@ -89,7 +90,12 @@ export function WhatsappAttentionProvider({ children }: { children: ReactNode })
   );
   const { data: sessions } = useFirestoreCollectionData(attentionQuery, { idField: "id" });
   const { data: orders } = useFirestoreCollectionData(ordersQuery, { idField: "id" });
-  const { data: quotes } = useFirestoreCollectionData(quotesQuery, { idField: "id" });
+  const { data: rawQuotes } = useFirestoreCollectionData(quotesQuery, { idField: "id" });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const quotes = useMemo(
+    () => rawQuotes?.filter((x: any) => !isDeleted(x)),
+    [rawQuotes]
+  );
 
   // Lo que ya estaba al abrir la app no avisa; solo lo que entra después.
   const seen = useRef<{ sessions: Set<string> | null; orders: Set<string> | null; quotes: Set<string> | null }>({

@@ -1,7 +1,8 @@
 'use client';
 
+import { isDeleted } from "@/lib/softDelete";
 import { RecommendedProductsPicker } from "@/components/products/RecommendedProductsPicker";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useFirestore, useFirestoreDoc, useFirestoreCollectionData } from "reactfire";
 import { collection, doc, updateDoc, serverTimestamp, getDoc } from "firebase/firestore";
 import { useAuditLog } from "@/hooks/useAuditLog";
@@ -122,18 +123,28 @@ export default function ProductEditModal({
     firestore,
     collections.products.CATEGORIES
   );
-  const { data: categories } = useFirestoreCollectionData(categoriesCollection, {
+  const { data: rawCategories } = useFirestoreCollectionData(categoriesCollection, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const categories = useMemo(
+    () => rawCategories?.filter((x: any) => !isDeleted(x)),
+    [rawCategories]
+  );
 
   // Obtener grupos
   const groupsCollection = collection(
     firestore,
     collections.products.GROUPS
   );
-  const { data: groups } = useFirestoreCollectionData(groupsCollection, {
+  const { data: rawGroups } = useFirestoreCollectionData(groupsCollection, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const groups = useMemo(
+    () => rawGroups?.filter((x: any) => !isDeleted(x)),
+    [rawGroups]
+  );
 
   // Obtener el producto a editar
   const productRef = productId ? doc(firestore, collections.PRODUCTS, productId) : null;

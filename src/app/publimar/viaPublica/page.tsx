@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = "force-dynamic";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import {
   collection,
@@ -93,9 +93,14 @@ export default function DashboardPage() {
     quotesCollection,
     where("status", "==", EQuoteStatus.SENT)
   );
-  const { data: allQuotesData, status: expiringQuotesStatus } = useFirestoreCollectionData(
+  const { data: rawAllQuotesData, status: expiringQuotesStatus } = useFirestoreCollectionData(
     expiringQuotesQuery,
     { idField: "id" }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const allQuotesData = useMemo(
+    () => rawAllQuotesData?.filter((x: any) => !isDeleted(x)),
+    [rawAllQuotesData]
   );
 
   // Filtrar y ordenar del lado del cliente
@@ -135,9 +140,14 @@ export default function DashboardPage() {
     orderBy("createdAt", "desc"),
     limit(5)
   );
-  const { data: recentOrders, status: recentOrdersStatus } = useFirestoreCollectionData(recentOrdersQuery, {
+  const { data: rawRecentOrders, status: recentOrdersStatus } = useFirestoreCollectionData(recentOrdersQuery, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const recentOrders = useMemo(
+    () => rawRecentOrders?.filter((x: any) => !isDeleted(x)),
+    [rawRecentOrders]
+  );
 
   // Consulta órdenes en proceso
   const inProcessOrdersQuery = query(
@@ -145,9 +155,14 @@ export default function DashboardPage() {
     where("status", "==", EOrderStatus.IN_PROCESS),
     orderBy("createdAt", "desc")
   );
-  const { data: inProcessOrders, status: inProcessOrdersStatus } = useFirestoreCollectionData(inProcessOrdersQuery, {
+  const { data: rawInProcessOrders, status: inProcessOrdersStatus } = useFirestoreCollectionData(inProcessOrdersQuery, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const inProcessOrders = useMemo(
+    () => rawInProcessOrders?.filter((x: any) => !isDeleted(x)),
+    [rawInProcessOrders]
+  );
 
   // Consulta eventos del calendario - Traer eventos de Vía Pública
   const eventsCollection = collection(firestore, collections.EVENTS);
@@ -195,8 +210,13 @@ export default function DashboardPage() {
     purchasesCollection,
     where("department", "==", EPurchaseDepartment.VIA_PUBLICA)
   );
-  const { data: allPurchasesData, status: purchasesStatus } =
+  const { data: rawAllPurchasesData, status: purchasesStatus } =
     useFirestoreCollectionData(purchasesQuery);
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const allPurchasesData = useMemo(
+    () => rawAllPurchasesData?.filter((x: any) => !isDeleted(x)),
+    [rawAllPurchasesData]
+  );
 
   // Filtrar compras del mes y año del lado del cliente usando el campo 'date'
   const monthlyPurchasesData = allPurchasesData?.filter((purchase: any) => {

@@ -1,5 +1,6 @@
 'use client';
 
+import { isDeleted } from "@/lib/softDelete";
 import { useState, useMemo, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
@@ -137,9 +138,14 @@ export default function ComprasPage() {
 
   const providersCollection = collection(firestore, "providers");
   const providersQuery = query(providersCollection, orderBy("name"));
-  const { data: providers } = useFirestoreCollectionData(providersQuery, {
+  const { data: rawProviders } = useFirestoreCollectionData(providersQuery, {
     idField: "id",
   });
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const providers = useMemo(
+    () => rawProviders?.filter((x: any) => !isDeleted(x)),
+    [rawProviders]
+  );
 
   const purchasesCollection = collection(firestore, "purchases");
   const purchasesQuery = query(purchasesCollection, orderBy("date", "desc"));

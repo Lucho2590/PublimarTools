@@ -224,11 +224,16 @@ export default function ProductosPage() {
     firestore,
     collections.products.CATEGORIES
   );
-  const { data: categories } = useFirestoreCollectionData(
+  const { data: rawCategories } = useFirestoreCollectionData(
     categoriesCollection,
     {
       idField: "id",
     }
+  );
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const categories = useMemo(
+    () => rawCategories?.filter((x: any) => !isDeleted(x)),
+    [rawCategories]
   );
 
   // Consulta a Firestore para grupos
@@ -670,7 +675,8 @@ export default function ProductosPage() {
                   <SelectItem value="all">Todos los grupos</SelectItem>
                   <SelectItem value="sin-grupo">Sin grupo</SelectItem>
                   {groups
-                    ?.sort((a, b) => {
+                    ?.filter((g) => !isDeleted(g))
+                    .sort((a, b) => {
                       const nameA = (a as unknown as TProductGroup).name;
                       const nameB = (b as unknown as TProductGroup).name;
                       return nameA.localeCompare(nameB);

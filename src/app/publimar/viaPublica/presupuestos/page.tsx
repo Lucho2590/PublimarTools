@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from "react";
+import { isDeleted } from "@/lib/softDelete";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useFirestore, useFirestoreCollectionData } from "reactfire";
 import { collection, query, orderBy, where, doc, updateDoc, serverTimestamp, getDoc, addDoc, getDocs } from "firebase/firestore";
@@ -58,9 +59,14 @@ export default function PresupuestosViaPublicaPage() {
     orderBy("createdAt", "desc")
   );
 
-  const { status, data: quotes } = useFirestoreCollectionData(quotesQuery, {
+  const { status, data: rawQuotes } = useFirestoreCollectionData(quotesQuery, {
     idField: "id",
   }) as { status: string; data: TQuote[] };
+  // Soft delete: los eliminados solo se ven en /sudo.
+  const quotes = useMemo(
+    () => rawQuotes?.filter((x: any) => !isDeleted(x)),
+    [rawQuotes]
+  );
 
   // Función para normalizar texto (quitar acentos y convertir a minúsculas)
   const normalizeText = (text: string) => {

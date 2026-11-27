@@ -1,5 +1,6 @@
 'use client';
 
+import { isDeleted } from "@/lib/softDelete";
 import { useRouter } from "next/navigation";
 import { useFirestore, useFirestoreDocData } from "reactfire";
 import { doc, updateDoc } from "firebase/firestore";
@@ -177,7 +178,8 @@ export default function EditarClientePage({ params }: { params: { id: string } }
     );
   }
 
-  if (!client) {
+  // Un cliente eliminado (soft delete) se trata como inexistente: solo se ve en /sudo.
+  if (!client || isDeleted(client)) {
     return (
       <div className="text-center py-12">
         <h2 className="text-2xl font-bold text-slate-900">
